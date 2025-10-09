@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+
+{% block title %}デバッグ - {{ super() }}{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-tools me-2"></i>デバッグ用タスク
+            </div>
+            <div class="card-body">
+                <p class="card-text">ここでは、開発やデバッグ目的のタスクを手動で実行できます。</p>
+                <div id="debug-tasks-container" class="list-group">
+                    <!-- デバッグタスクはJavaScriptでここに挿入されます -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    async function fetchDebugTasks() {
+        try {
+            const response = await fetch('/api/debug-tasks');
+            const tasks = await response.json();
+            const container = document.getElementById('debug-tasks-container');
+            container.innerHTML = '';
+
+            tasks.forEach(task => {
+                const taskItem = document.createElement('div');
+                taskItem.className = 'list-group-item d-flex justify-content-between align-items-center';
+                taskItem.innerHTML = `
+                    <div>
+                        <h5 class="mb-1">${task.name_ja}</h5>
+                        <p class="mb-1 small text-muted">${task.description || ''}</p>
+                    </div>
+                    <button class="btn btn-sm btn-info" onclick="runTaskNow('${task.tag}', '${task.name_ja}', event)">
+                        <i class="bi bi-play-fill"></i> 即時実行
+                    </button>
+                `;
+                container.appendChild(taskItem);
+            });
+        } catch (error) {
+            console.error('Failed to fetch debug tasks:', error);
+        }
+    }
+
+    async function runTaskNow(tag, name_ja, event) {
+        let confirmMessage = `タスク「${name_ja}」を今すぐ実行しますか？`;
+        if (tag === 'save-auth-state') {
+            const hostname = window.location.hostname;
+            confirmMessage += `\n\n実行後、VNCクライアントで ${hostname}:5900 に接続してください。`;
+        }
+
+        if (!confirm(confirmMessage)) {
+            return;
+        }
+        try {
+            const response = await fetch(`/api/tasks/${tag}/run`, {
+                method: 'POST'
+            });
+            const result = await response.json();
+            // response.ok (HTTPステータスが200-299) かどうかで成否を判断する
+            if (!response.ok) {
+                throw new Error(result.message || 'タスクの実行に失敗しました。');
+            }
+            alert(result.message);
+        } catch (error) {
+            console.error('Error running task:', error);
+            alert(error.message);
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        fetchDebugTasks();
+    });
+</script>
+{% endblock %}

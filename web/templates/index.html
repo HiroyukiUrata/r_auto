@@ -1,0 +1,290 @@
+{% extends "base.html" %}
+
+{% block title %}スケジュール設定 - {{ super() }}{% endblock %}
+
+{% block content %}
+        <div class="row mb-4">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header">
+                        <i class="bi bi-gear-fill me-2"></i>グローバル設定
+                    </div>
+                    <div class="card-body">
+                        <div class="row align-items-end">
+                            <div class="col-md-4">
+                                <label for="max-delay-input" class="form-label">ランダム遅延の最大時間（分）</label>
+                                <input type="number" class="form-control" id="max-delay-input" min="0">
+                            </div>
+                            <div class="col-md-4"><button class="btn btn-primary" onclick="saveGlobalConfig()">設定を保存</button></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span><i class="bi bi-clock-history me-2"></i>現在のスケジュール</span>
+                            <button class="btn btn-sm btn-primary" onclick="fetchSchedules()">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-arrow-clockwise" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/><path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/></svg>
+                                更新
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div id="schedules-container">
+                            <!-- スケジュールカードはJavaScriptでここに挿入されます -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+{% endblock %}
+
+{% block scripts %}
+    <script>
+        async function saveSchedule(tag, times) {
+            try {
+                const response = await fetch('/api/schedules/update', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ tag: tag, times: times }),
+                });
+
+                const result = await response.json();
+                if (!response.ok) {
+                    throw new Error(result.message || 'スケジュールの更新に失敗しました。');
+                }
+
+                return true;
+            } catch (error) {
+                console.error('Error:', error);
+                alert(error.message);
+                return false;
+            }
+        }
+
+        async function fetchSchedules() {
+            const response = await fetch('/api/schedules');
+            const schedules = await response.json();
+            const container = document.getElementById('schedules-container');
+            container.innerHTML = '';
+
+            schedules.forEach(job => {
+                const timesHtml = job.times.map(time => `
+                    <div class="time-entry d-flex justify-content-between align-items-center p-2 border-bottom">
+                        <span>${time}</span>
+                        <button type="button" class="btn btn-sm btn-danger py-0 px-1" aria-label="削除" onclick="markCardAsDirty(this); this.parentElement.remove();"><i class="bi bi-x-lg"></i></button>
+                    </div>
+                `).join('');
+
+                const cardHtml = `
+                <div class="card mb-3" id="task-card-${job.tag}">
+                    <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                        <div class="me-3">
+                            <h5 class="mb-0 d-inline-block me-2">${job.name_ja}</h5>
+                            <small class="text-muted">次の実行: ${job.next_run || 'N/A'}</small>
+                        </div>
+                        <div class="ms-auto button-group">
+                            <!-- キャンセルボタンはここに挿入されます -->
+                            <button class="btn btn-success btn-sm" onclick="handleSave(this, '${job.tag}')">
+                                <i class="bi bi-check-circle me-1"></i> 保存
+                            </button>
+                            <button class="btn btn-info btn-sm" onclick="runTaskNow('${job.tag}', '${job.name_ja}')">
+                                <i class="bi bi-play-fill"></i> 即時実行
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="d-flex justify-content-end">
+                            <div style="max-width: 250px; width: 100%;">
+                                <div id="times-container-${job.tag}" class="time-list-container border rounded mb-2 bg-white">
+                                    ${timesHtml}
+                                </div>
+                                <div class="input-group input-group-sm">
+                                    <input type="time" class="form-control" id="time-input-${job.tag}">
+                                    <button class="btn btn-primary" type="button" onclick="addTime(this, '${job.tag}')">追加</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                `;
+                container.innerHTML += cardHtml;
+            });
+        }
+
+        function addTime(button, tag) {
+            const cardBody = button.closest('.card-body');
+            const input = cardBody.querySelector('input[type="time"]');
+            const newTime = input.value;
+            if (!newTime) return;
+
+            const timesContainer = cardBody.querySelector('.time-list-container');
+            const existingTimes = Array.from(timesContainer.querySelectorAll('.time-entry > span')).map(s => s.textContent);
+            if (existingTimes.includes(newTime)) {
+                alert('この時刻は既に追加されています。');
+                return;
+            }
+
+            const timeEntry = document.createElement('div');
+            timeEntry.className = 'time-entry d-flex justify-content-between align-items-center p-2 border-bottom';
+            timeEntry.innerHTML = `
+                <span>${newTime}</span>
+                <button type="button" class="btn btn-sm btn-danger py-0 px-1" aria-label="削除" onclick="this.parentElement.remove(); markCardAsDirty(this);"><i class="bi bi-x-lg"></i></button>
+            `;
+            timesContainer.appendChild(timeEntry);
+            input.value = '';
+            markCardAsDirty(button); // 保存ボタンの状態を変更
+        }
+
+        async function handleSave(button, tag) {
+            const card = document.getElementById(`task-card-${tag}`);
+            const timeSpans = card.querySelectorAll('.time-entry > span');
+            const newTimes = Array.from(timeSpans).map(span => span.textContent);
+
+            const success = await saveSchedule(tag, newTimes);
+            if (success) {
+                alert('スケジュールを保存しました。');
+                await fetchSchedules();
+            }
+        }
+
+        async function fetchGlobalConfig() {
+            try {
+                const response = await fetch('/api/config');
+                const config = await response.json();
+                document.getElementById('max-delay-input').value = config.max_delay_minutes;
+            } catch (error) {
+                console.error('Failed to fetch global config:', error);
+            }
+        }
+
+        async function saveGlobalConfig() {
+            const maxDelay = document.getElementById('max-delay-input').value;
+            try {
+                const response = await fetch('/api/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ max_delay_minutes: parseInt(maxDelay, 10) })
+                });
+                const result = await response.json();
+                if (!response.ok) {
+                    throw new Error(result.message || '設定の保存に失敗しました。');
+                }
+                alert('設定を保存しました。');
+            } catch (error) {
+                console.error('Error saving global config:', error);
+                alert(error.message);
+            }
+        }
+
+        async function runTaskNow(tag, name_ja) {
+            if (!confirm(`タスク「${name_ja}」を今すぐ実行しますか？`)) {
+                return;
+            }
+            try {
+                const response = await fetch(`/api/tasks/${tag}/run`, {
+                    method: 'POST'
+                });
+                const result = await response.json();
+                if (!response.ok) {
+                    throw new Error(result.message || 'タスクの実行開始に失敗しました。');
+                }
+                alert(result.message);
+            } catch (error) {
+                console.error('Error running task:', error);
+                alert(error.message);
+            }
+        }
+
+        function markCardAsDirty(element) {
+            const currentCard = element.closest('.card');
+            const buttonGroup = currentCard.querySelector('.card-header .button-group');
+            const saveButton = buttonGroup.querySelector('.btn-success, .btn-warning');
+            const runNowButton = buttonGroup.querySelector('.btn-info');
+            
+            // 既に編集モードでなければ、元の状態を保存し、キャンセルボタンを追加
+            if (!currentCard.dataset.isDirty) {
+                currentCard.dataset.isDirty = 'true';
+                const timesContainer = currentCard.querySelector('.time-list-container');
+                currentCard.dataset.originalTimesHtml = timesContainer.innerHTML;
+
+                const cancelButton = document.createElement('button');
+                cancelButton.className = 'btn btn-secondary btn-sm me-2';
+                cancelButton.innerHTML = '<i class="bi bi-x-circle"></i> キャンセル';
+                cancelButton.onclick = () => cancelChanges(currentCard);
+                buttonGroup.prepend(cancelButton);
+
+                saveButton.classList.remove('btn-success');
+                saveButton.classList.add('btn-warning');
+                saveButton.innerHTML = '<i class="bi bi-exclamation-triangle-fill me-1"></i> 要保存';
+
+                if (runNowButton) {
+                    runNowButton.classList.add('d-none');
+                }
+            }
+
+            // 他のすべてのカードを無効化する
+            const allCards = document.querySelectorAll('#schedules-container .card');
+            allCards.forEach(card => {
+                if (card !== currentCard) {
+                    card.classList.add('disabled');
+                }
+            });
+        }
+
+        function cancelChanges(cardElement) {
+            // 1. 時刻リストを元の状態に戻す
+            const timesContainer = cardElement.querySelector('.time-list-container');
+            timesContainer.innerHTML = cardElement.dataset.originalTimesHtml;
+
+            // 2. 編集モードのフラグとデータを削除
+            delete cardElement.dataset.isDirty;
+            delete cardElement.dataset.originalTimesHtml;
+
+            // 3. ボタンを元の状態に戻す
+            const buttonGroup = cardElement.querySelector('.card-header .button-group');
+            const saveButton = buttonGroup.querySelector('.btn-warning');
+            saveButton.classList.remove('btn-warning');
+            saveButton.classList.add('btn-success');
+            saveButton.innerHTML = '<i class="bi bi-check-circle me-1"></i> 保存';
+            buttonGroup.querySelector('.btn-secondary').remove(); // キャンセルボタンを削除
+
+            // 即時実行ボタンを再表示
+            const runNowButton = buttonGroup.querySelector('.btn-info');
+            if (runNowButton) {
+                runNowButton.classList.remove('d-none');
+            }
+
+            // 4. 他のカードの無効化を解除
+            const allCards = document.querySelectorAll('#schedules-container .card');
+            allCards.forEach(card => card.classList.remove('disabled'));
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            fetchSchedules();
+            fetchGlobalConfig();
+        });
+    </script>
+{% endblock %}
+
+{% block styles %}
+    <style>
+        .time-list-container {
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .time-list-container .time-entry:last-child {
+            border-bottom: none !important;
+        }
+        .card.disabled {
+            opacity: 0.5;
+            pointer-events: none;
+        }
+    </style>
+{% endblock %}

@@ -12,3 +12,4 @@ __pycache__/
 # Docker
 **/db/*
 **/web/node_modules/
+db/playwright_profile/

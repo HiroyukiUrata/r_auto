@@ -1,12 +1,21 @@
 services:
   app:
-    build: ./app
+    build:
+      context: .
+      dockerfile: app/Dockerfile
     container_name: r_auto_app
     volumes:
-      - ./app:/workspace/app
-      - ./db:/workspace/db
+      - ./app:/workspace/app # ソースコードをマウント
+      - ./db:/workspace/db   # DBデータをマウント
+      - ./web:/workspace/web # Webリソースをマウント
+    ports:
+      - "8000:8000" # Web UIアクセス用にポートを開放
+      - "5900:5900" # VNC接続用にポートを開放
+    environment:
+      - TZ=Asia/Tokyo # タイムゾーンを日本時間に設定
     env_file:
       - .env
+    command: python -m app.main
     tty: true
 
 # まだWeb/Dockerfileがない場合はコメントアウト
