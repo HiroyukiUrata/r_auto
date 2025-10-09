@@ -10,6 +10,11 @@ def post_article():
     """保存された認証プロファイルを使ってROOMへ商品情報を自動投稿する"""
     logging.info("自動投稿タスクを開始します。")
 
+    # --- デバッグフラグ ---
+    # Trueにすると、ブラウザが表示され(headless=False)、投稿ボタンのクリックがスキップされます。
+    # 通常実行時はFalseにしてください。
+    is_debug =False
+
     product = get_unposted_products()
     if not product:
         logging.info("投稿対象の商品がありませんでした。")
@@ -29,9 +34,11 @@ def post_article():
         with sync_playwright() as p:
             context = p.chromium.launch_persistent_context(
                 user_data_dir=PROFILE_DIR,
-                headless=True,
+                headless=not is_debug, # is_debugがTrueならFalse(表示)、FalseならTrue(非表示)
                 locale="ja-JP",
                 timezone_id="Asia/Tokyo",
+                # headless=Falseの場合のみ、仮想ディスプレイを指定
+                env={"DISPLAY": ":0"} if is_debug else {},
             )
 
             # トレースを開始
@@ -40,19 +47,16 @@ def post_article():
             page = context.new_page()
 
             logging.info(f"投稿ページにアクセスします: {post_url}")
-            page.goto(post_url, wait_until="domcontentloaded", timeout=60000)
-
-            textarea_locator = page.locator(locators.POST_TEXTAREA)
-            textarea_locator.wait_for(timeout=20000)
+            # ページの通信が落ち着くまで待機
+            page.goto(post_url, wait_until="networkidle", timeout=60000)
             
+            textarea_locator = page.locator(locators.POST_TEXTAREA)
             logging.info(f"キャプションを入力します: {caption[:30]}...")
             textarea_locator.fill(caption)
 
-            is_debug = False # ここではFalseに固定
             if not is_debug:
-                submit_button_locator = page.locator(locators.SUBMIT_BUTTON)
-                submit_button_locator.wait_for(timeout=10000)
-                submit_button_locator.click()
+                # 複数見つかる場合があるため、最初に見つかったボタンをクリックする
+                page.locator(locators.SUBMIT_BUTTON).first.click(timeout=10000)
                 logging.info("投稿ボタンをクリックしました。")
                 page.wait_for_timeout(15000) # 投稿完了を待つ
             else:

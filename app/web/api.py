@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 # タスク定義を一元的にインポート
 from app.core.task_definitions import TASK_DEFINITIONS
+from app.core.database import get_all_unposted_products, update_product_status
 from app.core.config_manager import get_config, save_config
 from app.core.scheduler_utils import run_threaded
 from datetime import date, timedelta
@@ -77,6 +78,11 @@ async def read_chat(request: Request):
 async def read_debug(request: Request):
     """デバッグページを表示する"""
     return templates.TemplateResponse("debug.html", {"request": request})
+
+@app.get("/inventory", response_class=HTMLResponse)
+async def read_inventory(request: Request):
+    """在庫確認ページを表示する"""
+    return templates.TemplateResponse("inventory.html", {"request": request})
 
 # --- API Routes ---
 @app.get("/api/schedules")
@@ -151,6 +157,25 @@ async def get_debug_tasks():
 async def read_config():
     """現在の設定をJSONで返す"""
     return JSONResponse(content=get_config())
+
+@app.get("/api/inventory")
+async def get_inventory():
+    """在庫（未投稿）商品リストをJSONで返す"""
+    products = get_all_unposted_products()
+    # sqlite3.Rowは直接JSONシリアライズできないため、辞書のリストに変換
+    products_list = [dict(product) for product in products]
+    return JSONResponse(content=products_list)
+
+@app.post("/api/inventory/{product_id}/complete")
+async def complete_inventory_item(product_id: int):
+    """指定された在庫商品を「済」ステータスに更新する"""
+    try:
+        # データベースのステータスを更新
+        update_product_status(product_id, '済')
+        return JSONResponse(content={"status": "success", "message": f"商品ID: {product_id} を「済」に更新しました。"})
+    except Exception as e:
+        logging.error(f"商品ID: {product_id} のステータス更新中にエラーが発生しました: {e}")
+        return JSONResponse(status_code=500, content={"status": "error", "message": "ステータスの更新に失敗しました。"})
 
 @app.post("/api/config")
 async def update_config(config_request: ConfigUpdateRequest):

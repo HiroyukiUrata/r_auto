@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+
+{% block title %}在庫確認 - R-Auto Control Panel{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">在庫確認 (未投稿リスト)</h1>
+</div>
+
+<div class="table-responsive">
+    <table class="table table-striped table-sm">
+        <thead>
+            <tr>
+                <th scope="col">ID</th>
+                <th scope="col">商品名</th>
+                <th scope="col">URL</th>
+                <th scope="col">ステータス</th>
+                <th scope="col">操作</th>
+            </tr>
+        </thead>
+        <tbody id="inventory-table-body">
+            <!-- データはJavaScriptでここに挿入されます -->
+        </tbody>
+    </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // 商品のステータスを「済」に更新する関数
+    async function forceComplete(productId) {
+        if (!confirm(`商品ID: ${productId} を本当に「済」にしますか？この操作は元に戻せません。`)) {
+            return;
+        }
+        try {
+            const response = await fetch(`/api/inventory/${productId}/complete`, {
+                method: 'POST'
+            });
+            const result = await response.json();
+            if (!response.ok) {
+                throw new Error(result.message || 'ステータスの更新に失敗しました。');
+            }
+            // 成功したらテーブルから行を削除
+            document.getElementById(`product-row-${productId}`).remove();
+            alert(result.message);
+        } catch (error) {
+            console.error('Error:', error);
+            alert(error.message);
+        }
+    }
+
+    // ページ読み込み時に在庫リストを取得して表示する関数
+    document.addEventListener('DOMContentLoaded', function () {
+        fetch('/api/inventory')
+            .then(response => response.json())
+            .then(data => {
+                const tableBody = document.getElementById('inventory-table-body');
+                if (data.length === 0) {
+                    tableBody.innerHTML = '<tr><td colspan="5" class="text-center">未投稿の商品はありません。</td></tr>';
+                    return;
+                }
+                data.forEach(product => {
+                    const row = `
+                        <tr id="product-row-${product.id}">
+                            <td>${product.id}</td>
+                            <td>${product.name}</td>
+                            <td><a href="${product.url}" target="_blank" rel="noopener noreferrer">${product.url.substring(0, 50)}...</a></td>
+                            <td><span class="badge bg-secondary">${product.status}</span></td>
+                            <td>
+                                <button class="btn btn-sm btn-warning" onclick="forceComplete(${product.id})">
+                                    <i class="bi bi-check-circle-fill me-1"></i>強制済
+                                </button>
+                            </td>
+                        </tr>
+                    `;
+                    tableBody.innerHTML += row;
+                });
+            });
+    });
+</script>
+{% endblock %}

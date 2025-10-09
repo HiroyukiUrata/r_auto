@@ -23,15 +23,15 @@ def init_db():
                 status TEXT NOT NULL DEFAULT '未' -- '未' or '済'
             )
         ''')
-        # テーブルが空の場合のみサンプルデータを挿入
-        cursor.execute("SELECT COUNT(*) FROM products")
+        # 「未」ステータスの商品がない場合のみサンプルデータを挿入
+        cursor.execute("SELECT COUNT(*) FROM products WHERE status = '未'")
         if cursor.fetchone()[0] == 0:
-            logging.info("サンプルデータを挿入します。")
+            logging.info("投稿待機中の商品がないため、サンプルデータを再挿入します。")
             # ↓↓↓ このURLを実際の楽天ROOMの商品コレ！ページのURLに書き換えてください
-            # cursor.execute("INSERT INTO products (name, url, status) VALUES (?, ?, ?)",
-            #                ('【プレステラプレミアム75  スリット鉢 くすみカラー', 'https://room.rakuten.co.jp/mix?itemcode=kaju%3A10002307&scid=we_room_upc60', '未'))
-            # cursor.execute("INSERT INTO products (name, url, status) VALUES (?, ?, ?)",
-            #                ('👦「あ、またこの植木鉢トレーだ！本当に人気なんだね！キャスターがついてるのが魅力的だなぁ！」', 'https://room.rakuten.co.jp/mix?itemcode=roughral%3A10004105&scid=we_room_upc60', '未'))
+            cursor.execute("INSERT INTO products (name, url, status) VALUES (?, ?, ?)",
+                           ('👦「わあ、おねえさん！星の形のおしゃぶりケースだ！ストラップも付いてるから、ベビーカーにぶら下げておきたいな！」\n\n👸「これは星型のおしゃぶりケースね。シリコン製で、おしゃぶりを衛生的に持ち運べるわ。くすみカラーが可愛くて、小物入れとしても使えそうだね！」\n\n👦「なるほど、これがあればおしゃぶりを落とさなくて安心だね！星の形がとってもキュートで欲しいです！」\n#おしゃぶりケース #シリコン #くすみカラー #星型 #なんなんなあに', 'https://room.rakuten.co.jp/mix?itemcode=felixland%3A10008424&scid=we_room_upc60', '未'))
+            cursor.execute("INSERT INTO products (name, url, status) VALUES (?, ?, ?)",
+                           ('👦「あ、またこの植木鉢トレーだ！本当に人気なんだね！キャスターがついてるのが魅力的だなぁ！」', 'https://room.rakuten.co.jp/mix?itemcode=roughral%3A10004105&scid=we_room_upc60', '未'))
             cursor.execute("INSERT INTO products (name, url, status) VALUES (?, ?, ?)",
                            ('【新規追加】おしゃれな照明器具', 'https://room.rakuten.co.jp/mix?itemcode=kaju%3A10002307&scid=we_room_upc60L', '未'))
         conn.commit()
@@ -46,6 +46,13 @@ def get_unposted_products():
     product = conn.execute("SELECT * FROM products WHERE status = '未' LIMIT 1").fetchone()
     conn.close()
     return product
+
+def get_all_unposted_products():
+    """ステータスが「未」の商品をすべて取得する"""
+    conn = get_db_connection()
+    products = conn.execute("SELECT * FROM products WHERE status = '未' ORDER BY id").fetchall()
+    conn.close()
+    return products
 
 def update_product_status(product_id, status):
     """商品のステータスを更新する"""

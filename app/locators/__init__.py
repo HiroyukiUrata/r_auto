@@ -8,4 +8,4 @@ MY_ROOM_LINK = 'a:has-text("my ROOM")'
 
 # 楽天ROOM 投稿ページのセレクタ
 POST_TEXTAREA = "textarea[name='content']"
-SUBMIT_BUTTON = "button.collect-btn"
+SUBMIT_BUTTON = 'button.collect-btn:has-text("完了")'
