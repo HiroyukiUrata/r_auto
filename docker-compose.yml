@@ -1,0 +1,23 @@
+services:
+  app:
+    build: ./app
+    container_name: r_auto_app
+    volumes:
+      - ./app:/workspace/app
+      - ./db:/workspace/db
+    env_file:
+      - .env
+    tty: true
+
+# まだWeb/Dockerfileがない場合はコメントアウト
+#  web:
+#    build: ./web
+#    container_name: r_auto_web
+#    ports:
+#      - "5000:5000"
+#    volumes:
+#      - ./web:/workspace/web
+#    env_file:
+#      - .env
+#    depends_on:
+#      - app
