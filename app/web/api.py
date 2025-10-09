@@ -208,9 +208,15 @@ async def run_task_now(tag: str):
             message = "成功: ログイン状態が維持されています。" if result else "失敗: ログイン状態が確認できませんでした。"
         elif tag == "save-auth-state":
             message = "成功: 認証状態を保存しました。" if result else "失敗: 認証状態の保存に失敗しました。詳細はログを確認してください。"
+        
+        # APIレスポンスとして返すメッセージをログに出力
+        logging.info(f"APIレスポンス (タスク: {tag}): {message}")
+
         if result is True:
             return JSONResponse(content={"status": "success", "message": message})
         else:
             return JSONResponse(status_code=400, content={"status": "error", "message": message})
     else:
-        return {"status": "success", "message": f"タスク「{definition['name_ja']}」の実行を開始しました。"}
+        message = f"タスク「{definition['name_ja']}」の実行を開始しました。"
+        logging.info(f"APIレスポンス (タスク: {tag}): {message}")
+        return {"status": "success", "message": message}

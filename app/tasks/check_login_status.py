@@ -1,6 +1,7 @@
 import logging
 from playwright.sync_api import sync_playwright, TimeoutError
 import os
+from app import locators
 
 PROFILE_DIR = "db/playwright_profile"
 
@@ -12,6 +13,12 @@ def check_login_status():
         logging.error(f"認証プロファイル {PROFILE_DIR} が見つかりません。「認証状態の保存」を先に実行してください。")
         return False
 
+    # プロファイルロックファイルを削除して、多重起動エラーを防ぐ
+    lockfile_path = os.path.join(PROFILE_DIR, "SingletonLock")
+    if os.path.exists(lockfile_path):
+        logging.warning(f"古いロックファイル {lockfile_path} が見つかったため、削除します。")
+        os.remove(lockfile_path)
+
     try:
         with sync_playwright() as p:
             context = p.chromium.launch_persistent_context(
@@ -21,12 +28,11 @@ def check_login_status():
             page = context.new_page()
             page.goto("https://room.rakuten.co.jp/items", wait_until="domcontentloaded")
 
-            # 「my ROOM」リンクを探す
-            my_room_link_selector = 'a:has-text("my ROOM")'
             try:
                 logging.info("「my ROOM」リンクをクリックします。")
-                page.locator(my_room_link_selector).wait_for(state='visible', timeout=10000)
-                page.click(my_room_link_selector)
+                my_room_link_locator = page.locator(locators.MY_ROOM_LINK)
+                my_room_link_locator.wait_for(state='visible', timeout=10000)
+                my_room_link_locator.click()
 
                 # ページの遷移を待つ
                 page.wait_for_load_state("domcontentloaded", timeout=15000)
