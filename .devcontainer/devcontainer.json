@@ -1,0 +1,52 @@
+{
+	// コンテナの名前を設定します。VSCodeの左下などに表示されます。
+	"name": "Python App Dev Environment",
+
+	// 使用するdocker-composeファイルを指定します。
+	// .devcontainerディレクトリからの相対パスで記述します。
+	"dockerComposeFile": [
+		"../docker-compose.yml"
+	],
+
+	// docker-compose.ymlで定義されているサービスの中から、
+	// 開発コンテナとして接続するサービスを指定します。
+	"service": "app",
+
+	// VSCodeで開くワークスペースのパスをコンテナ内のパスで指定します。
+	// docker-compose.ymlのvolumes設定と合わせます。
+	"workspaceFolder": "/workspace/app",
+
+	// VSCodeのカスタマイズ設定
+	"customizations": {
+		"vscode": {
+			// コンテナ内で自動的にインストールしたいVSCode拡張機能のID
+			"extensions": [
+				"ms-python.python", // Python言語サポート
+				"ms-python.vscode-pylance", // 高機能なコード補完・分析
+				"ms-python.black-formatter", // Black フォーマッター
+				"ms-python.isort", // isort import文の自動ソート
+				"ms-azuretools.vscode-docker" // Dockerサポート
+			],
+
+			// コンテナ内でのVSCodeの設定
+			"settings": {
+				// 使用するPythonインタプリタのパス
+				"python.defaultInterpreterPath": "/usr/local/bin/python",
+				// ---------------------------------
+				// フォーマットとリンターの設定
+				// ---------------------------------
+				// デフォルトフォーマッターをBlackに設定
+				"editor.defaultFormatter": "ms-python.black-formatter",
+				// 保存時に自動でフォーマットを実行
+				"editor.formatOnSave": true,
+				// isortによるimport文の自動整理を有効化
+				"editor.codeActionsOnSave": {
+					"source.organizeImports": "explicit"
+				}
+			}
+		}
+	},
+
+	// コンテナ作成後に実行するコマンド
+	"postCreateCommand": "pip install --user -r /workspace/app/requirements.txt"
+}
