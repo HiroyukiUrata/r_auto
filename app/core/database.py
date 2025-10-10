@@ -131,6 +131,14 @@ def get_products_for_caption_creation(limit=None):
     conn.close()
     return products
 
+def get_products_count_for_caption_creation():
+    """投稿文作成対象（ステータスが「URL取得済」）の商品件数を取得する"""
+    query = "SELECT COUNT(*) FROM products WHERE status = 'URL取得済'"
+    conn = get_db_connection()
+    count = conn.execute(query).fetchone()[0]
+    conn.close()
+    return count
+
 def update_product_status(product_id, status):
     """商品のステータスを更新する"""
     conn = get_db_connection()
