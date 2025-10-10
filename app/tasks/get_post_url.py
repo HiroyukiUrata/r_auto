@@ -3,6 +3,7 @@ import os
 from playwright.sync_api import sync_playwright, TimeoutError
 import traceback
 from app.core.database import get_products_for_post_url_acquisition, update_post_url, update_product_status
+from app.tasks.create_caption import create_caption_prompt
 
 PROFILE_DIR = "db/playwright_profile"
 
@@ -65,3 +66,8 @@ def get_post_url():
         logging.critical(f"Playwrightの初期化中に致命的なエラーが発生しました: {e}")
 
     logging.info("投稿URL取得処理が完了しました。")
+
+    # 投稿URL取得が完了したら、続けて投稿文作成用プロンプトの生成処理を実行
+    logging.info("--- 続けて投稿文作成用プロンプトの生成を開始します ---")
+    create_caption_prompt()
+    logging.info("--- 投稿文作成用プロンプトの生成が完了しました ---")

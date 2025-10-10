@@ -3,3 +3,4 @@ fastapi
 uvicorn[standard]
 jinja2
 playwright
+pyperclip

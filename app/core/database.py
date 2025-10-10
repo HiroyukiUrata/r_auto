@@ -121,6 +121,16 @@ def get_products_for_post_url_acquisition(limit=None):
     conn.close()
     return products
 
+def get_products_for_caption_creation(limit=None):
+    """投稿文作成対象（ステータスが「URL取得済」）の商品を取得する"""
+    query = "SELECT * FROM products WHERE status = 'URL取得済' ORDER BY created_at"
+    if limit:
+        query += f" LIMIT {int(limit)}"
+    conn = get_db_connection()
+    products = conn.execute(query).fetchall()
+    conn.close()
+    return products
+
 def update_product_status(product_id, status):
     """商品のステータスを更新する"""
     conn = get_db_connection()
@@ -148,12 +158,12 @@ def update_post_url(product_id, post_url):
         conn.close()
 
 def update_ai_caption(product_id, caption):
-    """指定された商品のAI投稿文と更新日時を更新し、ステータスを「投稿文作成済」に変更する"""
+    """指定された商品のAI投稿文と更新日時を更新し、ステータスを「投稿準備完了」に変更する"""
     conn = get_db_connection()
     try:
-        conn.execute("UPDATE products SET ai_caption = ?, ai_caption_created_at = CURRENT_TIMESTAMP, status = '投稿文作成済' WHERE id = ?", (caption, product_id))
+        conn.execute("UPDATE products SET ai_caption = ?, ai_caption_created_at = CURRENT_TIMESTAMP, status = '投稿準備完了' WHERE id = ?", (caption, product_id))
         conn.commit()
-        logging.info(f"商品ID: {product_id} のAI投稿文を更新し、ステータスを「投稿文作成済」に変更しました。")
+        logging.info(f"商品ID: {product_id} のAI投稿文を更新し、ステータスを「投稿準備完了」に変更しました。")
     finally:
         conn.close()
 
