@@ -10,6 +10,9 @@
             <button type="button" class="btn btn-sm btn-outline-warning" id="bulk-complete-btn" onclick="bulkComplete()" disabled>
                 <i class="bi bi-check-circle-fill me-1"></i>選択した項目を強制済
             </button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="select-all-toggle-btn" onclick="toggleSelectAll()">
+                <i class="bi bi-check-square me-1"></i>すべて選択
+            </button>
             <button type="button" class="btn btn-sm btn-outline-danger" id="bulk-delete-btn" onclick="bulkDelete()" disabled>
                 <i class="bi bi-trash-fill me-1"></i>選択した項目を削除
             </button>
@@ -17,22 +20,47 @@
     </div>
 </div>
 
+<div class="row mb-3" id="status-summary">
+    <!-- ステータスサマリーはここに挿入されます -->
+</div>
+
 <div class="table-responsive">
     <table class="table table-striped table-sm align-middle" style="table-layout: fixed; width: 100%;">
         <thead>
             <tr>
-                <th scope="col" style="width: 5%;"><input class="form-check-input" type="checkbox" id="select-all-checkbox"></th>
-                <th scope="col" style="width: 10%;">サムネイル</th>
-                <th scope="col" style="width: 20%;">商品名</th>
-                <th scope="col" style="width: 20%;">投稿文</th>
-                <th scope="col">ステータス</th>
-                <th scope="col" style="width: 15%;">操作</th>
+                <th scope="col" style="width: 5%;"></th>
+                <th scope="col" style="width: 8%;">サムネイル</th>
+                <th scope="col" style="width: 62%;">商品情報</th>
+                <th scope="col" style="width: 7%;">ステータス</th>
+                <th scope="col" style="width: 8%;">作成日</th>
             </tr>
         </thead>
         <tbody id="inventory-table-body">
             <!-- データはJavaScriptでここに挿入されます -->
         </tbody>
     </table>
+</div>
+
+<!-- 商品情報詳細モーダル -->
+<div class="modal fade" id="infoModal" tabindex="-1" aria-labelledby="infoModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="infoModalLabel">商品情報</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <h6 class="fw-bold">商品名</h6>
+        <p id="modal-product-name" class="text-break"></p>
+        <h6 class="fw-bold mt-3">投稿文</h6>
+        <p id="modal-ai-caption" style="white-space: pre-wrap;"></p>
+      </div>
+      <div class="modal-footer">
+        <a href="#" id="modal-post-link" class="btn btn-primary" target="_blank" rel="noopener noreferrer" style="display: none;"><i class="bi bi-box-arrow-up-right me-1"></i>投稿ページを開く</a>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">閉じる</button>
+      </div>
+    </div>
+  </div>
 </div>
 {% endblock %}
 
@@ -43,11 +71,91 @@
         overflow: hidden;
         text-overflow: ellipsis;
     }
+    tbody tr {
+        cursor: pointer;
+    }
+    /* 行の背景色ハイライトは使わず、透明にする */
+    tr.selected {
+        background-color: transparent !important;
+    }
+    /* 選択された行のサムネイル枠線を強調 */
+    tr.selected .img-thumbnail {
+        border: 3px solid #0d6efd; /* Bootstrapのプライマリカラーで枠線を太く、色を濃くする */
+        padding: 1px; /* 枠線の太さが増えた分、パディングを調整して画像のサイズ感を維持 */
+    }
+    /* スマートフォンなどの小さい画面向けのスタイル */
+    @media (max-width: 767.98px) {
+        /* 縦長画面ではヘッダーを非表示 */
+        @media (orientation: portrait) {
+            thead {
+                display: none;
+            }
+            /* 作成日列を非表示 */
+            th:last-child,
+            td:last-child {
+                display: none;
+            }
+            /* ステータス列を狭くし、商品情報列を広げる */
+            td:nth-child(4) { width: 15%; }
+            td:nth-child(3) { width: 70%; }
+            td:nth-child(2) { width: 15%; }
+
+        }
+    }
+
+    /* チェックボックスのサイズを大きくする */
+    .table .form-check-input {
+        width: 1.25em; /* デフォルトの1emから拡大 */
+        height: 1.25em; /* デフォルトの1emから拡大 */
+        vertical-align: middle; /* 垂直方向の中央揃えを維持 */
+    }
+
+    /* チェックボックス列のパディングを調整してクリック領域を広げる */
+    .table th:first-child,
+    .table td:first-child { 
+        /* チェックボックス列を常に非表示にする */
+        display: none;
+    }
+
+    /* 横長画面のサマリーカードの高さを調整 */
+    @media (orientation: landscape) {
+        #status-summary .card-body {
+            padding-top: 0.25rem;
+            padding-bottom: 0.25rem;
+        }
+        #status-summary .fs-4 {
+            font-size: 1rem; /* fs-4 (1.5rem) からさらに小さくする */
+        }
+    }
 </style>
 {% endblock %}
 
 {% block scripts %}
 <script>
+    // グローバルスコープにモーダルインスタンスを保持
+    let infoModalInstance = null;
+
+    function showInfoModal(element) {
+        // 行選択のイベントが発火しないようにする
+        event.stopPropagation();
+
+        const name = element.dataset.name;
+        const caption = element.dataset.caption;
+        const postUrl = element.dataset.postUrl;
+
+        document.getElementById('modal-product-name').textContent = name;
+        document.getElementById('modal-ai-caption').textContent = caption;
+
+        const postLink = document.getElementById('modal-post-link');
+        if (postUrl) {
+            postLink.href = postUrl;
+            postLink.style.display = 'inline-block';
+        } else {
+            postLink.style.display = 'none';
+        }
+
+        infoModalInstance.show();
+    }
     async function deleteItem(productId) {
         if (!confirm(`商品ID: ${productId} を本当に削除しますか？この操作は元に戻せません。`)) {
             return;
@@ -100,6 +208,16 @@
         document.getElementById('bulk-delete-btn').disabled = disabled;
     }
 
+    function toggleSelectAll() {
+        const allCheckboxes = document.querySelectorAll('.product-checkbox');
+        const allSelected = getSelectedProductIds().length === allCheckboxes.length;
+        allCheckboxes.forEach(checkbox => {
+            checkbox.checked = !allSelected;
+            checkbox.closest('tr').classList.toggle('selected', !allSelected);
+        });
+        updateBulkActionButtons();
+    }
+
     async function bulkComplete() {
         const productIds = getSelectedProductIds();
         if (productIds.length === 0) return;
@@ -144,23 +262,69 @@
         }
     }
 
+    const statusMap = {
+        '生情報取得': { emoji: '☁️', color: 'secondary' },
+        'URL取得済': { emoji: '⛅️', color: 'info' },
+        '投稿準備完了': { emoji: '☀️', color: 'primary' },
+        '投稿済': { emoji: '🎉', color: 'success' },
+        'エラー': { emoji: '⚠️', color: 'danger' }
+    };
+
+    function renderStatusSummary(summary) {
+        const summaryContainer = document.getElementById('status-summary');
+        summaryContainer.innerHTML = '';
+        const orderedStatuses = ['生情報取得', 'URL取得済', '投稿準備完了']; // サマリーに表示するステータス
+        
+        orderedStatuses.forEach(status => {
+            const count = summary[status] || 0;
+            const statusInfo = statusMap[status] || { emoji: '❓', color: 'light' };
+            const cardHtml = `
+                <div class="col" title="${status}" style="cursor: default;">
+                    <div class="card card-body text-center h-100">
+                        <div class="d-flex justify-content-center align-items-center h-100 gap-2">
+                            <span class="fs-4">${statusInfo.emoji}</span><span class="fs-4 fw-bold">${count}</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+            summaryContainer.innerHTML += cardHtml;
+        });
+    }
+
     // ページ読み込み時に在庫リストを取得して表示する関数
     document.addEventListener('DOMContentLoaded', function () {
+        // モーダルを初期化
+        const infoModalEl = document.getElementById('infoModal');
+        infoModalInstance = new bootstrap.Modal(infoModalEl);
+        // ステータスサマリーを取得
+        fetch('/api/inventory/summary')
+            .then(response => response.json())
+            .then(summary => {
+                renderStatusSummary(summary);
+            })
+            .catch(error => console.error('Error fetching status summary:', error));
+
+        // 在庫リストを取得
         fetch('/api/inventory')
             .then(response => response.json())
             .then(data => {
                 const tableBody = document.getElementById('inventory-table-body');
                 tableBody.innerHTML = ''; // 既存の内容をクリア
                 if (data.length === 0) {
-                    tableBody.innerHTML = '<tr><td colspan="6" class="text-center">在庫商品はありません。</td></tr>';
+                    tableBody.innerHTML = '<tr><td colspan="5" class="text-center">在庫商品はありません。</td></tr>';
                     return;
                 }
                 data.forEach(product => {
-                    // 投稿ボタンのHTMLを生成。post_urlがなければボタンは非表示
-                    const postButtonHtml = product.post_url ? `
-                        <button class="btn btn-sm btn-primary" onclick="window.open('${product.post_url}', '_blank')">
-                            <i class="bi bi-box-arrow-up-right me-1"></i>投稿
-                        </button>` : '';
+                    const statusInfo = statusMap[product.status] || { emoji: '❓', color: 'light' };
+                    
+                    let statusHtml;
+                    if (product.status === '投稿準備完了') {
+                        statusHtml = `<span title="${product.status}" class="fs-5">${statusInfo.emoji}</span>`;
+                    } else {
+                        statusHtml = `<span title="${product.status}">${statusInfo.emoji}</span>`;
+                    }
+
+                    const createdAt = product.created_at ? new Date(product.created_at).toLocaleDateString('ja-JP') : 'N/A';
                     const row = `
                         <tr id="product-row-${product.id}">
                             <td>
@@ -168,24 +332,16 @@
                             </td>
                             <td>
                                 <a href="${product.url}" target="_blank" rel="noopener noreferrer">
-                                    <img src="${product.image_url || 'https://via.placeholder.com/80'}" alt="${product.name}" class="img-thumbnail" style="width: 80px; height: 80px; object-fit: cover;">
+                                    <img src="${product.image_url || 'https://via.placeholder.com/80'}" alt="${product.name}" class="img-thumbnail" style="width: 100%; height: auto; aspect-ratio: 1 / 1; object-fit: cover;">
                                 </a>
                             </td>
-                            <td title="${product.name || ''}">
-                                <div class="truncate-cell">${product.name || ''}</div>
+                            <td class="text-start">
+                                <div class="fw-bold truncate-cell" title="${product.name || ''}">${product.name || ''}</div>
+                                <div class="text-muted small truncate-cell" title="${product.ai_caption || ''}">${product.ai_caption || ''}</div>
                             </td>
-                            <td title="${product.ai_caption || ''}">
-                                <div class="truncate-cell">${product.ai_caption || ''}</div>
-                            </td>
-                            <td><span class="badge bg-secondary">${product.status}</span></td>
-                            <td class="text-nowrap">
-                                ${postButtonHtml}
-                                <button class="btn btn-sm btn-warning" onclick="forceComplete(${product.id})">
-                                    <i class="bi bi-check-circle-fill me-1"></i>強制済
-                                </button>
-                                <button class="btn btn-sm btn-danger" onclick="deleteItem(${product.id})">
-                                    <i class="bi bi-trash-fill me-1"></i>削除
-                                </button>
+                            <td class="text-center" onclick="showInfoModal(this)" data-name="${product.name || ''}" data-caption="${product.ai_caption || ''}" data-post-url="${product.post_url || ''}">${statusHtml}</td>
+                            <td>
+                                ${createdAt}
                             </td>
                         </tr>
                     `;
@@ -193,18 +349,24 @@
                 });
             });
 
-        // 全選択チェックボックスのイベントリスナー
-        document.getElementById('select-all-checkbox').addEventListener('change', function (e) {
-            document.querySelectorAll('.product-checkbox').forEach(checkbox => {
-                checkbox.checked = e.target.checked;
-            });
-            updateBulkActionButtons();
+        // 個別チェックボックスのイベントリスナー
+        document.getElementById('inventory-table-body').addEventListener('change', function (e) {
+            const checkbox = e.target;
+            if (checkbox.classList.contains('product-checkbox')) {
+                checkbox.closest('tr').classList.toggle('selected', checkbox.checked);
+                updateBulkActionButtons();
+            }
         });
 
-        // 個別チェックボックスのイベントリスナー
-        document.getElementById('inventory-table-body').addEventListener('change', function(e) {
-            if (e.target.classList.contains('product-checkbox')) {
-                updateBulkActionButtons();
+        // テーブル行のクリックイベントリスナー
+        document.getElementById('inventory-table-body').addEventListener('click', function (e) {
+            // ボタンやリンク、チェックボックス自体をクリックした場合は何もしない
+            if (e.target.closest('a, button, .form-check-input')) return;
+
+            const row = e.target.closest('tr');
+            const checkbox = row.querySelector('.product-checkbox');
+            if (checkbox) {
+                checkbox.click(); // チェックボックスのクリックイベントを発火させる
             }
         });
     });

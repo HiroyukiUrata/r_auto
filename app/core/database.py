@@ -70,18 +70,21 @@ def init_db():
         if 'created_at' not in columns:
             # SQLiteの古いバージョンはALTER TABLEでの動的デフォルト値をサポートしないため、2段階で追加
             cursor.execute("ALTER TABLE products ADD COLUMN created_at TIMESTAMP")
-            cursor.execute("UPDATE products SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL")
+            # 既存のレコードには、他のタイムスタンプから推測できる最も古い日時を設定
+            cursor.execute("UPDATE products SET created_at = COALESCE(post_url_updated_at, ai_caption_created_at, posted_at, CURRENT_TIMESTAMP) WHERE created_at IS NULL")
         if 'post_url' not in columns:
             cursor.execute("ALTER TABLE products ADD COLUMN post_url TEXT")
             logging.info("productsテーブルに 'post_url' カラムを追加しました。")
         if 'post_url_updated_at' not in columns:
             cursor.execute("ALTER TABLE products ADD COLUMN post_url_updated_at TIMESTAMP")
+            cursor.execute("UPDATE products SET post_url_updated_at = COALESCE(ai_caption_created_at, posted_at) WHERE post_url_updated_at IS NULL AND post_url IS NOT NULL")
             logging.info("productsテーブルに 'post_url_updated_at' カラムを追加しました。")
         if 'ai_caption' not in columns:
             cursor.execute("ALTER TABLE products ADD COLUMN ai_caption TEXT")
             logging.info("productsテーブルに 'ai_caption' カラムを追加しました。")
         if 'ai_caption_created_at' not in columns:
             cursor.execute("ALTER TABLE products ADD COLUMN ai_caption_created_at TIMESTAMP")
+            cursor.execute("UPDATE products SET ai_caption_created_at = posted_at WHERE ai_caption_created_at IS NULL AND ai_caption IS NOT NULL")
             logging.info("productsテーブルに 'ai_caption_created_at' カラムを追加しました。")
         if 'posted_at' not in columns:
             cursor.execute("ALTER TABLE products ADD COLUMN posted_at TIMESTAMP")
@@ -146,6 +149,15 @@ def get_products_count_for_caption_creation():
     count = conn.execute(query).fetchone()[0]
     conn.close()
     return count
+
+def get_product_count_by_status():
+    """ステータスごとの商品数を取得する"""
+    query = "SELECT status, COUNT(*) as count FROM products GROUP BY status"
+    conn = get_db_connection()
+    counts = conn.execute(query).fetchall()
+    conn.close()
+    # sqlite3.Rowを辞書に変換
+    return {row['status']: row['count'] for row in counts}
 
 def update_product_status(product_id, status):
     """商品のステータスを更新する"""
@@ -232,13 +244,13 @@ def import_products(products_data: list[dict]):
 
     # executemany用に、辞書のリストをタプルのリストに変換
     records_to_insert = [
-        (p.get('name'), p.get('url'), p.get('image_url')) for p in products_data
+        (p.get('name'), p.get('url'), p.get('image_url')) for p in products_data if p.get('name') and p.get('url')
     ]
 
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
-        cursor.executemany("INSERT OR IGNORE INTO products (name, url, image_url, status) VALUES (?, ?, ?, '生情報取得')", records_to_insert)
+        cursor.executemany("INSERT OR IGNORE INTO products (name, url, image_url, status, created_at) VALUES (?, ?, ?, '生情報取得', CURRENT_TIMESTAMP)", records_to_insert)
         conn.commit()
         return cursor.rowcount # 実際に挿入された行数を返す
     finally:

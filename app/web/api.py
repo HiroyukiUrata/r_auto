@@ -9,7 +9,7 @@ from pydantic import BaseModel
 
 # タスク定義を一元的にインポート
 from app.core.task_definitions import TASK_DEFINITIONS
-from app.core.database import get_all_inventory_products, update_product_status, delete_all_products, init_db, delete_product, update_status_for_multiple_products, delete_multiple_products
+from app.core.database import get_all_inventory_products, update_product_status, delete_all_products, init_db, delete_product, update_status_for_multiple_products, delete_multiple_products, get_product_count_by_status
 from app.tasks.posting import post_article
 from app.tasks.get_post_url import get_post_url
 from app.tasks.import_products import process_and_import_products
@@ -183,6 +183,16 @@ async def get_inventory():
     # sqlite3.Rowは直接JSONシリアライズできないため、辞書のリストに変換
     products_list = [dict(product) for product in products]
     return JSONResponse(content=products_list)
+
+@app.get("/api/inventory/summary")
+async def get_inventory_summary():
+    """在庫商品のステータスごとの件数を返す"""
+    try:
+        summary = get_product_count_by_status()
+        return JSONResponse(content=summary)
+    except Exception as e:
+        logging.error(f"在庫サマリーの取得中にエラーが発生しました: {e}")
+        return JSONResponse(status_code=500, content={"status": "error", "message": "サマリーの取得に失敗しました。"})
 
 @app.post("/api/inventory/{product_id}/complete")
 async def complete_inventory_item(product_id: int):
