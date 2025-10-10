@@ -36,10 +36,10 @@ def init_db():
             cursor.execute("ALTER TABLE products RENAME TO products_old")
             logging.info("既存のテーブルを 'products_old' にリネームしました。")
             # 新しいテーブルを作成（init_dbの後半で再度実行されるが、ここで定義が必要）
-            cursor.execute('''CREATE TABLE products (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, url TEXT NOT NULL UNIQUE, image_url TEXT, post_url TEXT, ai_caption TEXT, status TEXT NOT NULL DEFAULT '生情報取得', created_at TIMESTAMP, post_url_updated_at TIMESTAMP, ai_caption_created_at TIMESTAMP, posted_at TIMESTAMP)''')
+            cursor.execute('''CREATE TABLE products (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, url TEXT NOT NULL UNIQUE, image_url TEXT, post_url TEXT, ai_caption TEXT, procurement_keyword TEXT, status TEXT NOT NULL DEFAULT '生情報取得', created_at TIMESTAMP, post_url_updated_at TIMESTAMP, ai_caption_created_at TIMESTAMP, posted_at TIMESTAMP)''')
             logging.info("新しい 'products' テーブルを作成しました。")
             # 古いテーブルから新しいテーブルへデータをコピー（重複URLは無視される）
-            cursor.execute("INSERT OR IGNORE INTO products(id, name, url, image_url, post_url, ai_caption, status, created_at, post_url_updated_at, ai_caption_created_at, posted_at) SELECT id, name, url, image_url, post_url, ai_caption, status, created_at, post_url_updated_at, ai_caption_created_at, posted_at FROM products_old")
+            cursor.execute("INSERT OR IGNORE INTO products(id, name, url, image_url, post_url, ai_caption, procurement_keyword, status, created_at, post_url_updated_at, ai_caption_created_at, posted_at) SELECT id, name, url, image_url, post_url, ai_caption, NULL, status, created_at, post_url_updated_at, ai_caption_created_at, posted_at FROM products_old")
             logging.info("データを新しいテーブルにコピーしました。")
             cursor.execute("DROP TABLE products_old")
             logging.info("'products_old' テーブルを削除しました。")
@@ -52,6 +52,7 @@ def init_db():
                 url TEXT NOT NULL UNIQUE,
                 image_url TEXT,
                 post_url TEXT,
+                procurement_keyword TEXT,
                 ai_caption TEXT,
                 status TEXT NOT NULL DEFAULT '生情報取得', -- 生情報取得, URL取得済, 投稿文作成済, 投稿準備完了, 投稿済, エラー
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -89,6 +90,9 @@ def init_db():
         if 'posted_at' not in columns:
             cursor.execute("ALTER TABLE products ADD COLUMN posted_at TIMESTAMP")
             logging.info("productsテーブルに 'posted_at' カラムを追加しました。")
+        if 'procurement_keyword' not in columns:
+            cursor.execute("ALTER TABLE products ADD COLUMN procurement_keyword TEXT")
+            logging.info("productsテーブルに 'procurement_keyword' カラムを追加しました。")
 
         conn.commit()
         conn.close()
@@ -244,13 +248,13 @@ def import_products(products_data: list[dict]):
 
     # executemany用に、辞書のリストをタプルのリストに変換
     records_to_insert = [
-        (p.get('name'), p.get('url'), p.get('image_url')) for p in products_data if p.get('name') and p.get('url')
+        (p.get('name'), p.get('url'), p.get('image_url'), p.get('procurement_keyword')) for p in products_data if p.get('name') and p.get('url')
     ]
 
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
-        cursor.executemany("INSERT OR IGNORE INTO products (name, url, image_url, status, created_at) VALUES (?, ?, ?, '生情報取得', CURRENT_TIMESTAMP)", records_to_insert)
+        cursor.executemany("INSERT OR IGNORE INTO products (name, url, image_url, procurement_keyword, status, created_at) VALUES (?, ?, ?, ?, '生情報取得', CURRENT_TIMESTAMP)", records_to_insert)
         conn.commit()
         return cursor.rowcount # 実際に挿入された行数を返す
     finally:

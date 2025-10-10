@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+
+{% block title %}キーワード管理 - R-Auto Control Panel{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">キーワード管理</h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <button type="button" class="btn btn-sm btn-primary" onclick="saveKeywords()">
+            <i class="bi bi-save me-1"></i>保存
+        </button>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                キーワードパネル A
+            </div>
+            <div class="card-body">
+                <p class="card-text text-muted small">ここに登録したキーワードと、パネルBのキーワードを組み合わせて商品を調達します。</p>
+                <div id="keywords-a-container" class="keywords-container border rounded p-2 mb-2" style="min-height: 200px;">
+                    <!-- キーワードタグはここに挿入されます -->
+                </div>
+                <div class="input-group">
+                    <input type="text" id="new-keyword-a" class="form-control" placeholder="新しいキーワードを追加">
+                    <button class="btn btn-outline-secondary" type="button" onclick="addKeyword('a')">追加</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6 mt-3 mt-md-0">
+        <div class="card">
+            <div class="card-header">
+                キーワードパネル B
+            </div>
+            <div class="card-body">
+                <p class="card-text text-muted small">ここに登録したキーワードと、パネルAのキーワードを組み合わせて商品を調達します。</p>
+                <div id="keywords-b-container" class="keywords-container border rounded p-2 mb-2" style="min-height: 200px;">
+                    <!-- キーワードタグはここに挿入されます -->
+                </div>
+                <div class="input-group">
+                    <input type="text" id="new-keyword-b" class="form-control" placeholder="新しいキーワードを追加">
+                    <button class="btn btn-outline-secondary" type="button" onclick="addKeyword('b')">追加</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // キーワードタグをレンダリングする
+    function renderKeywords(panel) {
+        const container = document.getElementById(`keywords-${panel}-container`);
+        container.innerHTML = '';
+        const keywords = getKeywordsFromPanel(panel);
+        keywords.forEach(keyword => {
+            const tag = document.createElement('span');
+            tag.className = 'badge bg-secondary me-1 mb-1';
+            tag.innerHTML = `${keyword} <button type="button" class="btn-close btn-close-white ms-1" aria-label="Close" onclick="removeKeyword('${panel}', '${keyword}')"></button>`;
+            tag.dataset.keyword = keyword;
+            container.appendChild(tag);
+        });
+    }
+
+    // パネルからキーワードの配列を取得する
+    function getKeywordsFromPanel(panel) {
+        const container = document.getElementById(`keywords-${panel}-container`);
+        return Array.from(container.querySelectorAll('.badge')).map(tag => tag.dataset.keyword);
+    }
+
+    // キーワードを削除する
+    function removeKeyword(panel, keyword) {
+        const container = document.getElementById(`keywords-${panel}-container`);
+        const tagToRemove = container.querySelector(`[data-keyword="${keyword}"]`);
+        if (tagToRemove) {
+            tagToRemove.remove();
+        }
+    }
+
+    // キーワードを追加する
+    function addKeyword(panel) {
+        const input = document.getElementById(`new-keyword-${panel}`);
+        const keyword = input.value.trim();
+        if (keyword) {
+            const container = document.getElementById(`keywords-${panel}-container`);
+            // 重複チェック
+            if (getKeywordsFromPanel(panel).includes(keyword)) {
+                alert('このキーワードは既に追加されています。');
+                return;
+            }
+            const tag = document.createElement('span');
+            tag.className = 'badge bg-secondary me-1 mb-1';
+            tag.innerHTML = `${keyword} <button type="button" class="btn-close btn-close-white ms-1" aria-label="Close" onclick="removeKeyword('${panel}', '${keyword}')"></button>`;
+            tag.dataset.keyword = keyword;
+            container.appendChild(tag);
+            input.value = '';
+        }
+    }
+
+    // キーワードを削除する
+    function removeKeyword(panel, keyword) {
+        const container = document.getElementById(`keywords-${panel}-container`);
+        const tagToRemove = container.querySelector(`[data-keyword="${keyword}"]`);
+        if (tagToRemove) {
+            tagToRemove.remove();
+        }
+    }
+
+    // キーワードを保存する
+    async function saveKeywords() {
+        const payload = {
+            keywords_a: getKeywordsFromPanel('a'),
+            keywords_b: getKeywordsFromPanel('b')
+        };
+
+        try {
+            const response = await fetch('/api/keywords', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const result = await response.json();
+            if (!response.ok) {
+                throw new Error(result.message || '保存に失敗しました。');
+            }
+            alert(result.message);
+        } catch (error) {
+            console.error('Error:', error);
+            alert(error.message);
+        }
+    }
+
+    // ページ読み込み時にキーワードを読み込む
+    document.addEventListener('DOMContentLoaded', function () {
+        fetch('/api/keywords')
+            .then(response => response.json())
+            .then(data => {
+                if (data.keywords_a && Array.isArray(data.keywords_a)) {
+                    data.keywords_a.forEach(kw => { document.getElementById('new-keyword-a').value = kw; addKeyword('a'); });
+                }
+                if (data.keywords_b && Array.isArray(data.keywords_b)) {
+                    data.keywords_b.forEach(kw => { document.getElementById('new-keyword-b').value = kw; addKeyword('b'); });
+                }
+            })
+            .catch(error => {
+                console.error('キーワードの読み込みに失敗しました:', error);
+            });
+
+        document.getElementById('new-keyword-a').addEventListener('keypress', e => { if (e.key === 'Enter') addKeyword('a'); });
+        document.getElementById('new-keyword-b').addEventListener('keypress', e => { if (e.key === 'Enter') addKeyword('b'); });
+    });
+</script>
+{% endblock %}

@@ -4,6 +4,7 @@ from fastapi.templating import Jinja2Templates
 import schedule
 import re
 import logging
+import os
 import json
 from pydantic import BaseModel
 
@@ -26,6 +27,7 @@ app = FastAPI(
 # Jinja2テンプレートを設定
 templates = Jinja2Templates(directory="web/templates")
 
+KEYWORDS_FILE = "db/keywords.json"
 SCHEDULE_FILE = "db/schedules.json"
 
 def save_schedules_to_file():
@@ -70,6 +72,10 @@ class JsonImportRequest(BaseModel):
 class BulkUpdateRequest(BaseModel):
     product_ids: list[int]
 
+class KeywordsUpdateRequest(BaseModel):
+    keywords_a: list[str]
+    keywords_b: list[str]
+
 
 # --- HTML Routes ---
 @app.get("/", response_class=HTMLResponse)
@@ -98,6 +104,11 @@ async def read_system_config(request: Request):
 async def read_inventory(request: Request):
     """在庫確認ページを表示する"""
     return templates.TemplateResponse("inventory.html", {"request": request})
+
+@app.get("/keywords", response_class=HTMLResponse)
+async def read_keywords_page(request: Request):
+    """キーワード管理ページを表示する"""
+    return templates.TemplateResponse("keywords.html", {"request": request})
 
 # --- API Routes ---
 @app.get("/api/schedules")
@@ -247,6 +258,31 @@ async def bulk_delete_inventory_items(request: BulkUpdateRequest):
     except Exception as e:
         logging.error(f"商品の一括削除中にエラーが発生しました: {e}")
         return JSONResponse(status_code=500, content={"status": "error", "message": "一括削除に失敗しました。"})
+
+@app.get("/api/keywords")
+async def get_keywords():
+    """キーワードをJSONファイルから読み込んで返す"""
+    try:
+        if os.path.exists(KEYWORDS_FILE):
+            with open(KEYWORDS_FILE, "r") as f:
+                keywords = json.load(f)
+            return JSONResponse(content=keywords)
+        else:
+            return JSONResponse(content={"keywords_a": [], "keywords_b": []})
+    except Exception as e:
+        logging.error(f"キーワードファイルの読み込みに失敗しました: {e}")
+        return JSONResponse(status_code=500, content={"status": "error", "message": "キーワードの読み込みに失敗しました。"})
+
+@app.post("/api/keywords")
+async def save_keywords(request: KeywordsUpdateRequest):
+    """キーワードをJSONファイルに保存する"""
+    try:
+        with open(KEYWORDS_FILE, "w") as f:
+            json.dump(request.dict(), f, indent=4, ensure_ascii=False)
+        return JSONResponse(content={"status": "success", "message": "キーワードを保存しました。"})
+    except Exception as e:
+        logging.error(f"キーワードファイルの保存に失敗しました: {e}")
+        return JSONResponse(status_code=500, content={"status": "error", "message": "キーワードの保存に失敗しました。"})
 
 
 @app.post("/api/import/json")

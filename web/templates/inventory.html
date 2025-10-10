@@ -54,6 +54,8 @@
         <p id="modal-product-name" class="text-break"></p>
         <h6 class="fw-bold mt-3">投稿文</h6>
         <p id="modal-ai-caption" style="white-space: pre-wrap;"></p>
+        <h6 class="fw-bold mt-3">調達キーワード</h6>
+        <p><span id="modal-procurement-keyword" class="badge bg-info"></span></p>
       </div>
       <div class="modal-footer">
         <a href="#" id="modal-post-link" class="btn btn-primary" target="_blank" rel="noopener noreferrer" style="display: none;"><i class="bi bi-box-arrow-up-right me-1"></i>投稿ページを開く</a>
@@ -141,10 +143,12 @@
 
         const name = element.dataset.name;
         const caption = element.dataset.caption;
+        const procurementKeyword = element.dataset.procurementKeyword;
         const postUrl = element.dataset.postUrl;
 
         document.getElementById('modal-product-name').textContent = name;
         document.getElementById('modal-ai-caption').textContent = caption;
+        document.getElementById('modal-procurement-keyword').textContent = procurementKeyword || 'N/A';
 
         const postLink = document.getElementById('modal-post-link');
         if (postUrl) {
@@ -339,7 +343,7 @@
                                 <div class="fw-bold truncate-cell" title="${product.name || ''}">${product.name || ''}</div>
                                 <div class="text-muted small truncate-cell" title="${product.ai_caption || ''}">${product.ai_caption || ''}</div>
                             </td>
-                            <td class="text-center" onclick="showInfoModal(this)" data-name="${product.name || ''}" data-caption="${product.ai_caption || ''}" data-post-url="${product.post_url || ''}">${statusHtml}</td>
+                            <td class="text-center" onclick="showInfoModal(this)" data-name="${product.name || ''}" data-caption="${product.ai_caption || ''}" data-post-url="${product.post_url || ''}" data-procurement-keyword="${product.procurement_keyword || ''}">${statusHtml}</td>
                             <td>
                                 ${createdAt}
                             </td>
