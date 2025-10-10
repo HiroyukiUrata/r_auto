@@ -38,7 +38,9 @@ def save_schedules_to_file():
         tag = list(job.tags)[0]
         if tag in schedules_to_save and job.at_time:
             time_str = job.at_time.strftime('%H:%M')
-            schedules_to_save[tag].append(time_str)
+            # ジョブの引数から 'count' を取得。見つからなければデフォルト1。
+            count = job.job_func.keywords.get('count', 1)
+            schedules_to_save[tag].append({"time": time_str, "count": count})
 
     try:
         with open(SCHEDULE_FILE, "w") as f:
@@ -47,10 +49,14 @@ def save_schedules_to_file():
     except IOError as e:
         logging.error(f"スケジュールファイルの保存に失敗しました: {e}")
 
+class TimeEntry(BaseModel):
+    time: str
+    count: int
+
 # --- Pydantic Models ---
 class ScheduleUpdateRequest(BaseModel):
     tag: str
-    times: list[str]
+    times: list[TimeEntry]
 
 class ConfigUpdateRequest(BaseModel):
     max_delay_minutes: int
@@ -107,8 +113,10 @@ async def get_schedules():
             # 実行時刻を追加
             if job.at_time:
                 time_str = job.at_time.strftime('%H:%M')
-                if time_str not in all_tasks[tag]["times"]:
-                    all_tasks[tag]["times"].append(time_str)
+                count = job.job_func.keywords.get('count', 1)
+                time_entry = {"time": time_str, "count": count}
+                if time_entry not in all_tasks[tag]["times"]:
+                    all_tasks[tag]["times"].append(time_entry)
 
             # 最も近い次の実行時刻を更新
             current_next_run = all_tasks[tag].get("next_run")
@@ -134,7 +142,7 @@ async def get_schedules():
             else:
                 day_prefix = next_run_datetime.strftime('%m/%d')
             task["next_run"] = f"({day_prefix}) {next_run_datetime.strftime('%H:%M')}"
-        task["times"].sort()
+        task["times"].sort(key=lambda x: x['time'])
 
     return JSONResponse(content=list(all_tasks.values()))
 
@@ -198,10 +206,12 @@ async def update_schedule(update_request: ScheduleUpdateRequest):
     schedule.clear(tag)
 
     # 新しい時刻リストに基づいてジョブを再作成
-    for time_str in update_request.times:
-        if re.match(r'^([01]\d|2[0-3]):([0-5]\d)$', time_str):
+    for entry in update_request.times:
+        if re.match(r'^([01]\d|2[0-3]):([0-5]\d)$', entry.time):
             task_func = definition["function"]
-            schedule.every().day.at(time_str).do(run_threaded, run_task_with_random_delay, task_to_run=task_func).tag(tag)
+            # run_task_with_random_delay に 'count' を渡す
+            job_kwargs = {'task_to_run': task_func, 'count': entry.count}
+            schedule.every().day.at(entry.time).do(run_threaded, run_task_with_random_delay, **job_kwargs).tag(tag)
 
     # ファイルに現在のスケジュール状態を保存
     save_schedules_to_file()

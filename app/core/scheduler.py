@@ -22,9 +22,13 @@ def load_schedules_from_file():
         for tag, times in schedules.items():
             definition = TASK_DEFINITIONS.get(tag)
             if definition:
-                for time_str in times:
+                # timesは {"time": "HH:MM", "count": N} のリスト
+                for entry in times:
                     task_func = definition["function"]
-                    schedule.every().day.at(time_str).do(run_threaded, run_task_with_random_delay, task_to_run=task_func).tag(tag)
+                    # 'count' を含むキーワード引数をタスクに渡す
+                    job_kwargs = {'task_to_run': task_func, 'count': entry.get('count', 1)}
+                    schedule.every().day.at(entry['time']).do(run_threaded, run_task_with_random_delay, **job_kwargs).tag(tag)
+
         logging.info(f"{SCHEDULE_FILE} からスケジュールを読み込みました。")
         return True
     except (IOError, json.JSONDecodeError) as e:
@@ -38,10 +42,13 @@ def start_scheduler():
     # ファイルからスケジュールを読み込む。失敗した場合はデフォルト設定を使用。
     if not load_schedules_from_file():
         logging.info("デフォルトのスケジュールを設定します。")
-        schedule.every().day.at("10:00").do(run_threaded, run_task_with_random_delay, task_to_run=TASK_DEFINITIONS["procure-products"]["function"]).tag('procure-products')
-        schedule.every().day.at("13:00").do(run_threaded, run_task_with_random_delay, task_to_run=TASK_DEFINITIONS["post-article"]["function"]).tag('post-article')
-        schedule.every().day.at("15:00").do(run_threaded, run_task_with_random_delay, task_to_run=TASK_DEFINITIONS["run-engagement-actions"]["function"]).tag('run-engagement-actions')
-        schedule.every().day.at("22:00").do(run_threaded, run_task_with_random_delay, task_to_run=TASK_DEFINITIONS["run-engagement-actions"]["function"]).tag('run-engagement-actions')
+        # デフォルトの件数を設定
+        post_kwargs = {'task_to_run': TASK_DEFINITIONS["post-article"]["function"], 'count': 1}
+        engagement_kwargs = {'task_to_run': TASK_DEFINITIONS["run-engagement-actions"]["function"], 'count': 10}
+
+        schedule.every().day.at("13:00").do(run_threaded, run_task_with_random_delay, **post_kwargs).tag('post-article')
+        schedule.every().day.at("15:00").do(run_threaded, run_task_with_random_delay, **engagement_kwargs).tag('run-engagement-actions')
+        schedule.every().day.at("22:00").do(run_threaded, run_task_with_random_delay, **engagement_kwargs).tag('run-engagement-actions')
 
     logging.info(f"スケジュールが設定されました: {schedule.get_jobs()}")
 

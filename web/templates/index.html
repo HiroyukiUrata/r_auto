@@ -52,7 +52,7 @@
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({ tag: tag, times: times }),
+                    body: JSON.stringify({ tag: tag, times: times }), // timesは[{time: "HH:MM", count: N}, ...]
                 });
 
                 const result = await response.json();
@@ -75,9 +75,12 @@
             container.innerHTML = '';
 
             schedules.forEach(job => {
-                const timesHtml = job.times.map(time => `
+                // 件数設定が可能なタスクのタグリスト
+                const isCountableTask = ['post-article', 'run-engagement-actions'].includes(job.tag);
+
+                const timesHtml = job.times.map(entry => `
                     <div class="time-entry d-flex justify-content-between align-items-center p-2 border-bottom">
-                        <span>${time}</span>
+                        <span class="time-display" onclick="editTime(this, ${isCountableTask})">${entry.time}<span class="badge bg-secondary ms-2 count-display" data-count="${entry.count}">${isCountableTask ? `${entry.count}件` : ''}</span></span>
                         <button type="button" class="btn btn-sm btn-danger py-0 px-1" aria-label="削除" onclick="markCardAsDirty(this); this.parentElement.remove();"><i class="bi bi-x-lg"></i></button>
                     </div>
                 `).join('');
@@ -106,8 +109,11 @@
                                     ${timesHtml}
                                 </div>
                                 <div class="input-group input-group-sm">
-                                    <input type="time" class="form-control" id="time-input-${job.tag}">
-                                    <button class="btn btn-primary" type="button" onclick="addTime(this, '${job.tag}')">追加</button>
+                                    <input type="time" class="form-control" id="time-input-${job.tag}" style="flex-grow: 2;">
+                                    ${isCountableTask ? `
+                                    <input type="number" class="form-control" id="count-input-${job.tag}" placeholder="件数" value="1" min="1" style="flex-grow: 1; text-align: right;">
+                                    ` : ''}
+                                    <button class="btn btn-primary" type="button" onclick="addTime(this, '${job.tag}', ${isCountableTask})">追加</button>
                                 </div>
                             </div>
                         </div>
@@ -118,23 +124,34 @@
             });
         }
 
-        function addTime(button, tag) {
+        function addTime(button, tag, hasCount) {
             const cardBody = button.closest('.card-body');
             const input = cardBody.querySelector('input[type="time"]');
             const newTime = input.value;
             if (!newTime) return;
 
+            let newCount = 1;
+            const countInput = cardBody.querySelector(`#count-input-${tag}`);
+            if (hasCount && countInput) {
+                // 入力値が空または数値でない場合は0、それ以外は入力された数値を使う
+                const parsedCount = parseInt(countInput.value, 10);
+                newCount = isNaN(parsedCount) ? 0 : parsedCount;
+                // 0件の場合は追加しない、という仕様も考えられるが、一旦は0件でも追加できるようにしておく
+                // newCount = Math.max(0, newCount); // 負の数を防ぐ
+            }
+
             const timesContainer = cardBody.querySelector('.time-list-container');
-            const existingTimes = Array.from(timesContainer.querySelectorAll('.time-entry > span')).map(s => s.textContent);
+            const existingTimes = Array.from(timesContainer.querySelectorAll('.time-entry .time-display')).map(s => s.textContent.split('<')[0]);
             if (existingTimes.includes(newTime)) {
                 alert('この時刻は既に追加されています。');
                 return;
             }
 
+            const countBadge = hasCount ? `<span class="badge bg-secondary ms-2 count-display" data-count="${newCount}">${newCount > 0 ? `${newCount}件` : '0件'}</span>` : '';
             const timeEntry = document.createElement('div');
             timeEntry.className = 'time-entry d-flex justify-content-between align-items-center p-2 border-bottom';
             timeEntry.innerHTML = `
-                <span>${newTime}</span>
+                <span class="time-display" onclick="editTime(this, ${hasCount})">${newTime}${countBadge}</span>
                 <button type="button" class="btn btn-sm btn-danger py-0 px-1" aria-label="削除" onclick="this.parentElement.remove(); markCardAsDirty(this);"><i class="bi bi-x-lg"></i></button>
             `;
             timesContainer.appendChild(timeEntry);
@@ -142,10 +159,81 @@
             markCardAsDirty(button); // 保存ボタンの状態を変更
         }
 
+        function editTime(spanElement, hasCount) {
+            // 他の編集中の入力があれば、先にそれを確定させる
+            const existingInput = spanElement.closest('.time-list-container').querySelector('input[type="time"].time-edit-input');
+            if (existingInput) {
+                existingInput.blur();
+            }
+
+            // 時刻のテキスト部分（例: "10:00"）を正確に取得
+            const originalTime = spanElement.childNodes[0].nodeValue.trim();
+            const countBadge = spanElement.querySelector('.count-display');
+            const originalCount = countBadge ? parseInt(countBadge.dataset.count, 10) : 1;
+            const timeEntryDiv = spanElement.parentElement;
+
+            const inputGroup = document.createElement('div');
+            inputGroup.className = 'input-group input-group-sm';
+            
+            let timeInputHTML = `<input type="time" class="form-control form-control-sm time-edit-input" value="${originalTime}">`;
+            let countInputHTML = hasCount ? `<input type="number" class="form-control form-control-sm count-edit-input" value="${originalCount}" min="0" style="max-width: 70px; text-align: right;">` : '';
+            inputGroup.innerHTML = timeInputHTML + countInputHTML;
+
+            // spanをinputに置き換える
+            spanElement.style.display = 'none';
+            timeEntryDiv.prepend(inputGroup);
+            const timeInput = inputGroup.querySelector('.time-edit-input');
+            timeInput.focus();
+
+            const updateHandler = () => {
+                const newTime = timeInput.value;
+                const countInput = inputGroup.querySelector('.count-edit-input');
+                let newCount = 1;
+                if (countInput) {
+                    const parsedCount = parseInt(countInput.value, 10);
+                    newCount = isNaN(parsedCount) ? 0 : parsedCount;
+                }
+
+                const timesContainer = inputGroup.closest('.time-list-container');
+                const existingTimes = Array.from(timesContainer.querySelectorAll('.time-display')).map(s => s.textContent.split('<')[0]);
+                
+                // 自分以外の時刻と重複チェック（時刻が空でない場合のみ）
+                if (newTime && newTime !== originalTime && existingTimes.includes(newTime)) {
+                    alert('この時刻は既に追加されています。');
+                    // 値を変更せずに編集モードを終了
+                } else if (newTime && (newTime !== originalTime || newCount != originalCount)) {
+                    const newCountBadge = hasCount ? `<span class="badge bg-secondary ms-2 count-display" data-count="${newCount}">${newCount > 0 ? `${newCount}件` : '0件'}</span>` : '';
+                    spanElement.innerHTML = `${newTime}${newCountBadge}`;
+                    markCardAsDirty(inputGroup);
+                }
+
+                // inputを削除し、spanを再表示
+                inputGroup.remove();
+                spanElement.style.display = '';
+            };
+
+            inputGroup.addEventListener('focusout', (e) => {
+                if (!inputGroup.contains(e.relatedTarget)) { updateHandler(); }
+            });
+            inputGroup.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    timeInput.blur();
+                }
+            });
+        }
+
         async function handleSave(button, tag) {
             const card = document.getElementById(`task-card-${tag}`);
-            const timeSpans = card.querySelectorAll('.time-entry > span');
-            const newTimes = Array.from(timeSpans).map(span => span.textContent);
+            const timeEntries = card.querySelectorAll('.time-entry');
+            const newTimes = Array.from(timeEntries).map(entry => {
+                // .time-display の最初の子要素（テキストノード）から時刻を取得し、前後の空白を削除
+                const timeDisplaySpan = entry.querySelector('.time-display');
+                const time = timeDisplaySpan.childNodes[0].nodeValue.trim();
+                const countBadge = entry.querySelector('.count-display');
+                const count = countBadge ? parseInt(countBadge.dataset.count, 10) : 1;
+                return { time, count };
+            });
 
             const success = await saveSchedule(tag, newTimes);
             if (success) {
@@ -285,6 +373,9 @@
         .card.disabled {
             opacity: 0.5;
             pointer-events: none;
+        }
+        .time-display {
+            cursor: pointer;
         }
     </style>
 {% endblock %}
