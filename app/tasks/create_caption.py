@@ -61,7 +61,7 @@ def create_caption_prompt():
     # --- デバッグフラグ ---
     # Trueにすると、ブラウザが表示されます(headless=False)。
     # 通常実行時はFalseにしてください。
-    is_debug = True
+    is_debug = False
     
     # 一度にGeminiに送信する最大件数
     MAX_PRODUCTS_PER_BATCH = 15

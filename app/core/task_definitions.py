@@ -21,6 +21,7 @@ TASK_DEFINITIONS = {
         "name_ja": "投稿URL取得",
         "function": get_post_url,
         "is_debug": False,
+        "show_in_schedule": False, # スケジュール画面には表示しない
         "order": 15,
     },
     "post-article": {

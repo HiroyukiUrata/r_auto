@@ -103,9 +103,17 @@ def get_all_ready_to_post_products(limit=None):
     conn.close()
     return products
 
+def get_product_by_id(product_id):
+    """指定されたIDの商品を1件取得する"""
+    query = "SELECT * FROM products WHERE id = ?"
+    conn = get_db_connection()
+    product = conn.execute(query, (product_id,)).fetchone()
+    conn.close()
+    return product
+
 def get_all_inventory_products():
-    """在庫確認ページ用に、「投稿済」以外の商品をすべて取得する"""
-    query = "SELECT * FROM products WHERE status != '投稿済' ORDER BY created_at DESC"
+    """在庫確認ページ用に、「投稿済」「エラー」以外の商品をすべて取得する"""
+    query = "SELECT * FROM products WHERE status NOT IN ('投稿済', 'エラー') ORDER BY created_at DESC"
     conn = get_db_connection()
     products = conn.execute(query).fetchall()
     conn.close()
@@ -152,6 +160,27 @@ def update_product_status(product_id, status):
         logging.info(f"商品ID: {product_id} のステータスを「{status}」に更新しました。")
     except sqlite3.Error as e:
         logging.error(f"商品ID: {product_id} のステータス更新中にエラーが発生しました: {e}")
+    finally:
+        conn.close()
+
+def update_status_for_multiple_products(product_ids: list[int], status: str):
+    """複数の商品のステータスを一括で更新する"""
+    if not product_ids:
+        return 0
+    conn = get_db_connection()
+    try:
+        placeholders = ','.join('?' for _ in product_ids)
+        if status == '投稿済':
+            query = f"UPDATE products SET status = ?, posted_at = CURRENT_TIMESTAMP WHERE id IN ({placeholders})"
+            params = [status] + product_ids
+        else:
+            query = f"UPDATE products SET status = ? WHERE id IN ({placeholders})"
+            params = [status] + product_ids
+        cursor = conn.cursor()
+        cursor.execute(query, params)
+        conn.commit()
+        logging.info(f"{len(product_ids)}件の商品のステータスを「{status}」に更新しました。")
+        return cursor.rowcount
     finally:
         conn.close()
 
@@ -239,5 +268,21 @@ def delete_product(product_id: int):
         conn.commit()
         logging.info(f"商品ID: {product_id} を削除しました。")
         return cursor.rowcount > 0
+    finally:
+        conn.close()
+
+def delete_multiple_products(product_ids: list[int]):
+    """指定されたIDの複数の商品を一括で削除する"""
+    if not product_ids:
+        return 0
+    conn = get_db_connection()
+    try:
+        placeholders = ','.join('?' for _ in product_ids)
+        query = f"DELETE FROM products WHERE id IN ({placeholders})"
+        cursor = conn.cursor()
+        cursor.execute(query, product_ids)
+        conn.commit()
+        logging.info(f"{len(product_ids)}件の商品を削除しました。")
+        return cursor.rowcount
     finally:
         conn.close()

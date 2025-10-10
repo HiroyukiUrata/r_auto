@@ -9,7 +9,7 @@ from pydantic import BaseModel
 
 # タスク定義を一元的にインポート
 from app.core.task_definitions import TASK_DEFINITIONS
-from app.core.database import get_all_inventory_products, update_product_status, delete_all_products, init_db, delete_product
+from app.core.database import get_all_inventory_products, update_product_status, delete_all_products, init_db, delete_product, update_status_for_multiple_products, delete_multiple_products
 from app.tasks.posting import post_article
 from app.tasks.get_post_url import get_post_url
 from app.tasks.import_products import process_and_import_products
@@ -67,6 +67,9 @@ class ConfigUpdateRequest(BaseModel):
 class JsonImportRequest(BaseModel):
     products: list[dict]
 
+class BulkUpdateRequest(BaseModel):
+    product_ids: list[int]
+
 
 # --- HTML Routes ---
 @app.get("/", response_class=HTMLResponse)
@@ -104,7 +107,8 @@ async def get_schedules():
     all_tasks = {}
     for tag, definition in TASK_DEFINITIONS.items():
         # デバッグタスクはスケジュール対象外
-        if not definition.get("is_debug", False):
+        # is_debugがFalseで、show_in_scheduleが明示的にFalseでないタスクのみ表示
+        if not definition.get("is_debug", False) and definition.get("show_in_schedule", True):
             all_tasks[tag] = {
                 "tag": tag, "name_ja": definition["name_ja"], "times": [], "next_run": None
             }
@@ -182,11 +186,11 @@ async def get_inventory():
 
 @app.post("/api/inventory/{product_id}/complete")
 async def complete_inventory_item(product_id: int):
-    """指定された在庫商品を「済」ステータスに更新する"""
+    """指定された在庫商品を「投稿済」ステータスに更新する"""
     try:
         # データベースのステータスを更新
-        update_product_status(product_id, '済')
-        return JSONResponse(content={"status": "success", "message": f"商品ID: {product_id} を「済」に更新しました。"})
+        update_product_status(product_id, '投稿済')
+        return JSONResponse(content={"status": "success", "message": f"商品ID: {product_id} を「投稿済」に更新しました。"})
     except Exception as e:
         logging.error(f"商品ID: {product_id} のステータス更新中にエラーが発生しました: {e}")
         return JSONResponse(status_code=500, content={"status": "error", "message": "ステータスの更新に失敗しました。"})
@@ -213,6 +217,27 @@ async def post_inventory_item(product_id: int):
     except Exception as e:
         logging.error(f"商品ID: {product_id} の投稿処理開始中にエラーが発生しました: {e}")
         return JSONResponse(status_code=500, content={"status": "error", "message": "投稿処理の開始に失敗しました。"})
+
+@app.post("/api/inventory/bulk-complete")
+async def bulk_complete_inventory_items(request: BulkUpdateRequest):
+    """複数の在庫商品を一括で「投稿済」ステータスに更新する"""
+    try:
+        updated_count = update_status_for_multiple_products(request.product_ids, '投稿済')
+        return JSONResponse(content={"status": "success", "message": f"{updated_count}件の商品を「投稿済」に更新しました。"})
+    except Exception as e:
+        logging.error(f"商品の一括ステータス更新中にエラーが発生しました: {e}")
+        return JSONResponse(status_code=500, content={"status": "error", "message": "一括更新に失敗しました。"})
+
+@app.post("/api/inventory/bulk-delete")
+async def bulk_delete_inventory_items(request: BulkUpdateRequest):
+    """複数の在庫商品を一括で削除する"""
+    try:
+        deleted_count = delete_multiple_products(request.product_ids)
+        return JSONResponse(content={"status": "success", "message": f"{deleted_count}件の商品を削除しました。"})
+    except Exception as e:
+        logging.error(f"商品の一括削除中にエラーが発生しました: {e}")
+        return JSONResponse(status_code=500, content={"status": "error", "message": "一括削除に失敗しました。"})
+
 
 @app.post("/api/import/json")
 async def import_from_json(request: JsonImportRequest):
@@ -284,7 +309,12 @@ async def run_task_now(tag: str):
 
     task_func = definition["function"]
     # タスクをバックグラウンドスレッドで実行
-    job_thread, result_container = run_threaded(task_func)
+    kwargs = {}
+    # 即時実行の場合、記事投稿は10件に設定
+    if tag == "post-article":
+        kwargs['count'] = 10
+
+    job_thread, result_container = run_threaded(task_func, **kwargs)
 
     # 結果を待って返すタイプのタスク
     if tag in ["check-login-status", "save-auth-state"]:

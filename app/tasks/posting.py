@@ -1,12 +1,13 @@
 import logging
 from playwright.sync_api import sync_playwright
 import os
-from app.core.database import get_all_ready_to_post_products, update_product_status
+from app.core.database import get_all_ready_to_post_products, update_product_status, get_product_by_id
 
 from app import locators
 PROFILE_DIR = "db/playwright_profile"
+TRACE_DIR = "db/error_trace"
 
-def post_article(count: int = 1):
+def post_article(count: int = 10, product_id: int = None):
     """
     保存された認証プロファイルを使ってROOMへ商品情報を自動投稿する。
     :param count: 投稿する件数
@@ -18,10 +19,22 @@ def post_article(count: int = 1):
     # 通常実行時はFalseにしてください。
     is_debug =False
 
-    products = get_all_ready_to_post_products(limit=count)
-    if not products:
-        logging.info("投稿対象の商品がありませんでした。")
-        return
+    # トレース保存用ディレクトリを作成
+    os.makedirs(TRACE_DIR, exist_ok=True)
+
+    if product_id:
+        product = get_product_by_id(product_id)
+        if product and product['status'] == '投稿準備完了':
+            products = [product]
+            logging.info(f"指定された商品ID: {product_id} を投稿します。")
+        else:
+            logging.error(f"指定された商品ID: {product_id} は存在しないか、投稿準備完了ではありません。")
+            return
+    else:
+        products = get_all_ready_to_post_products(limit=count)
+        if not products:
+            logging.info("投稿対象の商品がありませんでした。")
+            return
 
     if not os.path.exists(PROFILE_DIR):
         logging.error(f"認証プロファイル {PROFILE_DIR} が見つかりません。先に「認証状態の保存」タスクを実行してください。")
@@ -48,7 +61,7 @@ def post_article(count: int = 1):
                         logging.warning(f"商品ID {product['id']} の投稿URLがありません。スキップします。")
                         continue
 
-                    caption = product.get('ai_caption') or f"「{product['name']}」おすすめです！ #楽天ROOM"
+                    caption = product['ai_caption'] or f"「{product['name']}」おすすめです！ #楽天ROOM"
 
                     logging.info(f"商品「{product['name']}」をURL: {post_url} で投稿します。")
                     page = context.new_page()
@@ -65,15 +78,15 @@ def post_article(count: int = 1):
                         logging.info("投稿ボタンをクリックしました。")
                         page.wait_for_timeout(15000) # 投稿完了を待つ
 
-                    page.context.tracing.stop(path=f"db/trace_{product['id']}.zip")
+                    page.context.tracing.stop(path=os.path.join(TRACE_DIR, f"trace_{product['id']}.zip"))
                     update_product_status(product['id'], '投稿済')
                     posted_count += 1
 
                 except Exception as e:
                     logging.error(f"商品ID {product['id']} の投稿処理中にエラーが発生しました: {e}")
                     if page and not page.is_closed():
-                        page.context.tracing.stop(path=f"db/error_trace_{product['id']}.zip")
-                        page.screenshot(path=f"db/error_screenshot_{product['id']}.png")
+                        page.context.tracing.stop(path=os.path.join(TRACE_DIR, f"error_trace_{product['id']}.zip"))
+                        page.screenshot(path=os.path.join(TRACE_DIR, f"error_screenshot_{product['id']}.png"))
                     update_product_status(product['id'], 'エラー') # エラーが発生した商品のみステータスを更新
                 finally:
                     if page:
