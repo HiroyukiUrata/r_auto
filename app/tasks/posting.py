@@ -1,7 +1,7 @@
 import logging
 from playwright.sync_api import sync_playwright
 import os
-from app.core.database import get_all_unposted_products, update_product_status
+from app.core.database import get_all_ready_to_post_products, update_product_status
 
 from app import locators
 PROFILE_DIR = "db/playwright_profile"
@@ -18,7 +18,7 @@ def post_article(count: int = 1):
     # 通常実行時はFalseにしてください。
     is_debug =False
 
-    products = get_all_unposted_products(limit=count)
+    products = get_all_ready_to_post_products(limit=count)
     if not products:
         logging.info("投稿対象の商品がありませんでした。")
         return
@@ -67,7 +67,7 @@ def post_article(count: int = 1):
 
                     context.tracing.stop(path=f"db/trace_{product['id']}.zip")
                     context.close()
-                    update_product_status(product['id'], '済')
+                    update_product_status(product['id'], '投稿済')
                     posted_count += 1
 
                 except Exception as e:

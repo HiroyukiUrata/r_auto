@@ -9,7 +9,8 @@ from pydantic import BaseModel
 
 # タスク定義を一元的にインポート
 from app.core.task_definitions import TASK_DEFINITIONS
-from app.core.database import get_all_unposted_products, update_product_status
+from app.core.database import get_all_inventory_products, update_product_status, delete_all_products, init_db
+from app.tasks.import_products import process_and_import_products
 from app.core.config_manager import get_config, save_config
 from app.core.scheduler_utils import run_threaded, run_task_with_random_delay
 from datetime import date, timedelta
@@ -60,6 +61,9 @@ class ScheduleUpdateRequest(BaseModel):
 
 class ConfigUpdateRequest(BaseModel):
     max_delay_minutes: int
+
+class JsonImportRequest(BaseModel):
+    products: list[dict]
 
 
 # --- HTML Routes ---
@@ -168,8 +172,8 @@ async def read_config():
 
 @app.get("/api/inventory")
 async def get_inventory():
-    """在庫（未投稿）商品リストをJSONで返す"""
-    products = get_all_unposted_products()
+    """在庫商品（「投稿済」以外）のリストをJSONで返す"""
+    products = get_all_inventory_products()
     # sqlite3.Rowは直接JSONシリアライズできないため、辞書のリストに変換
     products_list = [dict(product) for product in products]
     return JSONResponse(content=products_list)
@@ -184,6 +188,30 @@ async def complete_inventory_item(product_id: int):
     except Exception as e:
         logging.error(f"商品ID: {product_id} のステータス更新中にエラーが発生しました: {e}")
         return JSONResponse(status_code=500, content={"status": "error", "message": "ステータスの更新に失敗しました。"})
+
+@app.post("/api/import/json")
+async def import_from_json(request: JsonImportRequest):
+    """ブラウザから送信されたJSONデータを使って商品をインポートする"""
+    try:
+        items_to_import = request.products
+        if not isinstance(items_to_import, list):
+            return JSONResponse(status_code=400, content={"status": "error", "message": "JSONのルートは配列である必要があります。"})
+        inserted_count = process_and_import_products(items_to_import)
+        return JSONResponse(content={"status": "success", "message": f"{len(items_to_import)}件中、{inserted_count}件の新規商品をインポートしました。"})
+    except Exception as e:
+        logging.error(f"JSONからのインポート処理中にエラーが発生しました: {e}")
+        return JSONResponse(status_code=500, content={"status": "error", "message": "インポート処理中にサーバーエラーが発生しました。"})
+
+@app.post("/api/products/delete-all")
+async def delete_all_products_endpoint():
+    """すべての商品データを削除する"""
+    try:
+        delete_all_products()
+        init_db() # テーブルをクリアした後、サンプルデータを再挿入するために呼び出す
+        return JSONResponse(content={"status": "success", "message": "すべての商品データを削除し、サンプルデータを再挿入しました。"})
+    except Exception as e:
+        logging.error(f"全商品データの削除中にエラーが発生しました: {e}")
+        return JSONResponse(status_code=500, content={"status": "error", "message": "サーバーエラーにより削除に失敗しました。"})
 
 @app.post("/api/config")
 async def update_config(config_request: ConfigUpdateRequest):
