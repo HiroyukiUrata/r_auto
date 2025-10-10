@@ -1,0 +1,198 @@
+{% extends "base.html" %}
+
+{% block title %}システムコンフィグ - {{ super() }}{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-12">
+        <!-- JSONインポートカード -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-upload me-2"></i>JSONから商品をインポート (ブラウザ)</h5>
+            </div>
+            <div class="card-body">
+                <p class="card-text">ここにインポートしたい商品のJSONデータを貼り付けてください。</p>
+                <div class="mb-3">
+                    <textarea id="json-import-textarea" class="form-control" rows="10" placeholder='[{"item_description": "商品名", "page_url": "...", "image_url": "..."}, ...]'></textarea>
+                </div>
+                <button class="btn btn-primary" onclick="importFromJsonText()">
+                    <i class="bi bi-upload me-1"></i> インポート実行
+                </button>
+            </div>
+        </div>
+
+        <!-- 危険な操作カード -->
+        <div class="card mb-4 border-danger">
+            <div class="card-header bg-danger text-white">
+                <h5 class="mb-0"><i class="bi bi-exclamation-triangle-fill me-2"></i>危険な操作</h5>
+            </div>
+            <div class="card-body">
+                <h6 class="card-title">全商品データの削除</h6>
+                <p class="card-text">データベースからすべての商品情報を削除します。この操作は元に戻せません。<br>実行するには、以下のボックスに「<strong class="text-danger">削除します</strong>」と入力してください。</p>
+                <div class="row g-2 align-items-center">
+                    <div class="col-sm-4">
+                        <input type="text" id="delete-confirm-input" class="form-control" placeholder="削除します" oninput="validateDeleteInput()">
+                    </div>
+                    <div class="col-sm-8">
+                        <button id="delete-all-btn" class="btn btn-danger" onclick="deleteAllProducts()" disabled>
+                            <i class="bi bi-trash-fill me-1"></i> 全商品データを削除
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- デバッグタスクカード -->
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-tools me-2"></i>システムタスク
+            </div>
+            <div class="card-body">
+                <p class="card-text">ここでは、開発やデバッグ目的のタスクを手動で実行できます。</p>
+                <div id="debug-tasks-container" class="list-group">
+                    <!-- デバッグタスクはJavaScriptでここに挿入されます -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    async function fetchDebugTasks() {
+        try {
+            const response = await fetch('/api/config-tasks');
+            const tasks = await response.json();
+            const container = document.getElementById('debug-tasks-container');
+            container.innerHTML = '';
+
+            tasks.forEach(task => {
+                const taskItem = document.createElement('div');
+                taskItem.className = 'list-group-item d-flex justify-content-between align-items-center';
+                taskItem.innerHTML = `
+                    <div>
+                        <h5 class="mb-1">${task.name_ja}</h5>
+                        <p class="mb-1 small text-muted">${task.description || ''}</p>
+                    </div>
+                    <button class="btn btn-sm btn-info" onclick="runTaskNow('${task.tag}', '${task.name_ja}', event)">
+                        <i class="bi bi-play-fill"></i> 即時実行
+                    </button>
+                `;
+                container.appendChild(taskItem);
+            });
+        } catch (error) {
+            console.error('Failed to fetch debug tasks:', error);
+        }
+    }
+
+    async function runTaskNow(tag, name_ja, event) {
+        let confirmMessage = `タスク「${name_ja}」を今すぐ実行しますか？`;
+        if (tag === 'save-auth-state') {
+            const hostname = window.location.hostname;
+            confirmMessage += `\n\n実行後、VNCクライアントで ${hostname}:5900 に接続してください。`;
+        }
+
+        if (!confirm(confirmMessage)) {
+            return;
+        }
+        try {
+            const response = await fetch(`/api/tasks/${tag}/run`, {
+                method: 'POST'
+            });
+            const result = await response.json();
+            // response.ok (HTTPステータスが200-299) かどうかで成否を判断する
+            if (!response.ok) {
+                throw new Error(result.message || 'タスクの実行に失敗しました。');
+            }
+            alert(result.message);
+        } catch (error) {
+            console.error('Error running task:', error);
+            alert(error.message);
+        }
+    }
+
+    async function importFromJsonText() {
+        const textarea = document.getElementById('json-import-textarea');
+        const jsonText = textarea.value;
+
+        if (!jsonText.trim()) {
+            alert('JSONデータを入力してください。');
+            return;
+        }
+
+        let products;
+        try {
+            products = JSON.parse(jsonText);
+        } catch (error) {
+            alert('JSONの形式が正しくありません。角括弧 `[` で始まる配列であることを確認してください。\n\nエラー詳細: ' + error.message);
+            return;
+        }
+
+        if (!Array.isArray(products)) {
+            alert('JSONのルートは配列（ [...] ）である必要があります。');
+            return;
+        }
+
+        if (!confirm(`${products.length}件の商品データをインポートします。よろしいですか？`)) {
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/import/json', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ products: products })
+            });
+            const result = await response.json();
+            if (!response.ok) {
+                throw new Error(result.message || 'インポートに失敗しました。');
+            }
+            alert(result.message);
+            textarea.value = ''; // 成功したらテキストエリアをクリア
+        } catch (error) {
+            console.error('Error importing from JSON:', error);
+            alert(error.message);
+        }
+    }
+
+    function validateDeleteInput() {
+        const input = document.getElementById('delete-confirm-input');
+        const button = document.getElementById('delete-all-btn');
+        // 入力値が「削除します」と完全に一致する場合のみボタンを有効化
+        if (input.value === '削除します') {
+            button.disabled = false;
+        } else {
+            button.disabled = true;
+        }
+    }
+
+    async function deleteAllProducts() {
+        if (!confirm('本当によろしいですか？すべての商品データがデータベースから削除されます。')) {
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/products/delete-all', {
+                method: 'POST'
+            });
+            const result = await response.json();
+            if (!response.ok) {
+                throw new Error(result.message || '削除に失敗しました。');
+            }
+            alert(result.message);
+            // 入力欄をクリアしてボタンを再度無効化
+            document.getElementById('delete-confirm-input').value = '';
+            validateDeleteInput();
+
+        } catch (error) {
+            console.error('Error deleting all products:', error);
+            alert(error.message);
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        fetchDebugTasks();
+    });
+</script>
+{% endblock %}

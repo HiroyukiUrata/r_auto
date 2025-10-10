@@ -87,17 +87,6 @@ def init_db():
             cursor.execute("ALTER TABLE products ADD COLUMN posted_at TIMESTAMP")
             logging.info("productsテーブルに 'posted_at' カラムを追加しました。")
 
-        # 商品が1件も存在しない場合のみサンプルデータを挿入
-        cursor.execute("SELECT COUNT(*) FROM products")
-        if cursor.fetchone()[0] == 0:
-            logging.info("商品データが存在しないため、サンプルデータを挿入します。")
-            sample_products = [
-                ('サンプル商品1: おしゃぶりケース', 'https://item.rakuten.co.jp/felixland/10008424/', 'https://tshop.r10s.jp/felixland/cabinet/compass1677741695.jpg'),
-                ('サンプル商品2: 植木鉢トレー', 'https://item.rakuten.co.jp/roughral/10004105/', 'https://tshop.r10s.jp/roughral/cabinet/compass1669018012.jpg'),
-                ('サンプル商品3: おしゃれな照明器具', 'https://item.rakuten.co.jp/kaju/10002307/', 'https://tshop.r10s.jp/kaju/cabinet/light/kc-2700.jpg')
-            ]
-            cursor.executemany("INSERT OR IGNORE INTO products (name, url, image_url, status) VALUES (?, ?, ?, '生情報取得')", sample_products)
-
         conn.commit()
         conn.close()
         logging.info("データベースが正常に初期化されました。")

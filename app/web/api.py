@@ -84,10 +84,10 @@ async def read_chat(request: Request):
     """AIチャットページを表示する"""
     return templates.TemplateResponse("chat.html", {"request": request})
 
-@app.get("/debug", response_class=HTMLResponse)
-async def read_debug(request: Request):
-    """デバッグページを表示する"""
-    return templates.TemplateResponse("debug.html", {"request": request})
+@app.get("/system-config", response_class=HTMLResponse)
+async def read_system_config(request: Request):
+    """システムコンフィグページを表示する"""
+    return templates.TemplateResponse("config.html", {"request": request})
 
 @app.get("/inventory", response_class=HTMLResponse)
 async def read_inventory(request: Request):
@@ -150,9 +150,9 @@ async def get_schedules():
 
     return JSONResponse(content=list(all_tasks.values()))
 
-@app.get("/api/debug-tasks")
-async def get_debug_tasks():
-    """デバッグ用のタスクリストをJSONで返す"""
+@app.get("/api/config-tasks")
+async def get_config_tasks():
+    """システムコンフィグ用のタスクリストをJSONで返す"""
     debug_tasks = []
     for tag, definition in TASK_DEFINITIONS.items():
         if definition.get("is_debug", True):

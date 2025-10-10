@@ -1,4 +1,4 @@
-from app.tasks import procure_products, post_article, run_engagement_actions, save_auth_state, check_login_status, post_to_threads
+from app.tasks import procure_products, post_article, run_engagement_actions, save_auth_state, check_login_status
 
 """
 システム内の全タスクの定義を一元管理する。
@@ -42,12 +42,5 @@ TASK_DEFINITIONS = {
         "is_debug": True,
         "description": "保存された認証情報を使って、現在ログイン状態が維持されているかを確認します。",
         "order": 100,
-    },
-    "post-to-threads": {
-        "name_ja": "Threadsへ投稿",
-        "function": post_to_threads,
-        "is_debug": True,
-        "description": "【実験用】保存された認証情報を使って、VNC経由でThreadsへの投稿をテストします。",
-        "order": 120,
     },
 }
