@@ -3,13 +3,21 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
-*.env
-.env.*
+.Python
+env/
+venv/
+
+# Docker
+.dockerignore
 
 # VSCode
 .vscode/
 
-# Docker
-**/db/*
-**/web/node_modules/
+# R-Auto specific
+.env
+db/gemini_prompt.json
+db/gemini_response_after.json
+
+# Playwright profile
 db/playwright_profile/
+db/trace.zip

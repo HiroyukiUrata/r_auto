@@ -2,6 +2,7 @@ import logging
 import json
 import os
 from urllib.parse import urlparse, parse_qs
+import re
 from app.core.database import import_products
 
 IMPORT_FILE_PATH = "db/import_products.json"
@@ -56,11 +57,24 @@ def import_products_from_file():
         return
 
     try:
+        # まずファイル全体を文字列として読み込む
         with open(IMPORT_FILE_PATH, "r", encoding="utf-8") as f:
-            items = json.load(f)
-    except (json.JSONDecodeError, IOError) as e:
-        logging.error(f"ファイルの読み込みまたはJSONの解析に失敗しました: {e}")
-        return
+            file_content = f.read()
+        # 文字列からJSONオブジェクトにパースする
+        items = json.loads(file_content)
+    except json.JSONDecodeError as e:
+        logging.warning(f"JSONの解析に失敗しました: {e}。自動修正を試みます...")
+        try:
+            # 文字列内の " を \" に置換する単純な修正を試みる
+            # 注: この方法は値の中に " が含まれる場合にのみ有効です
+            # より複雑なケースでは、手動での修正が必要になる場合があります
+            fixed_content = file_content.replace('"', '\\"') # 全てエスケープ
+            fixed_content = re.sub(r'\\"([a-zA-Z0-9_]+)\\":', r'"\1":', fixed_content) # キーを元に戻す
+            items = json.loads(fixed_content)
+            logging.info("JSONの自動修正に成功しました。")
+        except json.JSONDecodeError as final_e:
+            logging.error(f"JSONの自動修正後も解析に失敗しました: {final_e}")
+            return
 
     if not items:
         logging.warning("インポート対象の商品データが見つかりませんでした。")
