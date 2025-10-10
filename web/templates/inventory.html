@@ -15,7 +15,7 @@
                 <th scope="col" style="width: 20%;">商品名</th>
                 <th scope="col" style="width: 20%;">投稿文</th>
                 <th scope="col">ステータス</th>
-                <th scope="col">操作</th>
+                <th scope="col" style="width: 15%;">操作</th>
             </tr>
         </thead>
         <tbody id="inventory-table-body">
@@ -37,7 +37,26 @@
 
 {% block scripts %}
 <script>
-    // 商品のステータスを「済」に更新する関数
+    async function deleteItem(productId) {
+        if (!confirm(`商品ID: ${productId} を本当に削除しますか？この操作は元に戻せません。`)) {
+            return;
+        }
+        try {
+            const response = await fetch(`/api/inventory/${productId}`, {
+                method: 'DELETE'
+            });
+            const result = await response.json();
+            if (!response.ok) {
+                throw new Error(result.message || '削除に失敗しました。');
+            }
+            // 成功したらテーブルから行を削除
+            document.getElementById(`product-row-${productId}`).remove();
+            alert(result.message);
+        } catch (error) {
+            console.error('Error:', error);
+            alert(error.message);
+        }
+    }
     async function forceComplete(productId) {
         if (!confirm(`商品ID: ${productId} を本当に「済」にしますか？この操作は元に戻せません。`)) {
             return;
@@ -66,10 +85,15 @@
             .then(data => {
                 const tableBody = document.getElementById('inventory-table-body');
                 if (data.length === 0) {
-                    tableBody.innerHTML = '<tr><td colspan="4" class="text-center">在庫商品はありません。</td></tr>';
+                    tableBody.innerHTML = '<tr><td colspan="5" class="text-center">在庫商品はありません。</td></tr>';
                     return;
                 }
                 data.forEach(product => {
+                    // 投稿ボタンのHTMLを生成。post_urlがなければボタンは非表示
+                    const postButtonHtml = product.post_url ? `
+                        <button class="btn btn-sm btn-primary" onclick="window.open('${product.post_url}', '_blank')">
+                            <i class="bi bi-box-arrow-up-right me-1"></i>投稿
+                        </button>` : '';
                     const row = `
                         <tr id="product-row-${product.id}">
                             <td>
@@ -84,9 +108,13 @@
                                 <div class="truncate-cell">${product.ai_caption || ''}</div>
                             </td>
                             <td><span class="badge bg-secondary">${product.status}</span></td>
-                            <td>
+                            <td class="text-nowrap">
+                                ${postButtonHtml}
                                 <button class="btn btn-sm btn-warning" onclick="forceComplete(${product.id})">
                                     <i class="bi bi-check-circle-fill me-1"></i>強制済
+                                </button>
+                                <button class="btn btn-sm btn-danger" onclick="deleteItem(${product.id})">
+                                    <i class="bi bi-trash-fill me-1"></i>削除
                                 </button>
                             </td>
                         </tr>

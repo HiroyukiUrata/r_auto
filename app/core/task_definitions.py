@@ -1,4 +1,4 @@
-from app.tasks import procure_products, post_article, run_engagement_actions, save_auth_state, check_login_status
+from app.tasks import procure_products, post_article, run_engagement_actions, save_auth_state, check_login_status, get_post_url
 
 """
 システム内の全タスクの定義を一元管理する。
@@ -16,6 +16,12 @@ TASK_DEFINITIONS = {
         "function": procure_products,
         "is_debug": False,
         "order": 10,
+    },
+    "get-post-url": {
+        "name_ja": "投稿URL取得",
+        "function": get_post_url,
+        "is_debug": False,
+        "order": 15,
     },
     "post-article": {
         "name_ja": "記事投稿",

@@ -9,7 +9,9 @@ from pydantic import BaseModel
 
 # タスク定義を一元的にインポート
 from app.core.task_definitions import TASK_DEFINITIONS
-from app.core.database import get_all_inventory_products, update_product_status, delete_all_products, init_db
+from app.core.database import get_all_inventory_products, update_product_status, delete_all_products, init_db, delete_product
+from app.tasks.posting import post_article
+from app.tasks.get_post_url import get_post_url
 from app.tasks.import_products import process_and_import_products
 from app.core.config_manager import get_config, save_config
 from app.core.scheduler_utils import run_threaded, run_task_with_random_delay
@@ -189,6 +191,29 @@ async def complete_inventory_item(product_id: int):
         logging.error(f"商品ID: {product_id} のステータス更新中にエラーが発生しました: {e}")
         return JSONResponse(status_code=500, content={"status": "error", "message": "ステータスの更新に失敗しました。"})
 
+@app.delete("/api/inventory/{product_id}")
+async def delete_inventory_item(product_id: int):
+    """指定された在庫商品を削除する"""
+    try:
+        if delete_product(product_id):
+            return JSONResponse(content={"status": "success", "message": f"商品ID: {product_id} を削除しました。"})
+        else:
+            return JSONResponse(status_code=404, content={"status": "error", "message": "指定された商品が見つかりませんでした。"})
+    except Exception as e:
+        logging.error(f"商品ID: {product_id} の削除中にエラーが発生しました: {e}")
+        return JSONResponse(status_code=500, content={"status": "error", "message": "サーバーエラーにより削除に失敗しました。"})
+
+@app.post("/api/inventory/{product_id}/post")
+async def post_inventory_item(product_id: int):
+    """指定された在庫商品を1件だけ投稿する"""
+    try:
+        # post_articleタスクを引数count=1, product_id=product_idで実行
+        run_threaded(post_article, count=1, product_id=product_id)
+        return JSONResponse(content={"status": "success", "message": f"商品ID: {product_id} の投稿処理を開始しました。"})
+    except Exception as e:
+        logging.error(f"商品ID: {product_id} の投稿処理開始中にエラーが発生しました: {e}")
+        return JSONResponse(status_code=500, content={"status": "error", "message": "投稿処理の開始に失敗しました。"})
+
 @app.post("/api/import/json")
 async def import_from_json(request: JsonImportRequest):
     """ブラウザから送信されたJSONデータを使って商品をインポートする"""
@@ -197,7 +222,11 @@ async def import_from_json(request: JsonImportRequest):
         if not isinstance(items_to_import, list):
             return JSONResponse(status_code=400, content={"status": "error", "message": "JSONのルートは配列である必要があります。"})
         inserted_count = process_and_import_products(items_to_import)
-        return JSONResponse(content={"status": "success", "message": f"{len(items_to_import)}件中、{inserted_count}件の新規商品をインポートしました。"})
+        
+        # インポート成功後、バックグラウンドで投稿URL取得タスクを実行
+        run_threaded(get_post_url)
+
+        return JSONResponse(content={"status": "success", "message": f"{len(items_to_import)}件中、{inserted_count}件の新規商品をインポートしました。\n続けてバックグラウンドで投稿URLの取得を開始します。"})
     except Exception as e:
         logging.error(f"JSONからのインポート処理中にエラーが発生しました: {e}")
         return JSONResponse(status_code=500, content={"status": "error", "message": "インポート処理中にサーバーエラーが発生しました。"})

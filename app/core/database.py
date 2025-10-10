@@ -111,6 +111,16 @@ def get_all_inventory_products():
     conn.close()
     return products
 
+def get_products_for_post_url_acquisition(limit=None):
+    """投稿URL取得対象（ステータスが「生情報取得」）の商品を取得する"""
+    query = "SELECT * FROM products WHERE status = '生情報取得' AND (post_url IS NULL OR post_url = '') ORDER BY created_at"
+    if limit:
+        query += f" LIMIT {int(limit)}"
+    conn = get_db_connection()
+    products = conn.execute(query).fetchall()
+    conn.close()
+    return products
+
 def update_product_status(product_id, status):
     """商品のステータスを更新する"""
     conn = get_db_connection()
@@ -128,12 +138,12 @@ def update_product_status(product_id, status):
         conn.close()
 
 def update_post_url(product_id, post_url):
-    """指定された商品の投稿URLと更新日時を更新する"""
+    """指定された商品の投稿URLと更新日時を更新し、ステータスを「URL取得済」に変更する"""
     conn = get_db_connection()
     try:
-        conn.execute("UPDATE products SET post_url = ?, post_url_updated_at = CURRENT_TIMESTAMP WHERE id = ?", (post_url, product_id))
+        conn.execute("UPDATE products SET post_url = ?, post_url_updated_at = CURRENT_TIMESTAMP, status = 'URL取得済' WHERE id = ?", (post_url, product_id))
         conn.commit()
-        logging.info(f"商品ID: {product_id} の投稿URLを更新しました。")
+        logging.info(f"商品ID: {product_id} の投稿URLを更新し、ステータスを「URL取得済」に変更しました。")
     finally:
         conn.close()
 
@@ -199,5 +209,17 @@ def delete_all_products():
         conn.commit()
         logging.info("すべての商品レコードが削除されました。")
         return cursor.rowcount
+    finally:
+        conn.close()
+
+def delete_product(product_id: int):
+    """指定されたIDの商品を削除する"""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM products WHERE id = ?", (product_id,))
+        conn.commit()
+        logging.info(f"商品ID: {product_id} を削除しました。")
+        return cursor.rowcount > 0
     finally:
         conn.close()

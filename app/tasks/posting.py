@@ -30,59 +30,57 @@ def post_article(count: int = 1):
     posted_count = 0
     try:
         with sync_playwright() as p:
+            context = p.chromium.launch_persistent_context(
+                user_data_dir=PROFILE_DIR,
+                headless=not is_debug,
+                locale="ja-JP",
+                timezone_id="Asia/Tokyo",
+                env={"DISPLAY": ":0"} if not is_debug else {}
+            )
+
             for product in products:
-                logging.info(f"--- {posted_count + 1}/{len(products)} 件目の処理を開始 ---")
-                post_url = product['url']
-                # 投稿文は将来的にAIで生成するか、DBに保存されたものを使用することを想定
-                caption = f"「{product['name']}」おすすめです！ #楽天ROOM"
-
-                logging.info(f"商品「{product['name']}」をURL: {post_url} で投稿します。")
-
-                context = None # エラーハンドリングのため
+                page = None
                 try:
-                    context = p.chromium.launch_persistent_context(
-                        user_data_dir=PROFILE_DIR,
-                        headless=not is_debug, # is_debugがTrueならFalse(表示)、FalseならTrue(非表示)
-                        locale="ja-JP",
-                        timezone_id="Asia/Tokyo",
-                        # headless=Falseの場合のみ、仮想ディスプレイを指定
-                        env={"DISPLAY": ":0"} if is_debug else {},
-                    )
-                    context.tracing.start(screenshots=True, snapshots=True, sources=True)
+                    logging.info(f"--- {posted_count + 1}/{len(products)} 件目の処理を開始 ---")
+                    # 投稿には商品ページのURLではなく、投稿用URL(post_url)を使用する
+                    post_url = product['post_url']
+                    if not post_url:
+                        logging.warning(f"商品ID {product['id']} の投稿URLがありません。スキップします。")
+                        continue
+
+                    caption = product.get('ai_caption') or f"「{product['name']}」おすすめです！ #楽天ROOM"
+
+                    logging.info(f"商品「{product['name']}」をURL: {post_url} で投稿します。")
                     page = context.new_page()
+                    page.context.tracing.start(screenshots=True, snapshots=True, sources=True)
 
                     logging.info(f"投稿ページにアクセスします: {post_url}")
                     page.goto(post_url, wait_until="networkidle", timeout=60000)
-                    
+
                     textarea_locator = page.locator(locators.POST_TEXTAREA)
-                    logging.info(f"キャプションを入力します: {caption[:30]}...")
                     textarea_locator.fill(caption)
 
                     if not is_debug:
                         page.locator(locators.SUBMIT_BUTTON).first.click(timeout=10000)
                         logging.info("投稿ボタンをクリックしました。")
                         page.wait_for_timeout(15000) # 投稿完了を待つ
-                    else:
-                        logging.info("デバッグモードのため、投稿ボタンのクリックをスキップしました。")
 
-                    context.tracing.stop(path=f"db/trace_{product['id']}.zip")
-                    context.close()
+                    page.context.tracing.stop(path=f"db/trace_{product['id']}.zip")
                     update_product_status(product['id'], '投稿済')
                     posted_count += 1
 
                 except Exception as e:
                     logging.error(f"商品ID {product['id']} の投稿処理中にエラーが発生しました: {e}")
-                    if context:
-                        try:
-                            context.tracing.stop(path=f"db/error_trace_{product['id']}.zip")
-                        except Exception as trace_e:
-                            logging.error(f"トレースの保存中にエラーが発生しました: {trace_e}")
-                    if 'page' in locals() and not page.is_closed():
+                    if page and not page.is_closed():
+                        page.context.tracing.stop(path=f"db/error_trace_{product['id']}.zip")
                         page.screenshot(path=f"db/error_screenshot_{product['id']}.png")
-                    update_product_status(product['id'], 'エラー')
-                    # 1件エラーが出たら、残りは実行せずにタスクを終了する
-                    logging.warning("エラーが発生したため、残りの投稿処理を中止します。")
-                    break
+                    update_product_status(product['id'], 'エラー') # エラーが発生した商品のみステータスを更新
+                finally:
+                    if page:
+                        page.close()
+            
+            context.close()
+
     except Exception as e:
         logging.critical(f"Playwrightの初期化中に致命的なエラーが発生しました: {e}")
     
