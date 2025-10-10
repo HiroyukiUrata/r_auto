@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from app.core.task_definitions import TASK_DEFINITIONS
 from app.core.database import get_all_unposted_products, update_product_status
 from app.core.config_manager import get_config, save_config
-from app.core.scheduler_utils import run_threaded
+from app.core.scheduler_utils import run_threaded, run_task_with_random_delay
 from datetime import date, timedelta
 
 # --- FastAPI App Setup ---
