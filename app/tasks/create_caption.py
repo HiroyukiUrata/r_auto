@@ -182,10 +182,10 @@ def create_caption_prompt():
                         logging.info("クリップボードへのコピーを確実にするため10秒待機します。")
                         page.wait_for_timeout(10000)
                     except TimeoutError:
-                        logging.error(f"バッチ {batch_num}: Geminiの応答から「コードをコピー」ボタンが見つかりませんでした。このバッチの商品のステータスを「エラー」に更新します。")
-                        for product in products:
-                            update_product_status(product['id'], 'エラー')
-                        continue
+                        logging.error(f"バッチ {batch_num}: Geminiの応答から「コードをコピー」ボタンが見つかりませんでした。このバッチの商品のステータスを維持して次回再挑戦します。")
+                        # for product in products:
+                        #     update_product_status(product['id'], 'エラー')
+                        # continue
 
                     logging.info("ブラウザのクリップボードから応答を読み取ります。")
                     generated_items = None

@@ -1,0 +1,277 @@
+{% extends "base.html" %}
+
+{% block title %}エラー管理 - R-Auto Control Panel{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">🚨 エラー管理</h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <div class="btn-group me-2" id="bulk-action-group">
+            <button type="button" class="btn btn-sm btn-outline-primary" onclick="bulkUpdateStatus('投稿準備完了')" disabled>
+                <i class="bi bi-arrow-clockwise me-1"></i>選択を再投稿準備
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-primary dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-expanded="false" disabled>
+                <span class="visually-hidden">Toggle Dropdown</span>
+            </button>
+            <ul class="dropdown-menu">
+                <li><a class="dropdown-item" href="#" onclick="event.preventDefault(); bulkUpdateStatus('投稿準備完了')">選択を「投稿準備完了」にする</a></li>
+                <li><a class="dropdown-item" href="#" onclick="event.preventDefault(); bulkUpdateStatus('対象外')">選択を「対象外」にする</a></li>
+                <li><hr class="dropdown-divider"></li>
+                <li><a class="dropdown-item" href="#" onclick="event.preventDefault(); bulkUpdateStatus('生情報取得')">選択を「生情報取得」に戻す</a></li>
+                <li><a class="dropdown-item" href="#" onclick="event.preventDefault(); bulkUpdateStatus('URL取得済')">選択を「URL取得済」に戻す</a></li>
+                <li><a class="dropdown-item" href="#" onclick="event.preventDefault(); bulkUpdateStatus('投稿済')">選択を「投稿済」にする</a></li>
+            </ul>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="select-all-toggle-btn" onclick="toggleSelectAll()">
+                <i class="bi bi-check-square me-1"></i>すべて選択
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-danger" id="bulk-delete-btn" onclick="bulkDelete()" disabled>
+                <i class="bi bi-trash-fill me-1"></i>選択した項目を削除
+            </button>
+        </div>
+    </div>
+</div>
+
+<div class="table-responsive">
+    <table class="table table-striped table-sm align-middle" style="table-layout: fixed; width: 100%;">
+        <thead>
+            <tr>
+                <th scope="col" style="width: 5%;"></th>
+                <th scope="col" style="width: 8%;">サムネイル</th>
+                <th scope="col" style="width: 5%;">ID</th>
+                <th scope="col" style="width: 57%;">商品情報</th>
+                <th scope="col" style="width: 15%;">ステータス</th>
+            </tr>
+        </thead>
+        <tbody id="error-table-body">
+            <!-- データはJavaScriptでここに挿入されます -->
+        </tbody>
+    </table>
+</div>
+
+<!-- 商品情報詳細モーダル -->
+<div class="modal fade" id="infoModal" tabindex="-1" aria-labelledby="infoModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="infoModalLabel">エラー詳細</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <!-- 全データベース項目表示用アコーディオン -->
+        <div class="accordion" id="accordionFullData">
+            <div class="accordion-item">
+                <h2 class="accordion-header" id="headingOne">
+                <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapseOne" aria-expanded="true" aria-controls="collapseOne">
+                    全データベース項目
+                </button>
+                </h2>
+                <div id="collapseOne" class="accordion-collapse collapse show" aria-labelledby="headingOne" data-bs-parent="#accordionFullData">
+                <div class="accordion-body">
+                    <pre><code id="modal-full-data" style="font-size: 0.8rem;"></code></pre>
+                </div>
+                </div>
+            </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <a href="#" id="modal-post-link" class="btn btn-primary" target="_blank" rel="noopener noreferrer" style="display: none;"><i class="bi bi-box-arrow-up-right me-1"></i>投稿ページを開く</a>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">閉じる</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block styles %}
+<style>
+    .truncate-cell {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    tbody tr {
+        cursor: pointer;
+    }
+    tr.selected .img-thumbnail {
+        border: 3px solid #0d6efd;
+        padding: 1px;
+    }
+    .table .form-check-input {
+        width: 1.25em;
+        height: 1.25em;
+        vertical-align: middle;
+    }
+    /* スマートフォンなどの小さい画面向けのスタイル */
+    @media (max-width: 767.98px) {
+        /* 縦長画面ではヘッダーを非表示 */
+        @media (orientation: portrait) {
+            thead {
+                display: none;
+            }
+            /* 各列の幅を調整 */
+            td:nth-child(2) { width: 15%; } /* サムネイル */
+            td:nth-child(3) { width: 10%; } /* ID */
+            td:nth-child(4) { width: 75%; } /* 商品情報 */
+        }
+    }
+    /* チェックボックス列を常に非表示にする */
+    .table th:first-child,
+    .table td:first-child {
+        display: none;
+    }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let infoModalInstance = null;
+
+    function showInfoModal(element) {
+        event.stopPropagation();
+
+        // data-product属性からJSON文字列を取得し、パースする
+        const product = JSON.parse(element.dataset.product);
+
+        // 全データを整形してアコーディオン内に表示
+        document.getElementById('modal-full-data').textContent = JSON.stringify(product, null, 2);
+
+        const postLink = document.getElementById('modal-post-link');
+        if (product.post_url) {
+            postLink.href = product.post_url;
+            postLink.style.display = 'inline-block';
+        } else {
+            postLink.style.display = 'none';
+        }
+
+        infoModalInstance.show();
+    }
+
+    function getSelectedProductIds() {
+        return Array.from(document.querySelectorAll('.product-checkbox:checked')).map(cb => cb.value);
+    }
+
+    function updateBulkActionButtons() {
+        const selectedIds = getSelectedProductIds();
+        const disabled = selectedIds.length === 0;
+        // bulk-action-group内のすべてのボタンのdisabled状態を更新
+        document.querySelectorAll('#bulk-action-group button').forEach(button => {
+            button.disabled = disabled;
+        });
+        document.getElementById('bulk-delete-btn').disabled = disabled; // 削除ボタンも更新
+    }
+
+    function toggleSelectAll() {
+        const allCheckboxes = document.querySelectorAll('.product-checkbox');
+        const allSelected = getSelectedProductIds().length === allCheckboxes.length;
+        allCheckboxes.forEach(checkbox => {
+            checkbox.checked = !allSelected;
+            checkbox.closest('tr').classList.toggle('selected', !allSelected);
+        });
+        updateBulkActionButtons();
+    }
+
+    async function bulkUpdateStatus(status) {
+        const productIds = getSelectedProductIds();
+        if (productIds.length === 0) return;
+        if (!confirm(`${productIds.length}件の商品のステータスを「${status}」に変更しますか？`)) return;
+
+        try {
+            const response = await fetch('/api/products/bulk-status-update', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ product_ids: productIds, status: status })
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.message);
+            
+            productIds.forEach(id => document.getElementById(`product-row-${id}`).remove());
+            alert(result.message);
+            updateBulkActionButtons();
+        } catch (error) {
+            alert(`一括更新に失敗しました: ${error.message}`);
+        }
+    }
+
+    async function bulkDelete() {
+        const productIds = getSelectedProductIds();
+        if (productIds.length === 0) return;
+        if (!confirm(`${productIds.length}件の商品を本当に削除しますか？`)) return;
+
+        try {
+            const response = await fetch('/api/inventory/bulk-delete', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ product_ids: productIds })
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.message);
+
+            productIds.forEach(id => document.getElementById(`product-row-${id}`).remove());
+            alert(result.message);
+            updateBulkActionButtons();
+        } catch (error) {
+            alert(`一括削除に失敗しました: ${error.message}`);
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        infoModalInstance = new bootstrap.Modal(document.getElementById('infoModal'));
+
+        fetch('/api/errors')
+            .then(response => response.json())
+            .then(data => {
+                const tableBody = document.getElementById('error-table-body');
+                tableBody.innerHTML = '';
+                if (data.length === 0) {
+                    tableBody.innerHTML = '<tr><td colspan="5" class="text-center">過去24時間以内にエラーになった商品はありません。</td></tr>';
+                    return;
+                }
+                data.forEach(product => {
+                    // HTML属性に埋め込むためにJSON文字列をエスケープする
+                    const escapedProductJson = JSON.stringify(product).replace(/'/g, '&apos;').replace(/"/g, '&quot;');
+                    const row = `
+                        <tr id="product-row-${product.id}">
+                            <td class="text-center">
+                                <input class="form-check-input product-checkbox" type="checkbox" value="${product.id}">
+                            </td>
+                            <td>
+                                <a href="${product.url}" target="_blank" rel="noopener noreferrer">
+                                    <img src="${product.image_url || 'https://via.placeholder.com/80'}" alt="${product.name}" class="img-thumbnail" style="width: 100%; height: auto; aspect-ratio: 1 / 1; object-fit: cover;">
+                                </a>
+                            </td>
+                            <td class="text-center">
+                                ${product.id}
+                            </td>
+                            <td class="text-start">
+                                <div class="fw-bold truncate-cell" title="${product.name || ''}">${product.name || ''}</div>
+                                <div class="text-danger small truncate-cell" title="${product.error_message || ''}">${product.error_message || ''}</div>
+                            </td>
+                            <td class="text-center">
+                                <button type="button" class="btn btn-link p-0" 
+                                    onclick="showInfoModal(this)" data-product='${escapedProductJson}'
+                                    title="エラー詳細を表示">
+                                    <span class="fs-5">🚨</span>
+                                </button>
+                            </td>
+                        </tr>
+                    `;
+                    tableBody.innerHTML += row;
+                });
+            });
+
+        document.getElementById('error-table-body').addEventListener('change', function (e) {
+            if (e.target.classList.contains('product-checkbox')) {
+                e.target.closest('tr').classList.toggle('selected', e.target.checked);
+                updateBulkActionButtons();
+            }
+        });
+
+        document.getElementById('error-table-body').addEventListener('click', function (e) {
+            if (e.target.closest('a, button, .form-check-input')) return;
+            const row = e.target.closest('tr');
+            const checkbox = row.querySelector('.product-checkbox');
+            if (checkbox) checkbox.click();
+        });
+    });
+</script>
+{% endblock %}

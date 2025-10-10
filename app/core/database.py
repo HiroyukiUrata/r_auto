@@ -36,7 +36,7 @@ def init_db():
             cursor.execute("ALTER TABLE products RENAME TO products_old")
             logging.info("既存のテーブルを 'products_old' にリネームしました。")
             # 新しいテーブルを作成（init_dbの後半で再度実行されるが、ここで定義が必要）
-            cursor.execute('''CREATE TABLE products (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, url TEXT NOT NULL UNIQUE, image_url TEXT, post_url TEXT, ai_caption TEXT, procurement_keyword TEXT, status TEXT NOT NULL DEFAULT '生情報取得', created_at TIMESTAMP, post_url_updated_at TIMESTAMP, ai_caption_created_at TIMESTAMP, posted_at TIMESTAMP)''')
+            cursor.execute('''CREATE TABLE products (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, url TEXT NOT NULL UNIQUE, image_url TEXT, post_url TEXT, ai_caption TEXT, procurement_keyword TEXT, status TEXT NOT NULL DEFAULT '生情報取得', error_message TEXT, created_at TIMESTAMP, post_url_updated_at TIMESTAMP, ai_caption_created_at TIMESTAMP, posted_at TIMESTAMP)''')
             logging.info("新しい 'products' テーブルを作成しました。")
             # 古いテーブルから新しいテーブルへデータをコピー（重複URLは無視される）
             cursor.execute("INSERT OR IGNORE INTO products(id, name, url, image_url, post_url, ai_caption, procurement_keyword, status, created_at, post_url_updated_at, ai_caption_created_at, posted_at) SELECT id, name, url, image_url, post_url, ai_caption, NULL, status, created_at, post_url_updated_at, ai_caption_created_at, posted_at FROM products_old")
@@ -55,6 +55,7 @@ def init_db():
                 procurement_keyword TEXT,
                 ai_caption TEXT,
                 status TEXT NOT NULL DEFAULT '生情報取得', -- 生情報取得, URL取得済, 投稿文作成済, 投稿準備完了, 投稿済, エラー
+                error_message TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 post_url_updated_at TIMESTAMP,
                 ai_caption_created_at TIMESTAMP,
@@ -93,12 +94,30 @@ def init_db():
         if 'procurement_keyword' not in columns:
             cursor.execute("ALTER TABLE products ADD COLUMN procurement_keyword TEXT")
             logging.info("productsテーブルに 'procurement_keyword' カラムを追加しました。")
+        if 'error_message' not in columns:
+            cursor.execute("ALTER TABLE products ADD COLUMN error_message TEXT")
+            logging.info("productsテーブルに 'error_message' カラムを追加しました。")
 
         conn.commit()
         conn.close()
         logging.info("データベースが正常に初期化されました。")
     except sqlite3.Error as e:
         logging.error(f"データベース初期化エラー: {e}")
+
+def get_error_products_in_last_24h():
+    """過去24時間以内に作成され、かつステータスが「エラー」の商品を取得する"""
+    from datetime import datetime, timedelta
+    conn = get_db_connection()
+    cur = conn.cursor()
+    # created_atが24時間前より新しい、かつstatusが'エラー'のものを取得
+    twenty_four_hours_ago = datetime.now() - timedelta(hours=24)
+    cur.execute(
+        "SELECT * FROM products WHERE status = 'エラー' AND created_at >= ? ORDER BY created_at DESC",
+        (twenty_four_hours_ago,)
+    )
+    products = [dict(row) for row in cur.fetchall()]
+    conn.close()
+    return products
 
 def get_all_ready_to_post_products(limit=None):
     """ステータスが「投稿準備完了」の商品をすべて、または指定された件数だけ取得する"""
@@ -116,7 +135,7 @@ def get_product_by_id(product_id):
     conn = get_db_connection()
     product = conn.execute(query, (product_id,)).fetchone()
     conn.close()
-    return product
+    return dict(product) if product else None
 
 def get_all_inventory_products():
     """在庫確認ページ用に、「投稿済」「エラー」以外の商品をすべて取得する"""
@@ -163,15 +182,18 @@ def get_product_count_by_status():
     # sqlite3.Rowを辞書に変換
     return {row['status']: row['count'] for row in counts}
 
-def update_product_status(product_id, status):
-    """商品のステータスを更新する"""
+def update_product_status(product_id, status, error_message=None):
+    """商品のステータスを更新する。エラーの場合はエラーメッセージも保存する。"""
     conn = get_db_connection()
     try:
         if status == '投稿済':
             # 投稿済みにする際は、投稿完了日時も記録する
-            conn.execute("UPDATE products SET status = ?, posted_at = CURRENT_TIMESTAMP WHERE id = ?", (status, product_id))
+            conn.execute("UPDATE products SET status = ?, posted_at = CURRENT_TIMESTAMP, error_message = NULL WHERE id = ?", (status, product_id))
+        elif status == 'エラー':
+            conn.execute("UPDATE products SET status = ?, error_message = ? WHERE id = ?", (status, str(error_message), product_id))
         else:
-            conn.execute("UPDATE products SET status = ? WHERE id = ?", (status, product_id))
+            # エラーから復帰させる場合などはエラーメッセージをクリアする
+            conn.execute("UPDATE products SET status = ?, error_message = NULL WHERE id = ?", (status, product_id))
         conn.commit()
         logging.info(f"商品ID: {product_id} のステータスを「{status}」に更新しました。")
     except sqlite3.Error as e:
@@ -187,10 +209,10 @@ def update_status_for_multiple_products(product_ids: list[int], status: str):
     try:
         placeholders = ','.join('?' for _ in product_ids)
         if status == '投稿済':
-            query = f"UPDATE products SET status = ?, posted_at = CURRENT_TIMESTAMP WHERE id IN ({placeholders})"
+            query = f"UPDATE products SET status = ?, posted_at = CURRENT_TIMESTAMP, error_message = NULL WHERE id IN ({placeholders})"
             params = [status] + product_ids
         else:
-            query = f"UPDATE products SET status = ? WHERE id IN ({placeholders})"
+            query = f"UPDATE products SET status = ?, error_message = NULL WHERE id IN ({placeholders})"
             params = [status] + product_ids
         cursor = conn.cursor()
         cursor.execute(query, params)

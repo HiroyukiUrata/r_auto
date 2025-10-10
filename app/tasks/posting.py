@@ -87,7 +87,7 @@ def post_article(count: int = 10, product_id: int = None):
                     if page and not page.is_closed():
                         page.context.tracing.stop(path=os.path.join(TRACE_DIR, f"error_trace_{product['id']}.zip"))
                         page.screenshot(path=os.path.join(TRACE_DIR, f"error_screenshot_{product['id']}.png"))
-                    update_product_status(product['id'], 'エラー') # エラーが発生した商品のみステータスを更新
+                    update_product_status(product['id'], 'エラー', error_message=str(e)) # エラーメッセージも記録
                 finally:
                     if page:
                         page.close()

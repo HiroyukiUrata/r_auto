@@ -10,7 +10,7 @@ from pydantic import BaseModel
 
 # タスク定義を一元的にインポート
 from app.core.task_definitions import TASK_DEFINITIONS
-from app.core.database import get_all_inventory_products, update_product_status, delete_all_products, init_db, delete_product, update_status_for_multiple_products, delete_multiple_products, get_product_count_by_status
+from app.core.database import get_all_inventory_products, update_product_status, delete_all_products, init_db, delete_product, update_status_for_multiple_products, delete_multiple_products, get_product_count_by_status, get_error_products_in_last_24h
 from app.tasks.posting import post_article
 from app.tasks.get_post_url import get_post_url
 from app.tasks.import_products import process_and_import_products
@@ -72,6 +72,10 @@ class JsonImportRequest(BaseModel):
 class BulkUpdateRequest(BaseModel):
     product_ids: list[int]
 
+class BulkStatusUpdateRequest(BaseModel):
+    product_ids: list[int]
+    status: str
+
 class KeywordsUpdateRequest(BaseModel):
     keywords_a: list[str]
     keywords_b: list[str]
@@ -109,6 +113,11 @@ async def read_inventory(request: Request):
 async def read_keywords_page(request: Request):
     """キーワード管理ページを表示する"""
     return templates.TemplateResponse("keywords.html", {"request": request})
+
+@app.get("/error-management", response_class=HTMLResponse)
+async def read_error_management(request: Request):
+    """エラー管理ページを表示する"""
+    return templates.TemplateResponse("error_management.html", {"request": request})
 
 # --- API Routes ---
 @app.get("/api/schedules")
@@ -195,6 +204,13 @@ async def get_inventory():
     products_list = [dict(product) for product in products]
     return JSONResponse(content=products_list)
 
+@app.get("/api/errors")
+async def get_error_products():
+    """エラー商品（過去24時間）のリストをJSONで返す"""
+    products = get_error_products_in_last_24h()
+    # get_error_products_in_last_24h は既に辞書のリストを返す
+    return JSONResponse(content=products)
+
 @app.get("/api/inventory/summary")
 async def get_inventory_summary():
     """在庫商品のステータスごとの件数を返す"""
@@ -258,6 +274,16 @@ async def bulk_delete_inventory_items(request: BulkUpdateRequest):
     except Exception as e:
         logging.error(f"商品の一括削除中にエラーが発生しました: {e}")
         return JSONResponse(status_code=500, content={"status": "error", "message": "一括削除に失敗しました。"})
+
+@app.post("/api/products/bulk-status-update")
+async def bulk_status_update_products(request: BulkStatusUpdateRequest):
+    """複数の商品を一括で指定のステータスに更新する"""
+    try:
+        updated_count = update_status_for_multiple_products(request.product_ids, request.status)
+        return JSONResponse(content={"status": "success", "message": f"{updated_count}件の商品を「{request.status}」に更新しました。"})
+    except Exception as e:
+        logging.error(f"商品の一括ステータス更新中にエラーが発生しました: {e}")
+        return JSONResponse(status_code=500, content={"status": "error", "message": "一括更新に失敗しました。"})
 
 @app.get("/api/keywords")
 async def get_keywords():
