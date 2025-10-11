@@ -53,7 +53,7 @@ def run_like_action(count: int = 10):
             liked_count = 0
             scroll_attempts = 0
             MAX_SCROLL_ATTEMPTS = 5 # 新しいボタンが見つからない場合にスクロールを試行する最大回数
-            MAX_DURATION_SECONDS = 2 * 60 # 最大実行時間を2分に設定
+            MAX_DURATION_SECONDS = 5 * 60 # 最大実行時間を設定
             start_time = time.time()
 
             while liked_count < count:
