@@ -16,6 +16,10 @@
 	// docker-compose.ymlのvolumes設定と合わせます。
 	"workspaceFolder": "/workspace/app",
 
+	// コンテナ起動時にホストに転送（公開）するポートのリスト
+	// ここにVNC用の5900番ポートを追加します。
+	"forwardPorts": [5900, 8000],
+
 	// VSCodeのカスタマイズ設定
 	"customizations": {
 		"vscode": {
@@ -47,6 +51,7 @@
 		}
 	},
 
-	// コンテナ作成後に実行するコマンド
-	"postCreateCommand": "pip install --user -r /workspace/app/requirements.txt"
+	// コンテナが作成された「最初の一回だけ」実行されるコマンド
+	// 依存パッケージのインストールなどを行います。
+	"postCreateCommand": "pip install --no-cache-dir -r /workspace/app/requirements.txt"
 }

@@ -1,10 +1,25 @@
 #!/bin/bash
 
-# Start virtual framebuffer on display :0
+# Remove stale X11 lock files
+rm -f /tmp/.X0-lock
+rm -rf /tmp/.X11-unix/
+
+# Set DISPLAY
+export DISPLAY=:0
+
+# Start virtual framebuffer
 Xvfb :0 -screen 0 1280x960x24 &
 
-# Start VNC server, listening on port 5900, without a password
+# Wait for Xvfb
+sleep 2
+
+# Start VNC server
 x11vnc -display :0 -forever -nopw &
 
-# Execute the main application command passed to this script
-exec "$@"
+# Start Python app
+echo "Starting Python application (FastAPI server and scheduler)..."
+python -m app.main &
+
+# Keep container running
+echo "Entrypoint setup complete. Container is running."
+exec sleep infinity

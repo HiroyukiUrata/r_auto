@@ -27,16 +27,7 @@
             "time": "21:00"
         }
     ],
-    "procure-products": [
-        {
-            "count": 1,
-            "time": "12:21"
-        },
-        {
-            "count": 1,
-            "time": "11:21"
-        }
-    ],
+    "procure-products": [],
     "run-engagement-actions": [
         {
             "count": 100,
