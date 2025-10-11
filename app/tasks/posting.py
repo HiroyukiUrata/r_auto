@@ -3,6 +3,7 @@ from playwright.sync_api import sync_playwright
 import os
 from app.core.database import get_all_ready_to_post_products, update_product_status, get_product_by_id
 
+from app.core.config_manager import is_headless
 from app import locators
 PROFILE_DIR = "db/playwright_profile"
 TRACE_DIR = "db/error_trace"
@@ -13,11 +14,6 @@ def post_article(count: int = 10, product_id: int = None):
     :param count: 投稿する件数
     """
     logging.info(f"自動投稿タスクを開始します。目標件数: {count}件")
-
-    # --- デバッグフラグ ---
-    # Trueにすると、ブラウザが表示され(headless=False)、投稿ボタンのクリックがスキップされます。
-    # 通常実行時はFalseにしてください。
-    is_debug =False
 
     # トレース保存用ディレクトリを作成
     os.makedirs(TRACE_DIR, exist_ok=True)
@@ -43,12 +39,15 @@ def post_article(count: int = 10, product_id: int = None):
     posted_count = 0
     try:
         with sync_playwright() as p:
+            headless_mode = is_headless()
+            logging.info(f"Playwright ヘッドレスモード: {headless_mode}")
             context = p.chromium.launch_persistent_context(
                 user_data_dir=PROFILE_DIR,
-                headless=not is_debug,
+                headless=headless_mode,
+                slow_mo=500 if not headless_mode else 0,
                 locale="ja-JP",
                 timezone_id="Asia/Tokyo",
-                env={"DISPLAY": ":0"} if not is_debug else {}
+                env={"DISPLAY": ":0"} if not headless_mode else {}
             )
 
             for product in products:
@@ -73,10 +72,9 @@ def post_article(count: int = 10, product_id: int = None):
                     textarea_locator = page.locator(locators.POST_TEXTAREA)
                     textarea_locator.fill(caption)
 
-                    if not is_debug:
-                        page.locator(locators.SUBMIT_BUTTON).first.click(timeout=10000)
-                        logging.info("投稿ボタンをクリックしました。")
-                        page.wait_for_timeout(15000) # 投稿完了を待つ
+                    page.locator(locators.SUBMIT_BUTTON).first.click(timeout=10000)
+                    logging.info("投稿ボタンをクリックしました。")
+                    page.wait_for_timeout(15000) # 投稿完了を待つ
 
                     page.context.tracing.stop(path=os.path.join(TRACE_DIR, f"trace_{product['id']}.zip"))
                     update_product_status(product['id'], '投稿済')

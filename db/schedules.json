@@ -28,11 +28,56 @@
         }
     ],
     "procure-products": [],
-    "run-follow-action": [],
+    "run-follow-action": [
+        {
+            "count": 10,
+            "time": "00:20"
+        },
+        {
+            "count": 10,
+            "time": "08:15"
+        },
+        {
+            "count": 10,
+            "time": "11:20"
+        },
+        {
+            "count": 10,
+            "time": "15:20"
+        },
+        {
+            "count": 10,
+            "time": "19:25"
+        },
+        {
+            "count": 10,
+            "time": "21:20"
+        }
+    ],
     "run-like-action": [
         {
-            "count": 5,
-            "time": "16:37"
+            "count": 150,
+            "time": "00:15"
+        },
+        {
+            "count": 150,
+            "time": "08:10"
+        },
+        {
+            "count": 100,
+            "time": "11:15"
+        },
+        {
+            "count": 100,
+            "time": "15:15"
+        },
+        {
+            "count": 100,
+            "time": "19:20"
+        },
+        {
+            "count": 150,
+            "time": "21:15"
         }
     ],
     "save-auth-state": []

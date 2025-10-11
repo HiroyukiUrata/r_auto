@@ -3,6 +3,7 @@ import json
 import os
 import re
 from playwright.sync_api import sync_playwright, TimeoutError
+from app.core.config_manager import is_headless
 from app.core.database import get_products_for_caption_creation, get_products_count_for_caption_creation, update_ai_caption, update_product_status
 
 PROMPT_FILE = "app/prompts/caption_prompt.txt"
@@ -58,11 +59,6 @@ def create_caption_prompt():
     """
     logging.info("投稿文作成用プロンプトの生成タスクを開始します。")
 
-    # --- デバッグフラグ ---
-    # Trueにすると、ブラウザが表示されます(headless=False)。
-    # 通常実行時はFalseにしてください。
-    is_debug = False
-    
     # 一度にGeminiに送信する最大件数
     MAX_PRODUCTS_PER_BATCH = 15
 
@@ -79,8 +75,9 @@ def create_caption_prompt():
 
     # Playwrightのインスタンスをループの外で一度だけ起動
     with sync_playwright() as p:
-        # is_debug=True (ヘッドフル) の場合にディスプレイサーバーを指定する。is_debugがFalseの場合はheadlessで起動。
-        browser = p.chromium.launch(headless=not is_debug, env={"DISPLAY": ":0"} if is_debug else {})
+        # 環境変数からヘッドレスモードを読み込む (デフォルトは true)
+        headless_mode = is_headless()
+        logging.info(f"Playwright ヘッドレスモード: {headless_mode}")
         try:
             batch_num = 0
             while True:
@@ -242,8 +239,5 @@ def create_caption_prompt():
 
         finally:
             if browser and not browser.is_closed():
-                if is_debug:
-                    logging.info("デバッグモードのため、ブラウザを閉じる前に60秒間待機します...")
-                    browser.contexts[0].pages[-1].wait_for_timeout(60000) # 最後のページで待機
                 browser.close()
                 logging.info("すべてのバッチ処理が完了したため、ブラウザを閉じました。")

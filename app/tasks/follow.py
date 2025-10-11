@@ -5,6 +5,7 @@ import os
 import re
 
 from playwright.sync_api import sync_playwright, expect
+from app.core.config_manager import is_headless
 
 # 永続的な認証情報を保存するプロファイルディレクトリ
 PROFILE_DIR = "db/playwright_profile"
@@ -24,10 +25,12 @@ def run_follow_action(count: int = 10):
         context = None
         try:
             # 保存されたプロファイルを使ってブラウザを起動
+            headless_mode = is_headless()
+            logging.info(f"Playwright ヘッドレスモード: {headless_mode}")
             context = p.chromium.launch_persistent_context(
                 PROFILE_DIR,
-                headless=False,
-                slow_mo=500,
+                headless=headless_mode,
+                slow_mo=500 if not headless_mode else 0,
                 env={"DISPLAY": ":0"}
             )
             page = context.new_page()
@@ -91,8 +94,6 @@ def run_follow_action(count: int = 10):
                 if button_to_click.count() > 0:
                     try:
                         button_to_click.click()
-                        # クリック後、aria-labelが「フォロー中」に変わることを確認
-                        #expect(button_to_click).to_have_attribute("aria-label", "フォロー中", timeout=5000)
                         followed_count += 1
                         logging.info(f"ユーザーをフォローしました。(合計: {followed_count}件)")
                         scroll_attempts = 0

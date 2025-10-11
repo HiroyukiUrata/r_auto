@@ -65,6 +65,7 @@ class ScheduleUpdateRequest(BaseModel):
 
 class ConfigUpdateRequest(BaseModel):
     max_delay_minutes: int
+    playwright_headless: bool
 
 class JsonImportRequest(BaseModel):
     products: list[dict]
@@ -343,7 +344,8 @@ async def delete_all_products_endpoint():
 async def update_config(config_request: ConfigUpdateRequest):
     """設定を更新する"""
     current_config = get_config()
-    current_config["max_delay_minutes"] = config_request.max_delay_minutes
+    # リクエストのdictを使って一括更新
+    current_config.update(config_request.dict())
     save_config(current_config)
     return {"status": "success", "message": "設定を更新しました。"}
 

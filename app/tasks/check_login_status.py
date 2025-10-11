@@ -3,6 +3,7 @@ from playwright.sync_api import sync_playwright, TimeoutError
 import os
 from app import locators
 
+from app.core.config_manager import is_headless
 PROFILE_DIR = "db/playwright_profile"
 
 def check_login_status():
@@ -21,9 +22,12 @@ def check_login_status():
 
     try:
         with sync_playwright() as p:
+            headless_mode = is_headless()
+            logging.info(f"Playwright ヘッドレスモード: {headless_mode}")
             context = p.chromium.launch_persistent_context(
                 user_data_dir=PROFILE_DIR,
-                headless=True,
+                headless=headless_mode,
+                env={"DISPLAY": ":0"} if not headless_mode else {}
             )
             page = context.new_page()
             page.goto("https://room.rakuten.co.jp/items", wait_until="domcontentloaded")

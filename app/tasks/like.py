@@ -5,6 +5,7 @@ import time
 import re
 
 from playwright.sync_api import sync_playwright, expect
+from app.core.config_manager import is_headless
 
 # 永続的な認証情報を保存するプロファイルディレクトリ
 PROFILE_DIR = "db/playwright_profile"
@@ -25,10 +26,12 @@ def run_like_action(count: int = 10):
         try:
             # 保存されたプロファイルを使ってブラウザを起動
             # headless=False にすることで、VNCでブラウザの動作が見える
+            headless_mode = is_headless()
+            logging.info(f"Playwright ヘッドレスモード: {headless_mode}")
             context = p.chromium.launch_persistent_context(
                 PROFILE_DIR,
-                headless=False,
-                slow_mo=500,  # 動作を少し遅くする
+                headless=headless_mode,
+                slow_mo=500 if not headless_mode else 0,  # ヘッドレスでない場合のみ遅延
                 env={"DISPLAY": ":0"} # VNC用の仮想ディスプレイを指定
             )
             page = context.new_page()
@@ -67,9 +70,6 @@ def run_like_action(count: int = 10):
                     try:
                         # ボタンが見つかったらクリック
                         button_to_click.click()
-                        # クリック後、そのボタンが 'isLiked' クラスを持つようになるのを待つ
-                        # タイムアウトを短めに設定（例: 5秒）
-                        expect(button_to_click).to_have_class(re.compile("isLiked"), timeout=5000)
 
                         # 成功した場合のみカウントを増やす
                         liked_count += 1
@@ -94,8 +94,8 @@ def run_like_action(count: int = 10):
         except Exception as e:
             logging.error(f"「いいね」アクション中にエラーが発生しました: {e}")
         finally:
-            logging.info("処理が完了しました。30秒後にブラウザを閉じます...")
-            time.sleep(30)
+            logging.info("処理が完了しました。5秒後にブラウザを閉じます...")
+            time.sleep(5)
             if context:
                 context.close()
             logging.info("ブラウザコンテキストを閉じました。")

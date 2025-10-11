@@ -271,6 +271,23 @@
             }
         }
 
+        // トースト通知を表示するヘルパー関数
+        function showToast(title, message, isError = false) {
+            const toastEl = document.getElementById('appToast');
+            const toastTitle = document.getElementById('toast-title');
+            const toastBody = document.getElementById('toast-body');
+            
+            toastTitle.textContent = title;
+            toastBody.textContent = message;
+
+            // エラーの場合はヘッダーの色を変更
+            toastEl.querySelector('.toast-header').classList.toggle('bg-danger', isError);
+            toastEl.querySelector('.toast-header').classList.toggle('text-white', isError);
+
+            const toast = new bootstrap.Toast(toastEl);
+            toast.show();
+        }
+
         async function runTaskNow(tag, name_ja) {
             if (!confirm(`タスク「${name_ja}」を今すぐ実行しますか？`)) {
                 return;
@@ -283,10 +300,10 @@
                 if (!response.ok) {
                     throw new Error(result.message || 'タスクの実行開始に失敗しました。');
                 }
-                alert(result.message);
+            showToast('タスク開始', result.message);
             } catch (error) {
                 console.error('Error running task:', error);
-                alert(error.message);
+            showToast('エラー', error.message, true);
             }
         }
 

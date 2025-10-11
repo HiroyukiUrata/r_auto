@@ -3,6 +3,7 @@ import os
 from playwright.sync_api import sync_playwright, TimeoutError
 import traceback
 from app.core.database import get_products_for_post_url_acquisition, update_post_url, update_product_status
+from app.core.config_manager import is_headless
 from app.tasks.create_caption import create_caption_prompt
 
 PROFILE_DIR = "db/playwright_profile"
@@ -11,11 +12,6 @@ def get_post_url():
     """
     投稿URL取得のメインロジック
     """
-    # --- デバッグフラグ ---
-    # Trueにすると、ブラウザが表示されます(headless=False)。
-    # 通常実行時はFalseにしてください。
-    is_debug = False
-
     products = get_products_for_post_url_acquisition()
     if not products:
         logging.info("投稿URL取得対象の商品はありません。")
@@ -29,10 +25,13 @@ def get_post_url():
 
     try:
         with sync_playwright() as p:
+            headless_mode = is_headless()
+            logging.info(f"Playwright ヘッドレスモード: {headless_mode}")
             context = p.chromium.launch_persistent_context(
                 user_data_dir=PROFILE_DIR,
-                headless=not is_debug,
-                env={"DISPLAY": ":0"} if is_debug else {}
+                headless=headless_mode,
+                slow_mo=500 if not headless_mode else 0,
+                env={"DISPLAY": ":0"} if not headless_mode else {}
             )
 
             for product in products:

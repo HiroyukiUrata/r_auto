@@ -1,10 +1,34 @@
 {% extends "base.html" %}
 
 {% block title %}システムコンフィグ - {{ super() }}{% endblock %}
+{% block styles %}
+<style>
+    .form-check-input {
+        width: 3em;
+        height: 1.5em;
+    }
+</style>
+{% endblock %}
 
 {% block content %}
 <div class="row">
     <div class="col-md-12">
+        <!-- 一般設定カード -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-sliders me-2"></i>一般設定</h5>
+            </div>
+            <div class="card-body">
+                <div class="form-check form-switch mb-3">
+                    <input class="form-check-input" type="checkbox" role="switch" id="headless-switch">
+                    <label class="form-check-label" for="headless-switch">Playwright ヘッドレスモード</label>
+                    <small class="form-text text-muted d-block">ONにするとブラウザを非表示で実行します（本番用）。OFFにするとブラウザが表示され、VNCで動作を確認できます（デバッグ用）。</small>
+                </div>
+                <button class="btn btn-primary" onclick="saveGlobalConfig()">
+                    <i class="bi bi-save me-1"></i> 設定を保存
+                </button>
+            </div>
+        </div>
         <!-- JSONインポートカード -->
         <div class="card mb-4">
             <div class="card-header">
@@ -60,6 +84,41 @@
 
 {% block scripts %}
 <script>
+    async function fetchGlobalConfig() {
+        try {
+            const response = await fetch('/api/config');
+            const config = await response.json();
+            document.getElementById('headless-switch').checked = config.playwright_headless;
+        } catch (error) {
+            console.error('Failed to fetch global config:', error);
+        }
+    }
+
+    async function saveGlobalConfig() {
+        const isHeadless = document.getElementById('headless-switch').checked;
+        // max_delay_minutes のような他の設定もここに追加できます
+        const payload = {
+            playwright_headless: isHeadless,
+            max_delay_minutes: 5 // 現在は固定値。必要に応じて入力欄から取得
+        };
+
+        try {
+            const response = await fetch('/api/config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const result = await response.json();
+            if (!response.ok) {
+                throw new Error(result.message || '設定の保存に失敗しました。');
+            }
+            alert('設定を保存しました。');
+        } catch (error) {
+            console.error('Error saving global config:', error);
+            alert(error.message);
+        }
+    }
+
     async function fetchDebugTasks() {
         try {
             const response = await fetch('/api/config-tasks');
@@ -193,6 +252,7 @@
 
     document.addEventListener('DOMContentLoaded', () => {
         fetchDebugTasks();
+        fetchGlobalConfig();
     });
 </script>
 {% endblock %}
