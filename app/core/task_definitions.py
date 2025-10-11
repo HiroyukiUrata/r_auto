@@ -1,4 +1,12 @@
-from app.tasks import procure_products, post_article, run_engagement_actions, save_auth_state, check_login_status, get_post_url
+from app.tasks import (
+    check_login_status,
+    get_post_url,
+    post_article,
+    procure_products,
+    run_follow_action,
+    run_like_action,
+    save_auth_state,
+)
 
 """
 システム内の全タスクの定義を一元管理する。
@@ -30,11 +38,19 @@ TASK_DEFINITIONS = {
         "is_debug": False,
         "order": 20,
     },
-    "run-engagement-actions": {
-        "name_ja": "エンゲージメントアクション",
-        "function": run_engagement_actions,
+    "run-like-action": {
+        "name_ja": "エンゲージメント（いいね）",
+        "function": run_like_action,
         "is_debug": False,
+        "description": "設定されたキーワードに基づいて「いいね」アクションを実行します。",
         "order": 30,
+    },
+    "run-follow-action": {
+        "name_ja": "エンゲージメント（フォロー）",
+        "function": run_follow_action,
+        "is_debug": False,
+        "description": "設定されたキーワードに基づいて「フォロー」アクションを実行します。",
+        "order": 31, # いいねの次に表示
     },
     "save-auth-state": {
         "name_ja": "認証状態の保存",

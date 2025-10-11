@@ -28,14 +28,11 @@
         }
     ],
     "procure-products": [],
-    "run-engagement-actions": [
+    "run-follow-action": [],
+    "run-like-action": [
         {
-            "count": 100,
-            "time": "04:21"
-        },
-        {
-            "count": 1,
-            "time": "12:24"
+            "count": 5,
+            "time": "16:37"
         }
     ],
     "save-auth-state": []

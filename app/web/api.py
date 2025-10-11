@@ -363,8 +363,13 @@ async def update_schedule(update_request: ScheduleUpdateRequest):
     for entry in update_request.times:
         if re.match(r'^([01]\d|2[0-3]):([0-5]\d)$', entry.time):
             task_func = definition["function"]
-            # run_task_with_random_delay に 'count' を渡す
-            job_kwargs = {'task_to_run': task_func, 'count': entry.count}
+
+            # タスク定義からのデフォルト引数を取得し、スケジュール固有の引数で上書き
+            job_kwargs = definition.get("default_kwargs", {}).copy()
+            job_kwargs['task_to_run'] = task_func
+            job_kwargs['count'] = entry.count
+
+            # スケジュールを登録
             schedule.every().day.at(entry.time).do(run_threaded, run_task_with_random_delay, **job_kwargs).tag(tag)
 
     # ファイルに現在のスケジュール状態を保存
@@ -381,9 +386,11 @@ async def run_task_now(tag: str):
 
     task_func = definition["function"]
     # タスクをバックグラウンドスレッドで実行
-    kwargs = {}
+    kwargs = definition.get("default_kwargs", {}).copy()
     # 即時実行の場合、記事投稿は10件に設定
     if tag == "post-article":
+        kwargs['count'] = 10
+    elif tag in ["run-like-action", "run-follow-action"]:
         kwargs['count'] = 10
 
     job_thread, result_container = run_threaded(task_func, **kwargs)
