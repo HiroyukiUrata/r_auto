@@ -1,4 +1,4 @@
 {
     "max_delay_minutes": 5,
-    "playwright_headless": true
+    "playwright_headless": false
 }

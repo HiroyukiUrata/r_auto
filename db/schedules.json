@@ -31,18 +31,18 @@
     "run-follow-action": [
         {
             "count": 10,
-            "time": "00:20"
+            "time": "00:25"
         },
         {
             "count": 10,
-            "time": "08:15"
+            "time": "08:20"
         },
         {
-            "count": 10,
+            "count": 20,
             "time": "11:20"
         },
         {
-            "count": 10,
+            "count": 20,
             "time": "15:20"
         },
         {
@@ -51,7 +51,7 @@
         },
         {
             "count": 10,
-            "time": "21:20"
+            "time": "21:25"
         }
     ],
     "run-like-action": [

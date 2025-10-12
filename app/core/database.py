@@ -111,12 +111,16 @@ def get_error_products_in_last_24h():
     cur = conn.cursor()
     # created_atが24時間前より新しい、かつstatusが'エラー'のものを取得
     twenty_four_hours_ago = datetime.now() - timedelta(hours=24)
-    cur.execute(
-        "SELECT * FROM products WHERE status = 'エラー' AND created_at >= ? ORDER BY created_at DESC",
-        (twenty_four_hours_ago,)
-    )
+
+    query = "SELECT * FROM products WHERE status = 'エラー' AND created_at >= ? ORDER BY created_at DESC"
+    params = (twenty_four_hours_ago,)
+
+    # logging.info(f"エラー商品取得クエリ実行: query='{query}', params={params}")
+
+    cur.execute(query, params)
     products = [dict(row) for row in cur.fetchall()]
     conn.close()
+    # logging.info(f"クエリ結果: {len(products)}件のエラー商品を取得しました。")
     return products
 
 def get_all_ready_to_post_products(limit=None):

@@ -76,32 +76,73 @@ def run_follow_action(count: int = 10):
             # フォローボタンが表示されるのを待つことで、リストの読み込みを確実にする
             page.locator('button[aria-label="フォローする"]').first.wait_for(timeout=15000)
 
+            # --- フォロー処理 ---
             followed_count = 0
             scroll_attempts = 0
             MAX_SCROLL_ATTEMPTS = 5
-            MAX_DURATION_SECONDS = 5 * 60
+            MAX_DURATION_SECONDS = 10 * 60
             start_time = time.time()
+            processed_users = set() # 処理済みのユーザー名を保持するセット
 
             while followed_count < count:
                 elapsed_time = time.time() - start_time
                 if elapsed_time > MAX_DURATION_SECONDS:
                     logging.info(f"最大実行時間（{MAX_DURATION_SECONDS}秒）に達したため、タスクを終了します。")
                     break
+                
+                # ユーザーカードのリストを取得 (HTML構造に合わせてセレクタを調整)
+                user_cards = page.locator("div.profile-wrapper--2SWLY")
+                found_new_user_to_follow = False
 
-                # まだフォローしていないボタン（'is-followed'クラスがない）を探す
-                button_to_click = page.locator('button[aria-label="フォローする"]').first
+                for card in user_cards.all():
+                    username_element = card.locator("span.profile-name--2Hsi5")
+                    if username_element.count() == 0:
+                        continue # ユーザー名が取得できないカードはスキップ
+                    
+                    username = username_element.inner_text()
+                    if username in processed_users:
+                        continue # 既に処理済みのユーザーはスキップ
 
-                if button_to_click.count() > 0:
-                    try:
-                        button_to_click.click()
-                        followed_count += 1
-                        logging.info(f"ユーザーをフォローしました。(合計: {followed_count}件)")
-                        scroll_attempts = 0
-                        time.sleep(random.uniform(2, 4))
-                    except Exception:
-                        logging.warning("フォローに失敗したか、上限に達した可能性があります。タスクを終了します。")
-                        break
-                else:
+                    processed_users.add(username) # 処理済みセットに追加
+                    #logging.info(f"ユーザー「{username}」をチェックします。")
+
+                    # カード内の「フォローする」ボタンを探す
+                    follow_button = card.locator('button:has-text("フォローする")')
+                    
+                    if follow_button.count() > 0:
+                        #logging.info(f"ユーザー「{username}」をフォローします。")
+                        try:
+                            # ボタンがクリック可能になるまで最大5秒待つ
+                            expect(follow_button).to_be_enabled(timeout=5000)
+                            # クリックを実行
+                            follow_button.click(force=True)
+                            
+                            # クリック後、ボタンの表示が「フォロー中」に変わるのを待つ（最大5秒）
+                            try:
+                                following_button = card.locator('button:has-text("フォロー中")')
+                                expect(following_button).to_be_visible(timeout=5000)
+                                # 状態確認が成功した場合のみ、カウントとログ出力を行う
+                                followed_count += 1
+                                logging.info(f"ユーザー「{username}」をフォローしました。(合計: {followed_count}件)")
+                                found_new_user_to_follow = True
+                            except Exception:
+                                # タイムアウトした場合でもエラーで止めず、警告を出力して次に進む
+                                logging.warning(f"ユーザー「{username}」をフォロー後、状態の確認に失敗しました。UIが更新されなかった可能性があります。")
+                            
+                            time.sleep(random.uniform(3, 4))
+                            if followed_count >= count:
+                                break # 目標件数に達したらループを抜ける
+                        except Exception as e:
+                            logging.warning(f"ユーザー「{username}」のフォローに失敗しました: {e}")
+                            # 失敗した場合でも、次のユーザーへ進む
+                    else:
+                        #logging.info(f"ユーザー「{username}」はフォロー済み、またはフォロー対象外です。")
+                        pass
+                if followed_count >= count:
+                    break # 目標件数に達したらwhileループも抜ける
+
+                # 新しいフォロー対象が見つからなかった場合、スクロールする
+                if not found_new_user_to_follow:
                     if scroll_attempts >= MAX_SCROLL_ATTEMPTS:
                         logging.info(f"{MAX_SCROLL_ATTEMPTS}回スクロールしても新しいユーザーが見つからなかったため、処理を終了します。")
                         break
@@ -109,6 +150,8 @@ def run_follow_action(count: int = 10):
                     page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
                     time.sleep(3)
                     scroll_attempts += 1
+                else:
+                    scroll_attempts = 0 # フォロー成功時はスクロールカウントをリセット
 
             logging.info(f"合計{followed_count}件のフォローを実行しました。")
         except Exception as e:

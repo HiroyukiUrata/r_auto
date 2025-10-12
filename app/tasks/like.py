@@ -53,34 +53,38 @@ def run_like_action(count: int = 10):
             liked_count = 0
             scroll_attempts = 0
             MAX_SCROLL_ATTEMPTS = 5 # 新しいボタンが見つからない場合にスクロールを試行する最大回数
-            MAX_DURATION_SECONDS = 5 * 60 # 最大実行時間を設定
+            MAX_DURATION_SECONDS = 10 * 60 # 最大実行時間を設定
             start_time = time.time()
 
             while liked_count < count:
-                # --- 最大実行時間のチェック ---
                 elapsed_time = time.time() - start_time
                 if elapsed_time > MAX_DURATION_SECONDS:
                     logging.info(f"最大実行時間（{MAX_DURATION_SECONDS}秒）に達したため、タスクを終了します。")
                     break
 
-                # 画面に見えている「未いいね」ボタンの最初の1つを取得
                 button_to_click = page.locator("a.icon-like:not(.isLiked)").first
 
                 if button_to_click.count() > 0:
                     try:
-                        # ボタンが見つかったらクリック
-                        button_to_click.click()
+                        # クリックするボタンから親を辿って、投稿カード全体を取得
+                        item_card = button_to_click.locator("xpath=ancestor::div[contains(@class, 'item-new-holder')]")
+                        
+                        # 商品説明を取得
+                        description = ""
+                        description_element = item_card.locator("p.story")
+                        if description_element.count() > 0:
+                            description = description_element.get_attribute("title") or ""
 
-                        # 成功した場合のみカウントを増やす
+                        button_to_click.click()
                         liked_count += 1
-                        logging.info(f"投稿に「いいね」しました。(合計: {liked_count}件)")
-                        scroll_attempts = 0 # 見つかったのでリセット
+                        log_description = (description[:30] + '...') if len(description) > 30 else description
+                        logging.info(f"投稿に「いいね」しました: \"{log_description}\" (合計: {liked_count}件)")
+                        scroll_attempts = 0
                         time.sleep(random.uniform(1, 3))
                     except Exception:
                         logging.warning("「いいね」クリックに失敗したか、上限に達した可能性があります。タスクを終了します。")
                         break # ループを抜ける
                 else:
-                    # ボタンが見つからなければスクロール
                     if scroll_attempts >= MAX_SCROLL_ATTEMPTS:
                         logging.info(f"{MAX_SCROLL_ATTEMPTS}回スクロールしても新しいボタンが見つからなかったため、処理を終了します。")
                         break
@@ -89,7 +93,6 @@ def run_like_action(count: int = 10):
                     page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
                     time.sleep(3) # スクロール後の読み込みを待つ
                     scroll_attempts += 1
-
             logging.info(f"合計{liked_count}件の「いいね」を実行しました。")
         except Exception as e:
             logging.error(f"「いいね」アクション中にエラーが発生しました: {e}")

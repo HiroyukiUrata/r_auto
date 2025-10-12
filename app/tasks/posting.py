@@ -75,8 +75,8 @@ def post_article(count: int = 10, product_id: int = None):
                     page.locator(locators.SUBMIT_BUTTON).first.click(timeout=10000)
                     logging.info("投稿ボタンをクリックしました。")
                     page.wait_for_timeout(15000) # 投稿完了を待つ
-
-                    page.context.tracing.stop(path=os.path.join(TRACE_DIR, f"trace_{product['id']}.zip"))
+                    
+                    page.context.tracing.stop() # トレースを停止するが、ファイルは保存しない
                     update_product_status(product['id'], '投稿済')
                     posted_count += 1
 

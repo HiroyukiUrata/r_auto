@@ -78,6 +78,12 @@ def create_caption_prompt():
         # 環境変数からヘッドレスモードを読み込む (デフォルトは true)
         headless_mode = is_headless()
         logging.info(f"Playwright ヘッドレスモード: {headless_mode}")
+        browser = p.chromium.launch(
+            headless=headless_mode,
+            slow_mo=500 if not headless_mode else 0,
+            env={"DISPLAY": ":0"} if not headless_mode else {}
+        )
+
         try:
             batch_num = 0
             while True:
