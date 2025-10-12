@@ -9,7 +9,7 @@
         },
         {
             "count": 15,
-            "time": "07:50"
+            "time": "07:57"
         },
         {
             "count": 15,
@@ -30,8 +30,8 @@
     ],
     "procure-products-flow": [
         {
-            "count": 20,
-            "time": "23:39"
+            "count": 2,
+            "time": "08:29"
         }
     ],
     "rakuten-api-procure": [],

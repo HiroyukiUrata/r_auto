@@ -2,6 +2,7 @@ import sqlite3
 import logging
 import os
 import json
+from datetime import datetime, timezone, timedelta
 
 DB_FILE = "db/products.db"
 KEYWORDS_FILE = "db/keywords.json"
@@ -79,7 +80,7 @@ def init_db():
             # 既存のレコードには、他のタイムスタンプから推測できる最も古い日時を設定
             cursor.execute("UPDATE products SET created_at = COALESCE(post_url_updated_at, ai_caption_created_at, posted_at, CURRENT_TIMESTAMP) WHERE created_at IS NULL")
         if 'post_url' not in columns:
-            cursor.execute("ALTER TABLE products ADD COLUMN post_url TEXT")
+            cursor.execute("ALTER TABLE proNOWucts ADD COLUMN post_url TEXT")
             logging.info("productsテーブルに 'post_url' カラムを追加しました。")
         if 'post_url_updated_at' not in columns:
             cursor.execute("ALTER TABLE products ADD COLUMN post_url_updated_at TIMESTAMP")
@@ -110,7 +111,6 @@ def init_db():
 
 def get_error_products_in_last_24h():
     """過去24時間以内に作成され、かつステータスが「エラー」の商品を取得する"""
-    from datetime import datetime, timedelta
     conn = get_db_connection()
     cur = conn.cursor()
     # created_atが24時間前より新しい、かつstatusが'エラー'のものを取得
@@ -194,9 +194,12 @@ def update_product_status(product_id, status, error_message=None):
     """商品のステータスを更新する。エラーの場合はエラーメッセージも保存する。"""
     conn = get_db_connection()
     try:
+        # JSTのタイムゾーンを定義
+        jst = timezone(timedelta(hours=9))
+        now_jst_iso = datetime.now(jst).isoformat()
         if status == '投稿済':
             # 投稿済みにする際は、投稿完了日時も記録する
-            conn.execute("UPDATE products SET status = ?, posted_at = CURRENT_TIMESTAMP, error_message = NULL WHERE id = ?", (status, product_id))
+            conn.execute("UPDATE products SET status = ?, posted_at = ?, error_message = NULL WHERE id = ?", (status, now_jst_iso, product_id))
         elif status == 'エラー':
             conn.execute("UPDATE products SET status = ?, error_message = ? WHERE id = ?", (status, str(error_message), product_id))
         else:
@@ -216,9 +219,12 @@ def update_status_for_multiple_products(product_ids: list[int], status: str):
     conn = get_db_connection()
     try:
         placeholders = ','.join('?' for _ in product_ids)
+        # JSTのタイムゾーンを定義
+        jst = timezone(timedelta(hours=9))
+        now_jst_iso = datetime.now(jst).isoformat()
         if status == '投稿済':
-            query = f"UPDATE products SET status = ?, posted_at = CURRENT_TIMESTAMP, error_message = NULL WHERE id IN ({placeholders})"
-            params = [status] + product_ids
+            query = f"UPDATE products SET status = ?, posted_at = ?, error_message = NULL WHERE id IN ({placeholders})"
+            params = [status, now_jst_iso] + product_ids
         else:
             query = f"UPDATE products SET status = ?, error_message = NULL WHERE id IN ({placeholders})"
             params = [status] + product_ids
@@ -258,7 +264,10 @@ def update_post_url(product_id, post_url):
     """指定された商品の投稿URLと更新日時を更新し、ステータスを「URL取得済」に変更する"""
     conn = get_db_connection()
     try:
-        conn.execute("UPDATE products SET post_url = ?, post_url_updated_at = CURRENT_TIMESTAMP, status = 'URL取得済' WHERE id = ?", (post_url, product_id))
+        # JSTのタイムゾーンを定義
+        jst = timezone(timedelta(hours=9))
+        now_jst_iso = datetime.now(jst).isoformat()
+        conn.execute("UPDATE products SET post_url = ?, post_url_updated_at = ?, status = 'URL取得済' WHERE id = ?", (post_url, now_jst_iso, product_id))
         conn.commit()
         logging.info(f"商品ID: {product_id} の投稿URLを更新し、ステータスを「URL取得済」に変更しました。")
     finally:
@@ -268,7 +277,10 @@ def update_ai_caption(product_id, caption):
     """指定された商品のAI投稿文と更新日時を更新し、ステータスを「投稿準備完了」に変更する"""
     conn = get_db_connection()
     try:
-        conn.execute("UPDATE products SET ai_caption = ?, ai_caption_created_at = CURRENT_TIMESTAMP, status = '投稿準備完了' WHERE id = ?", (caption, product_id))
+        # JSTのタイムゾーンを定義
+        jst = timezone(timedelta(hours=9))
+        now_jst_iso = datetime.now(jst).isoformat()
+        conn.execute("UPDATE products SET ai_caption = ?, ai_caption_created_at = ?, status = '投稿準備完了' WHERE id = ?", (caption, now_jst_iso, product_id))
         conn.commit()
         logging.info(f"商品ID: {product_id} のAI投稿文を更新し、ステータスを「投稿準備完了」に変更しました。")
     finally:
@@ -280,10 +292,16 @@ def add_product_if_not_exists(name=None, url=None, image_url=None, procurement_k
         logging.warning("商品名またはURLが不足しているため、DBに追加できません。")
         return False
 
+    # JSTのタイムゾーンを定義
+    jst = timezone(timedelta(hours=9))
+    # JSTの現在時刻をISO 8601形式の文字列で取得
+    created_at_jst = datetime.now(jst).isoformat()
+
     conn = get_db_connection()
     try:
-        conn.execute("INSERT INTO products (name, url, image_url, procurement_keyword, status) VALUES (?, ?, ?, ?, '生情報取得')",
-                       (name, url, image_url, procurement_keyword))
+        # created_atも明示的にJSTで指定する
+        conn.execute("INSERT INTO products (name, url, image_url, procurement_keyword, status, created_at) VALUES (?, ?, ?, ?, '生情報取得', ?)",
+                       (name, url, image_url, procurement_keyword, created_at_jst))
         conn.commit()
         return True # 新規追加成功
     except sqlite3.IntegrityError:
@@ -312,15 +330,20 @@ def import_products(products_data: list[dict]):
     if not products_data:
         return 0
 
+    # JSTのタイムゾーンを定義
+    jst = timezone(timedelta(hours=9))
+    # JSTの現在時刻をISO 8601形式の文字列で取得
+    created_at_jst = datetime.now(jst).isoformat()
+
     # executemany用に、辞書のリストをタプルのリストに変換
     records_to_insert = [
-        (p.get('name'), p.get('url'), p.get('image_url'), p.get('procurement_keyword')) for p in products_data if p.get('name') and p.get('url')
+        (p.get('name'), p.get('url'), p.get('image_url'), p.get('procurement_keyword'), created_at_jst) for p in products_data if p.get('name') and p.get('url')
     ]
 
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
-        cursor.executemany("INSERT OR IGNORE INTO products (name, url, image_url, procurement_keyword, status, created_at) VALUES (?, ?, ?, ?, '生情報取得', CURRENT_TIMESTAMP)", records_to_insert)
+        cursor.executemany("INSERT OR IGNORE INTO products (name, url, image_url, procurement_keyword, status, created_at) VALUES (?, ?, ?, ?, '生情報取得', ?)", records_to_insert)
         conn.commit()
         return cursor.rowcount # 実際に挿入された行数を返す
     finally:

@@ -24,10 +24,12 @@ from app.tasks.rakuten_api_procure import procure_from_rakuten_api
 TASK_DEFINITIONS = {
     "procure-products-flow": {
         "name_ja": "商品調達フロー",
-        "function": procure.run_procurement_flow,
+#        "function": procure.run_procurement_flow,
+        "function": procure.search_and_procure_from_rakuten,
         "is_debug": False, # スケジュール専用タスク
         "show_in_schedule": True,
         "description": "設定された方法（APIまたは検索）で商品を調達し、後続タスクを自動実行します。",
+        "on_success": "get-post-url",
         "order": 10,
     },
     "rakuten-api-procure": {

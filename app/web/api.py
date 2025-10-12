@@ -64,9 +64,10 @@ class ScheduleUpdateRequest(BaseModel):
     times: list[TimeEntry]
 
 class ConfigUpdateRequest(BaseModel):
-    max_delay_minutes: int
-    playwright_headless: bool
-    procurement_method: str
+    # すべてのフィールドをオプショナル（任意）に変更
+    max_delay_minutes: int | None = None
+    playwright_headless: bool | None = None
+    procurement_method: str | None = None
 
 class JsonImportRequest(BaseModel):
     products: list[dict]
@@ -347,8 +348,9 @@ async def delete_all_products_endpoint():
 async def update_config(config_request: ConfigUpdateRequest):
     """設定を更新する"""
     current_config = get_config()
-    # リクエストのdictを使って一括更新
-    current_config.update(config_request.dict())
+    # リクエストで送信された値（Noneでないもの）だけを更新する
+    update_data = config_request.dict(exclude_unset=True)
+    current_config.update(update_data)
     save_config(current_config)
     return {"status": "success", "message": "設定を更新しました。"}
 
