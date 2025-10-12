@@ -24,6 +24,26 @@
                     <label class="form-check-label" for="headless-switch">Playwright ヘッドレスモード</label>
                     <small class="form-text text-muted d-block">ONにするとブラウザを非表示で実行します（本番用）。OFFにするとブラウザが表示され、VNCで動作を確認できます（デバッグ用）。</small>
                 </div>
+
+                <!-- 商品調達方法設定 -->
+                <div class="mb-4">
+                    <label class="form-label"><strong>商品調達方法（スケジュール実行時）</strong></label>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="procurementMethod" id="procure-search" value="search">
+                        <label class="form-check-label" for="procure-search">
+                            楽天市場から商品を検索・調達
+                        </label>
+                        <div class="form-text text-muted">DBに登録されたキーワードを元に楽天市場を検索します。</div>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="procurementMethod" id="procure-api" value="api">
+                        <label class="form-check-label" for="procure-api">
+                            楽天APIから商品を調達 <span class="badge bg-warning text-dark">未実装</span>
+                        </label>
+                        <div class="form-text text-muted">楽天APIを利用して商品を調達します。（この機能はまだ実装されていません）</div>
+                    </div>
+                </div>
+
                 <button class="btn btn-primary" onclick="saveGlobalConfig()">
                     <i class="bi bi-save me-1"></i> 設定を保存
                 </button>
@@ -89,6 +109,11 @@
             const response = await fetch('/api/config');
             const config = await response.json();
             document.getElementById('headless-switch').checked = config.playwright_headless;
+
+            // 調達方法のラジオボタンに値を設定
+            const procurementMethod = config.procurement_method || 'search'; // デフォルトはsearch
+            document.querySelector(`input[name="procurementMethod"][value="${procurementMethod}"]`).checked = true;
+
         } catch (error) {
             console.error('Failed to fetch global config:', error);
         }
@@ -96,10 +121,12 @@
 
     async function saveGlobalConfig() {
         const isHeadless = document.getElementById('headless-switch').checked;
-        // max_delay_minutes のような他の設定もここに追加できます
+        const procurementMethod = document.querySelector('input[name="procurementMethod"]:checked').value;
+
         const payload = {
             playwright_headless: isHeadless,
-            max_delay_minutes: 5 // 現在は固定値。必要に応じて入力欄から取得
+            max_delay_minutes: 5, // 現在は固定値。必要に応じて入力欄から取得
+            procurement_method: procurementMethod
         };
 
         try {

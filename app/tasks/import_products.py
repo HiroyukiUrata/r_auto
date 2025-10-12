@@ -1,84 +1,58 @@
 import logging
-import json
-import os
 from urllib.parse import urlparse, parse_qs
-import re
-from app.core.database import import_products
+from app.core.database import add_product_if_not_exists, DB_FILE
+import sqlite3
 
-IMPORT_FILE_PATH = "db/import_products.json"
-
-# インポートするJSONのキーとDBカラム名のマッピング
-JSON_TO_DB_MAP = {
+def get_existing_product_urls():
+    """データベースに登録されているすべての商品のURLをセットで返す。"""
+    try:
+        with sqlite3.connect(DB_FILE) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT url FROM products WHERE url IS NOT NULL")
+            return {row[0] for row in cursor.fetchall()}
+    except sqlite3.Error as e:
+        logging.error(f"既存のURL取得中にDBエラーが発生しました: {e}")
+        return set()
+# このマップは商品データのキーとDBカラムを対応付ける
+PRODUCT_DATA_MAP = {
     'item_description': 'name',
     'page_url': 'url',
     'image_url': 'image_url',
+    'procurement_keyword': 'procurement_keyword',
 }
 
-def process_and_import_products(items: list) -> int:
+def process_and_import_products(items: list) -> tuple[int, int]:
     """
-    商品アイテムのリストを受け取り、解析してデータベースにインポートする。
-    :param items: 商品情報の辞書を含むリスト
-    :return: 実際にインポートされた商品の件数
+    商品アイテムのリストを受け取り、DBに保存する共通処理関数。
+    :param items: 商品情報の辞書のリスト
+    :return: (新規追加件数, スキップ件数) のタプル
     """
-    products_to_import = []
-    for item in items:
+    logging.info(f"商品登録処理を開始します。対象件数: {len(items)}件")
+    added_count = 0
+    skipped_count = 0
+
+    for i, item in enumerate(items):
+        product_name_for_log = item.get('item_description', 'N/A')[:40]
+        logging.info(f"  [{i+1}/{len(items)}] 商品「{product_name_for_log}...」を処理中...")
         product_data = {}
-        for json_key, db_column in JSON_TO_DB_MAP.items():
+        for json_key, db_column in PRODUCT_DATA_MAP.items():
             value = item.get(json_key)
-            
-            # page_urlはリダイレクト用なので、実際のリンクを抽出
+            # 楽天の検索リダイレクトURLを実際のitem.rakuten.co.jpのURLに変換する
             if db_column == 'url' and value and 'rat-redirect' in value:
                 try:
                     parsed_url = urlparse(value)
                     query_params = parse_qs(parsed_url.query)
-                    actual_url = query_params.get('dest', [None])[0]
-                    product_data[db_column] = actual_url
-                except Exception:
+                    product_data[db_column] = query_params.get('dest', [None])[0]
+                except (IndexError, TypeError):
                     product_data[db_column] = None
             else:
                 product_data[db_column] = value
         
-        if product_data.get('name') and product_data.get('url'):
-            products_to_import.append(product_data)
-
-    if not products_to_import:
-        return 0
-
-    return import_products(products_to_import)
-
-def import_products_from_file():
-    """
-    db/import_products.json ファイルから商品データを一括でインポートする。
-    """
-    logging.info(f"商品インポートタスクを開始します。ファイル: {IMPORT_FILE_PATH}")
-
-    if not os.path.exists(IMPORT_FILE_PATH):
-        logging.error(f"インポートファイルが見つかりません: {IMPORT_FILE_PATH}")
-        return
-
-    try:
-        # まずファイル全体を文字列として読み込む
-        with open(IMPORT_FILE_PATH, "r", encoding="utf-8") as f:
-            file_content = f.read()
-        # 文字列からJSONオブジェクトにパースする
-        items = json.loads(file_content)
-    except json.JSONDecodeError as e:
-        logging.warning(f"JSONの解析に失敗しました: {e}。自動修正を試みます...")
-        try:
-            # 文字列内の " を \" に置換する単純な修正を試みる
-            # 注: この方法は値の中に " が含まれる場合にのみ有効です
-            # より複雑なケースでは、手動での修正が必要になる場合があります
-            fixed_content = file_content.replace('"', '\\"') # 全てエスケープ
-            fixed_content = re.sub(r'\\"([a-zA-Z0-9_]+)\\":', r'"\1":', fixed_content) # キーを元に戻す
-            items = json.loads(fixed_content)
-            logging.info("JSONの自動修正に成功しました。")
-        except json.JSONDecodeError as final_e:
-            logging.error(f"JSONの自動修正後も解析に失敗しました: {final_e}")
-            return
-
-    if not items:
-        logging.warning("インポート対象の商品データが見つかりませんでした。")
-        return
-
-    inserted_count = process_and_import_products(items)
-    logging.info(f"商品インポートタスクが完了しました。{len(items)}件中、{inserted_count}件の新規商品をインポートしました。")
+        if add_product_if_not_exists(**product_data):
+            logging.info(f"    -> [追加] 新規商品としてデータベースに登録しました。")
+            added_count += 1
+        else:
+            logging.info(f"    -> [スキップ] この商品は既にデータベースに存在します。")
+            skipped_count += 1
+    
+    return added_count, skipped_count

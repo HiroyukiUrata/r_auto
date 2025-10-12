@@ -76,7 +76,7 @@
 
             schedules.forEach(job => {
                 // 件数設定が可能なタスクのタグリスト
-                const isCountableTask = ['post-article', 'run-like-action', 'run-follow-action'].includes(job.tag);
+                const isCountableTask = ['procure-products-flow', 'post-article', 'run-like-action', 'run-follow-action'].includes(job.tag);
 
                 const timesHtml = job.times.map(entry => `
                     <div class="time-entry d-flex justify-content-between align-items-center p-2 border-bottom">

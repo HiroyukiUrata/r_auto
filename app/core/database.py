@@ -1,7 +1,11 @@
 import sqlite3
 import logging
+import os
+import json
 
 DB_FILE = "db/products.db"
+KEYWORDS_FILE = "db/keywords.json"
+
 
 def get_db_connection():
     """データベース接続を取得する"""
@@ -226,6 +230,30 @@ def update_status_for_multiple_products(product_ids: list[int], status: str):
     finally:
         conn.close()
 
+def get_all_keywords() -> list[dict]:
+    """
+    JSONファイルからすべてのキーワードを読み込み、辞書のリストとして返す。
+    :return: [{'keyword': 'キーワード1'}, {'keyword': 'キーワード2'}, ...] の形式のリスト
+    """
+    if not os.path.exists(KEYWORDS_FILE):
+        logging.warning(f"キーワードファイルが見つかりません: {KEYWORDS_FILE}")
+        return []
+
+    try:
+        with open(KEYWORDS_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        
+        keywords_a = data.get("keywords_a", [])
+        keywords_b = data.get("keywords_b", [])
+        
+        all_keywords = keywords_a + keywords_b
+        
+        # 辞書のリスト形式に変換して返す
+        return [{"keyword": kw} for kw in all_keywords if kw]
+    except (IOError, json.JSONDecodeError) as e:
+        logging.error(f"キーワードファイルの読み込みまたは解析に失敗しました: {e}")
+        return []
+
 def update_post_url(product_id, post_url):
     """指定された商品の投稿URLと更新日時を更新し、ステータスを「URL取得済」に変更する"""
     conn = get_db_connection()
@@ -246,21 +274,33 @@ def update_ai_caption(product_id, caption):
     finally:
         conn.close()
 
-def add_product_if_not_exists(name=None, url=None, image_url=None):
-    """同じURLの商品が存在しない場合のみ、新しい商品をDBに追加する"""
+def add_product_if_not_exists(name=None, url=None, image_url=None, procurement_keyword=None):
+    """同じURLの商品が存在しない場合のみ、新しい商品をDBに追加する。調達キーワードも保存する。"""
     if not name or not url:
         logging.warning("商品名またはURLが不足しているため、DBに追加できません。")
         return False
 
     conn = get_db_connection()
     try:
-        conn.execute("INSERT INTO products (name, url, image_url, status) VALUES (?, ?, ?, '生情報取得')",
-                       (name, url, image_url))
+        conn.execute("INSERT INTO products (name, url, image_url, procurement_keyword, status) VALUES (?, ?, ?, ?, '生情報取得')",
+                       (name, url, image_url, procurement_keyword))
         conn.commit()
         return True # 新規追加成功
     except sqlite3.IntegrityError:
         logging.debug(f"URLが重複しているため、商品は追加されませんでした: {url}")
         return False  # 既に存在する
+    finally:
+        conn.close()
+
+def product_exists_by_url(url: str) -> bool:
+    """指定されたURLの商品がデータベースに存在するかどうかをチェックする。"""
+    if not url:
+        return False
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM products WHERE url = ? LIMIT 1", (url,))
+        return cursor.fetchone() is not None
     finally:
         conn.close()
 

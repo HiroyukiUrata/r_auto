@@ -1,4 +1,5 @@
 {
     "max_delay_minutes": 5,
-    "playwright_headless": false
+    "playwright_headless": false,
+    "procurement_method": "search"
 }

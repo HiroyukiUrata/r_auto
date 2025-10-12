@@ -1,5 +1,6 @@
 {
     "check-login-status": [],
+    "create-caption-prompt": [],
     "get-post-url": [],
     "post-article": [
         {
@@ -27,7 +28,13 @@
             "time": "21:00"
         }
     ],
-    "procure-products": [],
+    "procure-products-flow": [
+        {
+            "count": 20,
+            "time": "23:39"
+        }
+    ],
+    "rakuten-api-procure": [],
     "run-follow-action": [
         {
             "count": 10,
@@ -80,5 +87,6 @@
             "time": "21:15"
         }
     ],
-    "save-auth-state": []
+    "save-auth-state": [],
+    "search-and-procure-from-rakuten": []
 }

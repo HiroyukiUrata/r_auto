@@ -11,7 +11,7 @@ from pydantic import BaseModel
 # タスク定義を一元的にインポート
 from app.core.task_definitions import TASK_DEFINITIONS
 from app.core.database import get_all_inventory_products, update_product_status, delete_all_products, init_db, delete_product, update_status_for_multiple_products, delete_multiple_products, get_product_count_by_status, get_error_products_in_last_24h
-from app.tasks.posting import post_article
+from app.tasks.posting import post_article # procure.run_procurement_flow は task_definitions から参照される
 from app.tasks.get_post_url import get_post_url
 from app.tasks.import_products import process_and_import_products
 from app.core.config_manager import get_config, save_config
@@ -66,6 +66,7 @@ class ScheduleUpdateRequest(BaseModel):
 class ConfigUpdateRequest(BaseModel):
     max_delay_minutes: int
     playwright_headless: bool
+    procurement_method: str
 
 class JsonImportRequest(BaseModel):
     products: list[dict]
@@ -317,14 +318,16 @@ async def import_from_json(request: JsonImportRequest):
     """ブラウザから送信されたJSONデータを使って商品をインポートする"""
     try:
         items_to_import = request.products
-        if not isinstance(items_to_import, list):
-            return JSONResponse(status_code=400, content={"status": "error", "message": "JSONのルートは配列である必要があります。"})
-        inserted_count = process_and_import_products(items_to_import)
+        if not items_to_import:
+            return JSONResponse(status_code=400, content={"status": "error", "message": "インポートする商品がありません。"})
         
-        # インポート成功後、バックグラウンドで投稿URL取得タスクを実行
-        run_threaded(get_post_url)
+        # 共通のインポート処理関数を呼び出す
+        added_count, skipped_count = process_and_import_products(items_to_import)
 
-        return JSONResponse(content={"status": "success", "message": f"{len(items_to_import)}件中、{inserted_count}件の新規商品をインポートしました。\n続けてバックグラウンドで投稿URLの取得を開始します。"})
+        # フローの起点となるタスクを実行
+        _run_task_internal("get-post-url", is_part_of_flow=False)
+
+        return JSONResponse(content={"status": "success", "message": f"{len(items_to_import)}件中、{added_count}件の新規商品をインポートしました。\n続けてバックグラウンドで後続タスク（投稿URL取得など）を開始します。"})
     except Exception as e:
         logging.error(f"JSONからのインポート処理中にエラーが発生しました: {e}")
         return JSONResponse(status_code=500, content={"status": "error", "message": "インポート処理中にサーバーエラーが発生しました。"})
@@ -381,21 +384,42 @@ async def update_schedule(update_request: ScheduleUpdateRequest):
 
 @app.post("/api/tasks/{tag}/run")
 async def run_task_now(tag: str):
-    """指定されたタスクを即時実行する"""
+    """
+    指定されたタスクを即時実行する。
+    フローの起点となるタスクとして実行される。
+    """
+    return _run_task_internal(tag, is_part_of_flow=False)
+
+def _run_task_internal(tag: str, is_part_of_flow: bool):
+    """
+    タスクを実行する内部関数。フローの一部かどうかもハンドリングする。
+    :param tag: 実行するタスクのタグ
+    :param is_part_of_flow: この実行がフローの一部であるか
+    """
     definition = TASK_DEFINITIONS.get(tag)
     if not definition:
         return JSONResponse(status_code=404, content={"status": "error", "message": f"Task '{tag}' not found."})
 
     task_func = definition["function"]
+
+    def task_wrapper(**kwargs):
+        """タスク実行後に後続タスクを呼び出すラッパー関数"""
+        task_func(**kwargs)
+        # フローの起点であり、かつ成功時の後続タスクが定義されている場合
+        if not is_part_of_flow and "on_success" in definition:
+            next_task_tag = definition["on_success"]
+            logging.info(f"--- フロー実行: 「{definition['name_ja']}」が完了。次のタスク「{TASK_DEFINITIONS[next_task_tag]['name_ja']}」を実行します。 ---")
+            _run_task_internal(next_task_tag, is_part_of_flow=True)
+
     # タスクをバックグラウンドスレッドで実行
     kwargs = definition.get("default_kwargs", {}).copy()
     # 即時実行の場合、記事投稿は10件に設定
     if tag == "post-article":
-        kwargs['count'] = 10
-    elif tag in ["run-like-action", "run-follow-action"]:
+        kwargs['count'] = 10 # 記事投稿は10件
+    elif tag in ["run-like-action", "run-follow-action", "procure-products-flow"]:
         kwargs['count'] = 10
 
-    job_thread, result_container = run_threaded(task_func, **kwargs)
+    job_thread, result_container = run_threaded(task_wrapper, **kwargs)
 
     # 結果を待って返すタイプのタスク
     if tag in ["check-login-status", "save-auth-state"]:

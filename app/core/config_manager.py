@@ -6,7 +6,8 @@ CONFIG_FILE = "db/config.json"
 # デフォルト設定に playwright_headless を追加
 DEFAULT_CONFIG = {
     "max_delay_minutes": 5,
-    "playwright_headless": True  # デフォルトはヘッドレスON
+    "playwright_headless": True,  # デフォルトはヘッドレスON
+    "procurement_method": "search" # デフォルトは 'search' (楽天市場検索)
 }
 
 def get_config():
