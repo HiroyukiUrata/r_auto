@@ -10,6 +10,9 @@ KEYWORDS_FILE = "db/keywords.json"
 
 def get_db_connection():
     """データベース接続を取得する"""
+    # データベースファイルが格納されるディレクトリの存在を確認し、なければ作成する
+    db_dir = os.path.dirname(DB_FILE)
+    os.makedirs(db_dir, exist_ok=True)
     conn = sqlite3.connect(DB_FILE)
     conn.row_factory = sqlite3.Row
     return conn

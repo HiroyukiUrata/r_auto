@@ -21,3 +21,4 @@ db/gemini_response_after.json
 # Playwright profile
 db/playwright_profile/
 db/error_trace/
+db/products.db
