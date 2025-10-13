@@ -5,7 +5,7 @@
     "post-article": [
         {
             "count": 15,
-            "time": "00:00"
+            "time": "00:10"
         },
         {
             "count": 15,
@@ -31,7 +31,7 @@
     "procure-products-flow": [
         {
             "count": 2,
-            "time": "08:29"
+            "time": "08:30"
         }
     ],
     "rakuten-api-procure": [],

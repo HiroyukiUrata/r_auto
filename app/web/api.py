@@ -406,12 +406,15 @@ def _run_task_internal(tag: str, is_part_of_flow: bool):
 
     def task_wrapper(**kwargs):
         """タスク実行後に後続タスクを呼び出すラッパー関数"""
-        task_func(**kwargs)
+        # タスクを実行し、その戻り値を取得
+        result = task_func(**kwargs)
         # フローの起点であり、かつ成功時の後続タスクが定義されている場合
+        # 戻り値がTrueの場合のみ後続タスクを実行
         if not is_part_of_flow and "on_success" in definition:
             next_task_tag = definition["on_success"]
             logging.info(f"--- フロー実行: 「{definition['name_ja']}」が完了。次のタスク「{TASK_DEFINITIONS[next_task_tag]['name_ja']}」を実行します。 ---")
             _run_task_internal(next_task_tag, is_part_of_flow=True)
+        return result
 
     # タスクをバックグラウンドスレッドで実行
     kwargs = definition.get("default_kwargs", {}).copy()
@@ -433,6 +436,7 @@ def _run_task_internal(tag: str, is_part_of_flow: bool):
             return JSONResponse(status_code=500, content={"status": "error", "message": "タスクがタイムアウトしました。"})
         
         result = result_container.get('result')
+        logging.info(f"スレッドから受け取った結果 (タスク: {tag}): {result} (型: {type(result)})")
         if tag == "check-login-status":
             message = "成功: ログイン状態が維持されています。" if result else "失敗: ログイン状態が確認できませんでした。"
         elif tag == "save-auth-state":

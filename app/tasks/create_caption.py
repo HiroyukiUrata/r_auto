@@ -3,6 +3,7 @@ import json
 import os
 import re
 from playwright.sync_api import sync_playwright, TimeoutError
+import math
 from app.core.config_manager import is_headless
 from app.core.database import get_products_for_caption_creation, get_products_count_for_caption_creation, update_ai_caption, update_product_status
 
@@ -85,16 +86,18 @@ def create_caption_prompt():
         )
 
         try:
-            batch_num = 0
-            while True:
+            # 処理すべきバッチの総回数を計算
+            max_batches = math.ceil(total_products_count / MAX_PRODUCTS_PER_BATCH)
+            logging.info(f"最大バッチ処理回数: {max_batches}回")
+
+            for batch_num in range(1, max_batches + 1):
                 # DBから指定件数だけ商品を取得
                 products = get_products_for_caption_creation(limit=MAX_PRODUCTS_PER_BATCH)
                 if not products:
                     logging.info("投稿文作成対象の商品がなくなったため、処理を終了します。")
                     break # ループを抜ける
 
-                batch_num += 1
-                logging.info(f"--- 対象全レコード{total_products_count}件中、バッチ{batch_num}回目、処理件数{len(products)}件 ---")
+                logging.info(f"--- バッチ {batch_num}/{max_batches} を開始します。処理件数: {len(products)}件 ---")
 
                 # 複数の商品をリストとして整形
                 items_data = [

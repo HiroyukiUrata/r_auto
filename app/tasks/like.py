@@ -24,12 +24,18 @@ def run_like_action(count: int = 10):
 
         context = None
         try:
+            # プロファイルロックファイルを削除して、多重起動エラーを防ぐ
+            lockfile_path = os.path.join(PROFILE_DIR, "SingletonLock")
+            if os.path.exists(lockfile_path):
+                logging.warning(f"古いロックファイル {lockfile_path} が見つかったため、削除します。")
+                os.remove(lockfile_path)
+
             # 保存されたプロファイルを使ってブラウザを起動
             # headless=False にすることで、VNCでブラウザの動作が見える
             headless_mode = is_headless()
             logging.info(f"Playwright ヘッドレスモード: {headless_mode}")
             context = p.chromium.launch_persistent_context(
-                PROFILE_DIR,
+                user_data_dir=PROFILE_DIR,
                 headless=headless_mode,
                 slow_mo=500 if not headless_mode else 0,  # ヘッドレスでない場合のみ遅延
                 env={"DISPLAY": ":0"} # VNC用の仮想ディスプレイを指定
@@ -49,11 +55,15 @@ def run_like_action(count: int = 10):
             page.wait_for_load_state("networkidle", timeout=30000)
             time.sleep(2) # 念のため少し待つ
 
-            # --- 時間制限とループ制御のための変数を設定 ---
+            # --- いいね済みボタンを非表示にする ---
+            logging.info("「いいね」済みボタンを非表示にします。")
+            page.add_style_tag(content="a.icon-like.isLiked { display: none !important; }")
+
+            # --- 「いいね」処理のループ ---
             liked_count = 0
             scroll_attempts = 0
-            MAX_SCROLL_ATTEMPTS = 5 # 新しいボタンが見つからない場合にスクロールを試行する最大回数
-            MAX_DURATION_SECONDS = 10 * 60 # 最大実行時間を設定
+            MAX_SCROLL_ATTEMPTS = 5
+            MAX_DURATION_SECONDS = 10 * 60
             start_time = time.time()
 
             while liked_count < count:
@@ -62,38 +72,37 @@ def run_like_action(count: int = 10):
                     logging.info(f"最大実行時間（{MAX_DURATION_SECONDS}秒）に達したため、タスクを終了します。")
                     break
 
-                button_to_click = page.locator("a.icon-like:not(.isLiked)").first
+                # --- 「いいね」ボタンを1つずつ探してクリック ---
+                # 「いいね」済みではない、最初の「いいね」ボタンを探す
+                button_to_click = page.locator("a.icon-like.right:not(.isLiked)").first
 
                 if button_to_click.count() > 0:
                     try:
-                        # クリックするボタンから親を辿って、投稿カード全体を取得
-                        item_card = button_to_click.locator("xpath=ancestor::div[contains(@class, 'item-new-holder')]")
-                        
-                        # 商品説明を取得
-                        description = ""
-                        description_element = item_card.locator("p.story")
-                        if description_element.count() > 0:
-                            description = description_element.get_attribute("title") or ""
-
-                        button_to_click.click()
+                        button_to_click.click(force=True)
                         liked_count += 1
-                        log_description = (description[:30] + '...') if len(description) > 30 else description
-                        logging.info(f"投稿に「いいね」しました: \"{log_description}\" (合計: {liked_count}件)")
-                        scroll_attempts = 0
-                        time.sleep(random.uniform(1, 3))
-                    except Exception:
-                        logging.warning("「いいね」クリックに失敗したか、上限に達した可能性があります。タスクを終了します。")
-                        break # ループを抜ける
+                        logging.info(f"投稿に「いいね」しました。(合計: {liked_count}件)")
+                        scroll_attempts = 0 # クリック成功時はスクロールカウントをリセット
+                        time.sleep(random.uniform(1, 2)) # 人間らしい間隔
+                        # 1回クリックしたら、再度ボタンを探すためにループの先頭に戻る
+                        continue 
+                    except Exception as e:
+                        logging.warning(f"「いいね」クリック中にエラーが発生しました: {e}")
+                        # エラーが発生しても処理を継続するため、ループを抜ける
+                        break
+
+                # 新しいボタンが見つからなかった場合、スクロールする
                 else:
                     if scroll_attempts >= MAX_SCROLL_ATTEMPTS:
                         logging.info(f"{MAX_SCROLL_ATTEMPTS}回スクロールしても新しいボタンが見つからなかったため、処理を終了します。")
                         break
-
-                    logging.info("「未いいね」ボタンが見つかりません。ページをスクロールします...")
+                    logging.info(f"いいね可能なボタンが見つかりません。ページをスクロールします... (試行: {scroll_attempts + 1}/{MAX_SCROLL_ATTEMPTS})")
                     page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
                     time.sleep(3) # スクロール後の読み込みを待つ
                     scroll_attempts += 1
+
+
             logging.info(f"合計{liked_count}件の「いいね」を実行しました。")
+
         except Exception as e:
             logging.error(f"「いいね」アクション中にエラーが発生しました: {e}")
         finally:
