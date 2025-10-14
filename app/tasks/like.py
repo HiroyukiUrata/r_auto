@@ -11,7 +11,7 @@ from app.core.config_manager import is_headless
 PROFILE_DIR = "db/playwright_profile"
 
 
-def run_like_action(count: int = 10):
+def run_like_action(count: int = 1):
     """
     楽天ROOMの検索結果を巡回し、「いいね」アクションを実行する。
     """
@@ -43,7 +43,8 @@ def run_like_action(count: int = 10):
             page = context.new_page()
 
             # ひらがな「あ」から「ん」までのリストからランダムに1文字選ぶ
-            hiragana_chars = "あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほまみむめもやゆよらりるれろわをん"
+            #hiragana_chars = "あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほまみむめもやゆよらりるれろわをん"
+            hiragana_chars = "ん"
             random_keyword = random.choice(hiragana_chars)
             target_url = f"https://room.rakuten.co.jp/search/item?keyword={random_keyword}&colle=&comment=&like=&user_id=&user_name=&original_photo=0"
            
@@ -61,10 +62,10 @@ def run_like_action(count: int = 10):
 
             # --- 「いいね」処理のループ ---
             liked_count = 0
-            scroll_attempts = 0
-            MAX_SCROLL_ATTEMPTS = 5
             MAX_DURATION_SECONDS = 10 * 60
             start_time = time.time()
+            last_liked_user = None # 最後に「いいね」したユーザー名を記録
+            user_like_counts = {} # ユーザーごとの「いいね」回数を記録
 
             while liked_count < count:
                 elapsed_time = time.time() - start_time
@@ -78,12 +79,48 @@ def run_like_action(count: int = 10):
 
                 if button_to_click.count() > 0:
                     try:
-                        button_to_click.click(force=True)
+                        # ユーザー名を取得してログに出力
+                        user_name = "不明なユーザー"
+                        try:
+                            # ボタンの祖先要素である投稿アイテム全体(<div class="item">)を探す
+                            item_container = button_to_click.locator('xpath=ancestor::div[contains(@class, "item") and not(contains(@class, "items-search"))]')
+                            user_name_element = item_container.locator('div.owner span.name.ng-binding').first
+                            user_name = user_name_element.inner_text().strip()
+                        except Exception:
+                            logging.warning("ユーザー名の取得に失敗しましたが、「いいね」処理は続行します。")
+
+                        # ユーザーごとの「いいね」回数をチェック
+                        current_user_likes = user_like_counts.get(user_name, 0)
+                        if user_name != "不明なユーザー" and current_user_likes >= 3:
+                            logging.info(f"ユーザー「{user_name}」への「いいね」が上限の3回に達したため、このユーザーの投稿をスキップします。")
+                            # このユーザーの投稿をすべて非表示にする
+                            # 特殊文字をエスケープする必要があるため、単純なf-stringは避ける
+                            page.add_style_tag(content=f'div.item:has(div.owner span.name:has-text("{user_name}")) {{ display: none !important; }}')
+                            time.sleep(1) # スタイル適用を待つ
+                            continue # 次のボタンを探す
+
+                        # 直前に「いいね」したユーザーと同じでないかチェック
+                        is_duplicate = user_name != "不明なユーザー" and user_name == last_liked_user
+
+                        # ボタンがクリック可能になるまで最大5秒待つ
+                        expect(button_to_click).to_be_enabled(timeout=5000)
+                        button_to_click.click()
+                        
                         liked_count += 1
-                        logging.info(f"投稿に「いいね」しました。(合計: {liked_count}件)")
-                        scroll_attempts = 0 # クリック成功時はスクロールカウントをリセット
+                        user_like_counts[user_name] = current_user_likes + 1
+                        
+                        log_message = f"ユーザー「{user_name}」の投稿に「いいね」しました。(合計: {liked_count}件, このユーザーへ: {user_like_counts[user_name]}回目)"
+                        if is_duplicate:
+                            logging.info(f"連続で{log_message}")
+                        else:
+                            logging.info(log_message)
+
+                        last_liked_user = user_name # 最後に「いいね」したユーザー名を更新
                         time.sleep(random.uniform(1, 2)) # 人間らしい間隔
-                        # 1回クリックしたら、再度ボタンを探すためにループの先頭に戻る
+
+                        # 新しい投稿を読み込むために少しスクロールする
+                        page.evaluate("window.scrollBy(0, 300)") # 300ピクセル下にスクロール
+                        time.sleep(random.uniform(1, 2)) # スクロール後の読み込みを待つ
                         continue 
                     except Exception as e:
                         logging.warning(f"「いいね」クリック中にエラーが発生しました: {e}")
@@ -92,13 +129,9 @@ def run_like_action(count: int = 10):
 
                 # 新しいボタンが見つからなかった場合、スクロールする
                 else:
-                    if scroll_attempts >= MAX_SCROLL_ATTEMPTS:
-                        logging.info(f"{MAX_SCROLL_ATTEMPTS}回スクロールしても新しいボタンが見つからなかったため、処理を終了します。")
-                        break
-                    logging.info(f"いいね可能なボタンが見つかりません。ページをスクロールします... (試行: {scroll_attempts + 1}/{MAX_SCROLL_ATTEMPTS})")
+                    logging.info("いいね可能なボタンが見つかりません。ページをスクロールします...")
                     page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
                     time.sleep(3) # スクロール後の読み込みを待つ
-                    scroll_attempts += 1
 
 
             logging.info(f"合計{liked_count}件の「いいね」を実行しました。")

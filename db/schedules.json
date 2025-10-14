@@ -30,7 +30,7 @@
     ],
     "procure-products-flow": [
         {
-            "count": 2,
+            "count": 20,
             "time": "08:30"
         }
     ],
@@ -45,11 +45,11 @@
             "time": "08:20"
         },
         {
-            "count": 20,
+            "count": 10,
             "time": "11:20"
         },
         {
-            "count": 20,
+            "count": 10,
             "time": "15:20"
         },
         {
