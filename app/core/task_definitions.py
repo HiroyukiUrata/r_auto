@@ -131,28 +131,28 @@ TASK_DEFINITIONS = {
         "function": procure_from_rakuten_api,
         "is_debug": True,
         "description": "【未実装】楽天APIを利用して商品を調達し、DBに登録します。",
-        "order": 80,
+        "order": 10,
     },
     "search-and-procure-from-rakuten": {
         "name_ja": "楽天市場から商品を検索・調達",
         "function": search_and_procure_from_rakuten,
         "is_debug": True,
         "description": "キーワードを元に楽天市場を検索して商品を調達し、DBに登録します。",
-        "order": 90,
+        "order": 20,
     },
     "get-post-url": {
         "name_ja": "投稿URL取得",
         "function": run_get_post_url,
         "is_debug": True,
         "description": "ステータスが「生情報取得」の商品について、ROOMの投稿用URLを取得します。",
-        "order": 10,
+        "order": 30,
     },
     "create-caption-prompt": {
-        "name_ja": "投稿文作成 (Gemini)",
+        "name_ja": "投稿文作成",
         "function": create_caption.create_caption_prompt,
         "is_debug": True,
         "description": "ステータスが「URL取得済」の商品について、Geminiで投稿文を作成します。",
-        "order": 20,
+        "order": 40,
     },
 
 }
