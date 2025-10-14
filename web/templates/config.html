@@ -46,27 +46,6 @@
             </div>
         </div>
 
-        <!-- 危険な操作カード -->
-        <div class="card mb-4 border-danger">
-            <div class="card-header bg-danger text-white">
-                <h5 class="mb-0"><i class="bi bi-exclamation-triangle-fill me-2"></i>危険な操作</h5>
-            </div>
-            <div class="card-body">
-                <h6 class="card-title">全商品データの削除</h6>
-                <p class="card-text">データベースからすべての商品情報を削除します。この操作は元に戻せません。<br>実行するには、以下のボックスに「<strong class="text-danger">削除します</strong>」と入力してください。</p>
-                <div class="row g-2 align-items-center">
-                    <div class="col-sm-4">
-                        <input type="text" id="delete-confirm-input" class="form-control" placeholder="削除します" oninput="validateDeleteInput()">
-                    </div>
-                    <div class="col-sm-8">
-                        <button id="delete-all-btn" class="btn btn-danger" onclick="deleteAllProducts()" disabled>
-                            <i class="bi bi-trash-fill me-1"></i> 全商品データを削除
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-
         <!-- シングルタスクカード -->
         <div class="card mb-4">
             <div class="card-header">
@@ -87,6 +66,27 @@
                 <p class="card-text">ここでは、開発やデバッグ目的のタスクを手動で実行できます。</p>
                 <div id="debug-tasks-container" class="list-group">
                     <!-- デバッグタスクはJavaScriptでここに挿入されます -->
+                </div>
+            </div>
+        </div>
+
+        <!-- 危険な操作カード -->
+        <div class="card mt-4 border-danger">
+            <div class="card-header bg-danger text-white">
+                <h5 class="mb-0"><i class="bi bi-exclamation-triangle-fill me-2"></i>危険な操作</h5>
+            </div>
+            <div class="card-body">
+                <h6 class="card-title">全商品データの削除</h6>
+                <p class="card-text">データベースからすべての商品情報を削除します。この操作は元に戻せません。<br>実行するには、以下のボックスに「<strong class="text-danger">削除します</strong>」と入力してください。</p>
+                <div class="row g-2 align-items-center">
+                    <div class="col-sm-4">
+                        <input type="text" id="delete-confirm-input" class="form-control" placeholder="削除します" oninput="validateDeleteInput()">
+                    </div>
+                    <div class="col-sm-8">
+                        <button id="delete-all-btn" class="btn btn-danger" onclick="deleteAllProducts()" disabled>
+                            <i class="bi bi-trash-fill me-1"></i> 全商品データを削除
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
