@@ -11,6 +11,16 @@ from app.tasks import (
 from app.tasks.rakuten_search_procure import search_and_procure_from_rakuten
 from app.tasks.rakuten_api_procure import procure_from_rakuten_api
 
+# --- 検証用タスク定義の読み込み ---
+try:
+    import logging
+    from app.test_x.core.test_task_definitions import TEST_TASK_DEFINITIONS
+except ImportError as e:
+    logging.warning(f"検証用タスク定義の読み込みに失敗しました。test_xディレクトリの構造や__init__.pyファイルを確認してください。エラー: {e}")
+    # test_x ディレクトリが存在しない場合でもエラーにならないようにする
+    TEST_TASK_DEFINITIONS = {}
+
+
 """
 システム内の全タスクの定義を一元管理する。
 キー: プログラム内部で使われる一意の識別子（タグ）
@@ -97,3 +107,6 @@ TASK_DEFINITIONS = {
         "order": 20,
     },
 }
+
+# メインの定義に検証用の定義をマージする
+TASK_DEFINITIONS.update(TEST_TASK_DEFINITIONS)

@@ -2,9 +2,13 @@ import threading
 import uvicorn
 import logging
 
+from fastapi.templating import Jinja2Templates
 from app.core.scheduler import start_scheduler
 from app.web.api import app
 from app.core.database import init_db
+
+# --- アプリケーション全体で共有するテンプレート設定 ---
+templates = Jinja2Templates(directory="web/templates")
 
 def run_api_server():
     """FastAPIサーバーを起動する"""

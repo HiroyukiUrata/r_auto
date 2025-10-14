@@ -1,0 +1,104 @@
+import logging
+import os
+import time
+from abc import ABC, abstractmethod
+from typing import Optional
+
+from playwright.sync_api import sync_playwright, BrowserContext, Page
+from app.core.config_manager import is_headless
+
+PROFILE_DIR = "db/playwright_profile"
+
+class BaseTask(ABC):
+    """
+    Playwrightを使用する自動化タスクの基底クラス。
+    ブラウザのセットアップ、実行、ティアダウンの共通処理を管理する。
+    """
+    def __init__(self, count: int, max_duration_seconds: int = 600):
+        self.target_count = count
+        self.max_duration_seconds = max_duration_seconds
+        self.context: Optional[BrowserContext] = None
+        self.page: Optional[Page] = None
+        self.action_name = "アクション" # サブクラスで上書きする
+        self.needs_browser = True # デフォルトではブラウザを必要とする
+
+    def _setup_browser(self):
+        """ブラウザコンテキストをセットアップする"""
+        if not os.path.exists(PROFILE_DIR):
+            raise FileNotFoundError(f"認証プロファイル {PROFILE_DIR} が見つかりません。")
+
+        lockfile_path = os.path.join(PROFILE_DIR, "SingletonLock")
+        if os.path.exists(lockfile_path):
+            logging.warning(f"古いロックファイル {lockfile_path} が見つかったため、削除します。")
+            os.remove(lockfile_path)
+
+        headless_mode = is_headless()
+        logging.info(f"Playwright ヘッドレスモード: {headless_mode}")
+        
+        self.context = self.playwright.chromium.launch_persistent_context(
+            user_data_dir=PROFILE_DIR,
+            headless=headless_mode,
+            slow_mo=500 if not headless_mode else 0,
+            env={"DISPLAY": ":0"}
+        )
+        self.page = self.context.new_page()
+
+    def _teardown_browser(self):
+        """ブラウザコンテキストを閉じる"""
+        if self.context:
+            logging.info("処理が完了しました。5秒後にブラウザを閉じます...")
+            time.sleep(5)
+            self.context.close()
+            logging.info("ブラウザコンテキストを閉じました。")
+
+    def run(self):
+        """タスクの実行フローを管理する"""
+        success = False
+        logging.info(f"「{self.action_name}」アクションを開始します。目標件数: {self.target_count}")
+
+        if self.needs_browser:
+            with sync_playwright() as p:
+                self.playwright = p
+                try:
+                    self._setup_browser()
+                    self._execute_main_logic()
+                    success = True
+                except FileNotFoundError as e:
+                    logging.error(f"ファイルが見つかりません: {e}")
+                except Exception as e:
+                    logging.error(f"「{self.action_name}」アクション中に予期せぬエラーが発生しました: {e}", exc_info=True)
+                    self._take_screenshot_on_error()
+                finally:
+                    self._teardown_browser()
+        else:
+            # ブラウザ不要のタスク
+            try:
+                self._execute_main_logic()
+                success = True
+            except Exception as e:
+                logging.error(f"「{self.action_name}」アクション中にエラーが発生しました: {e}", exc_info=True)
+
+        logging.info(f"「{self.action_name}」アクションを終了します。")
+        return success
+
+    def _take_screenshot_on_error(self):
+        """エラー発生時にスクリーンショットを保存する"""
+        if self.page:
+            try:
+                screenshot_dir = "db/screenshots"
+                os.makedirs(screenshot_dir, exist_ok=True)
+                timestamp = time.strftime("%Y%m%d-%H%M%S")
+                safe_action_name = "".join(c for c in self.action_name if c.isalnum() or c in (' ', '_')).rstrip()
+                screenshot_path = os.path.join(screenshot_dir, f"error_{safe_action_name}_{timestamp}.png")
+                self.page.screenshot(path=screenshot_path)
+                logging.info(f"エラー発生時のスクリーンショットを {screenshot_path} に保存しました。")
+            except Exception as ss_e:
+                logging.error(f"スクリーンショットの保存に失敗しました: {ss_e}")
+
+    @abstractmethod
+    def _execute_main_logic(self):
+        """
+        タスク固有のメインロジック。
+        サブクラスで必ず実装する必要がある。
+        """
+        pass

@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block title %}検証用ページ{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>検証用ページ</h1>
+    <p>このページは <code>web/templates/</code> ディレクトリから読み込まれています。</p>
+    <p>ここでUIコンポーネントの実験を行い、完成したら本番のテンプレートにマージできます。</p>
+
+    <hr>
+
+    <h2>タスクフロー実行テスト</h2>
+    <p>以下のボタンをクリックすると、<code>/test/run/test-sample-task-flow-1</code> APIが呼び出され、タスクA, B, Cが順番に実行されます。</p>
+    <button id="run-flow-btn" class="btn btn-primary">サンプルタスクフローを実行 (正常系)</button>
+    <button id="run-error-flow-btn" class="btn btn-danger">サンプルタスクフローを実行 (エラー系)</button>
+
+    <div id="flow-status" class="mt-2"></div>
+</div>
+
+<script>
+document.getElementById('run-flow-btn').addEventListener('click', function() {
+    const statusDiv = document.getElementById('flow-status');
+    statusDiv.textContent = 'フローの実行を開始します...';
+    statusDiv.className = 'alert alert-info';
+
+    fetch('/test/run/test-sample-task-flow-1', {
+        method: 'POST'
+    })
+    .then(response => {
+        if (response.ok) {
+            statusDiv.textContent = 'フローの実行リクエストを送信しました。詳細はログを確認してください。';
+            statusDiv.className = 'alert alert-success';
+        }
+    });
+});
+
+document.getElementById('run-error-flow-btn').addEventListener('click', function() {
+    const statusDiv = document.getElementById('flow-status');
+    statusDiv.textContent = 'エラーケースのフロー実行を開始します...';
+    statusDiv.className = 'alert alert-warning';
+
+    fetch('/test/run/test-sample-task-flow-2', {
+        method: 'POST'
+    })
+    .then(response => {
+        if (response.ok) {
+            statusDiv.textContent = 'エラーケースのフロー実行リクエストを送信しました。詳細はログを確認してください。';
+            statusDiv.className = 'alert alert-success';
+        }
+    });
+});
+</script>
+{% endblock %}

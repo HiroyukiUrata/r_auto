@@ -24,8 +24,8 @@ app = FastAPI(
     description="システムの稼働状況やスケジュールを管理するWeb UI",
 )
 
-# Jinja2テンプレートを設定
-templates = Jinja2Templates(directory="web/templates")
+# --- テンプレート設定をメインからインポート ---
+from app.main import templates
 
 KEYWORDS_FILE = "db/keywords.json"
 SCHEDULE_FILE = "db/schedules.json"
@@ -453,3 +453,8 @@ def _run_task_internal(tag: str, is_part_of_flow: bool):
         message = f"タスク「{definition['name_ja']}」の実行を開始しました。"
         logging.info(f"APIレスポンス (タスク: {tag}): {message}")
         return {"status": "success", "message": message}
+
+# --- 検証用ルーターの登録 ---
+from app.test_x.api.endpoints import tasks as test_tasks_router
+
+app.include_router(test_tasks_router.router, prefix="/test", tags=["test"])
