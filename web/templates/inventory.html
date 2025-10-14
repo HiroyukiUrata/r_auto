@@ -20,6 +20,22 @@
     </div>
 </div>
 
+<div class="card mb-4">
+    <div class="card-header">
+        <i class="bi bi-file-earmark-arrow-down-fill me-2"></i>JSONから商品を一括インポート
+    </div>
+    <div class="card-body">
+        <div class="mb-3">
+            <label for="json-import-textarea" class="form-label">ここにJSONデータを貼り付けてください</label>
+            <textarea class="form-control" id="json-import-textarea" rows="5" placeholder="[&#10;  {&#10;    &quot;item_description&quot;: &quot;すごいガジェット&quot;,&#10;    &quot;page_url&quot;: &quot;https://...&quot;,&#10;    &quot;image_url&quot;: &quot;https://...&quot;&#10;  },&#10;  ...&#10;]"></textarea>
+        </div>
+        <button class="btn btn-primary" onclick="importFromJson()">
+            <i class="bi bi-upload me-1"></i>インポートして後続タスクを実行
+        </button>
+        <p class="text-muted small mt-2">インポートが完了すると、自動的に「投稿URL取得」→「投稿文作成」のフローが開始されます。</p>
+    </div>
+</div>
+
 <div class="row mb-3" id="status-summary">
     <!-- ステータスサマリーはここに挿入されます -->
 </div>
@@ -136,6 +152,33 @@
 <script>
     // グローバルスコープにモーダルインスタンスを保持
     let infoModalInstance = null;
+
+    async function importFromJson() {
+        const textarea = document.getElementById('json-import-textarea');
+        const jsonText = textarea.value;
+        if (!jsonText.trim()) {
+            alert('JSONデータを入力してください。');
+            return;
+        }
+
+        try {
+            const products = JSON.parse(jsonText);
+            const response = await fetch('/api/import/json', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ products: products })
+            });
+            const result = await response.json();
+            if (!response.ok) {
+                throw new Error(result.message || 'インポートに失敗しました。');
+            }
+            alert(result.message);
+            textarea.value = ''; // 成功したらテキストエリアをクリア
+            location.reload(); // ページをリロードして在庫リストを更新
+        } catch (error) {
+            alert(`エラー: ${error.message}\n\n入力されたJSONの形式が正しいか確認してください。`);
+        }
+    }
 
     function showInfoModal(element) {
         // 行選択のイベントが発火しないようにする

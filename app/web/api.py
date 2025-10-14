@@ -326,7 +326,7 @@ async def import_from_json(request: JsonImportRequest):
         added_count, skipped_count = process_and_import_products(items_to_import)
 
         # フローの起点となるタスクを実行
-        _run_task_internal("get-post-url", is_part_of_flow=False)
+        _run_task_internal("json-import-flow", is_part_of_flow=False)
 
         return JSONResponse(content={"status": "success", "message": f"{len(items_to_import)}件中、{added_count}件の新規商品をインポートしました。\n続けてバックグラウンドで後続タスク（投稿URL取得など）を開始します。"})
     except Exception as e:
@@ -398,25 +398,98 @@ def _run_task_internal(tag: str, is_part_of_flow: bool):
     :param tag: 実行するタスクのタグ
     :param is_part_of_flow: この実行がフローの一部であるか
     """
+    # スケジュール実行から渡される引数を受け取る
+    # この関数が直接呼ばれる場合は kwargs は空
+    kwargs = locals().get('kwargs', {})
+
     definition = TASK_DEFINITIONS.get(tag)
     if not definition:
         return JSONResponse(status_code=404, content={"status": "error", "message": f"Task '{tag}' not found."})
 
-    task_func = definition["function"]
+    # 新しい "flow" キーを優先的にチェック
+    flow_definition = definition.get("flow")
+    if flow_definition and not is_part_of_flow:
+        # 1. デフォルト引数をコピー
+        flow_kwargs = definition.get("default_kwargs", {}).copy()
+        # 2. スケジュール実行からの引数で上書き
+        flow_kwargs.update(kwargs)
+
+        logging.info(f"--- 新フロー実行: 「{definition['name_ja']}」を開始します。 ---")
+
+        def run_flow():
+            # flow_definitionが文字列かリストか判定
+            if isinstance(flow_definition, str):
+                tasks_in_flow = [(task.strip(), {}) for task in flow_definition.split('|')]
+            else: # リスト形式の場合
+                tasks_in_flow = flow_definition
+
+            for i, (sub_task_id, sub_task_args) in enumerate(tasks_in_flow):
+                if sub_task_id in TASK_DEFINITIONS:
+                    sub_task_def = TASK_DEFINITIONS[sub_task_id]
+                    logging.info(f"  フロー実行中 ({i+1}/{len(tasks_in_flow)}): 「{sub_task_def['name_ja']}」")
+                    sub_task_func = sub_task_def["function"]
+                    
+                    # 引数を解決
+                    final_kwargs = sub_task_def.get("default_kwargs", {}).copy()
+                    for key, value in sub_task_args.items():
+                        if value == "flow_count":
+                            final_kwargs[key] = flow_kwargs.get('count')
+                    
+                    try:
+                        task_result = sub_task_func(**final_kwargs)
+                        if task_result is False: # 明示的にFalseの場合のみ失敗とみなす
+                            logging.error(f"フロー内のタスク「{sub_task_def['name_ja']}」が失敗しました。フローを中断します。")
+                            break
+                    except Exception as e:
+                        logging.error(f"フロー内のタスク「{sub_task_def['name_ja']}」実行中に予期せぬエラーが発生しました: {e}", exc_info=True)
+                        logging.error("フローの実行を中断します。")
+                        break
+                else:
+                    logging.error(f"フロー内のタスク「{sub_task_id}」が見つかりません。フローを中断します。")
+                    break
+            else: # ループが正常に完了した場合
+                logging.info(f"--- 新フロー実行: 「{definition['name_ja']}」が正常に完了しました。 ---")
+        
+        run_threaded(run_flow)
+        return {"status": "success", "message": f"タスクフロー「{definition['name_ja']}」(件数: {flow_kwargs.get('count')})の実行を開始しました。"}
 
     def task_wrapper(**kwargs):
         """タスク実行後に後続タスクを呼び出すラッパー関数"""
+        task_func = definition["function"]
         # タスクを実行し、その戻り値を取得
         result = task_func(**kwargs)
-        # フローの起点であり、かつ成功時の後続タスクが定義されている場合
-        # 戻り値がTrueの場合のみ後続タスクを実行
-        if not is_part_of_flow and "on_success" in definition:
+        # 従来の "on_success" フロー (resultがTrueの場合のみ実行)
+        if not is_part_of_flow and "on_success" in definition and result is True:
             next_task_tag = definition["on_success"]
-            logging.info(f"--- フロー実行: 「{definition['name_ja']}」が完了。次のタスク「{TASK_DEFINITIONS[next_task_tag]['name_ja']}」を実行します。 ---")
-            _run_task_internal(next_task_tag, is_part_of_flow=True)
+            logging.info(f"--- 従来フロー実行: 「{definition['name_ja']}」が完了。次のタスク「{TASK_DEFINITIONS[next_task_tag]['name_ja']}」を実行します。 ---")
+            _run_task_internal(next_task_tag, is_part_of_flow=True, **kwargs) # 引数を引き継ぐ
         return result
 
-    # タスクをバックグラウンドスレッドで実行
+    # 結果を待って返すタイプのタスク
+    if tag in ["check-login-status", "save-auth-state", "test-check-login-status", "test-save-auth-state"]:
+        # save-auth-stateは手動操作のため、タイムアウトを長めに設定(5分+α)
+        timeout = 310 if "save-auth-state" in tag else 60
+
+        job_thread, result_container = run_threaded(task_wrapper, **kwargs)
+        job_thread.join(timeout=timeout) # タスクに応じた時間待つ
+        if job_thread.is_alive():
+            return JSONResponse(status_code=500, content={"status": "error", "message": "タスクがタイムアウトしました。"})
+        
+        result = result_container.get('result')
+        logging.info(f"スレッドから受け取った結果 (タスク: {tag}): {result} (型: {type(result)})")
+        
+        if "check-login-status" in tag:
+            message = "成功: ログイン状態が維持されています。" if result else "失敗: ログイン状態が確認できませんでした。"
+        elif "save-auth-state" in tag:
+            message = "成功: 認証状態を保存しました。" if result else "失敗: 認証状態の保存に失敗しました。詳細はログを確認してください。"
+        else:
+            message = "タスクが完了しました。" # フォールバックメッセージ
+        
+        logging.info(f"APIレスポンス (タスク: {tag}): {message}")
+
+        return JSONResponse(content={"status": "success" if result else "error", "message": message})
+
+    # 上記以外のバックグラウンドで実行するタスク
     kwargs = definition.get("default_kwargs", {}).copy()
     # 即時実行の場合、記事投稿は10件に設定
     if tag == "post-article":
@@ -426,33 +499,9 @@ def _run_task_internal(tag: str, is_part_of_flow: bool):
 
     job_thread, result_container = run_threaded(task_wrapper, **kwargs)
 
-    # 結果を待って返すタイプのタスク
-    if tag in ["check-login-status", "save-auth-state"]:
-        # save-auth-stateは手動操作のため、タイムアウトを長めに設定(5分+α)
-        timeout = 310 if tag == "save-auth-state" else 60
-
-        job_thread.join(timeout=timeout) # タスクに応じた時間待つ
-        if job_thread.is_alive():
-            return JSONResponse(status_code=500, content={"status": "error", "message": "タスクがタイムアウトしました。"})
-        
-        result = result_container.get('result')
-        logging.info(f"スレッドから受け取った結果 (タスク: {tag}): {result} (型: {type(result)})")
-        if tag == "check-login-status":
-            message = "成功: ログイン状態が維持されています。" if result else "失敗: ログイン状態が確認できませんでした。"
-        elif tag == "save-auth-state":
-            message = "成功: 認証状態を保存しました。" if result else "失敗: 認証状態の保存に失敗しました。詳細はログを確認してください。"
-        
-        # APIレスポンスとして返すメッセージをログに出力
-        logging.info(f"APIレスポンス (タスク: {tag}): {message}")
-
-        if result is True:
-            return JSONResponse(content={"status": "success", "message": message})
-        else:
-            return JSONResponse(status_code=400, content={"status": "error", "message": message})
-    else:
-        message = f"タスク「{definition['name_ja']}」の実行を開始しました。"
-        logging.info(f"APIレスポンス (タスク: {tag}): {message}")
-        return {"status": "success", "message": message}
+    message = f"タスク「{definition['name_ja']}」の実行を開始しました。"
+    logging.info(f"APIレスポンス (タスク: {tag}): {message}")
+    return {"status": "success", "message": message}
 
 # --- 検証用ルーターの登録 ---
 from app.test_x.api.endpoints import tasks as test_tasks_router

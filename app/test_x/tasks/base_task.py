@@ -14,33 +14,45 @@ class BaseTask(ABC):
     Playwrightを使用する自動化タスクの基底クラス。
     ブラウザのセットアップ、実行、ティアダウンの共通処理を管理する。
     """
-    def __init__(self, count: int, max_duration_seconds: int = 600):
+    def __init__(self, count: Optional[int] = None, max_duration_seconds: int = 600):
         self.target_count = count
         self.max_duration_seconds = max_duration_seconds
         self.context: Optional[BrowserContext] = None
         self.page: Optional[Page] = None
         self.action_name = "アクション" # サブクラスで上書きする
         self.needs_browser = True # デフォルトではブラウザを必要とする
+        self.use_auth_profile = True # デフォルトでは認証プロファイルを使用する
 
     def _setup_browser(self):
         """ブラウザコンテキストをセットアップする"""
-        if not os.path.exists(PROFILE_DIR):
-            raise FileNotFoundError(f"認証プロファイル {PROFILE_DIR} が見つかりません。")
-
-        lockfile_path = os.path.join(PROFILE_DIR, "SingletonLock")
-        if os.path.exists(lockfile_path):
-            logging.warning(f"古いロックファイル {lockfile_path} が見つかったため、削除します。")
-            os.remove(lockfile_path)
-
         headless_mode = is_headless()
         logging.info(f"Playwright ヘッドレスモード: {headless_mode}")
-        
-        self.context = self.playwright.chromium.launch_persistent_context(
-            user_data_dir=PROFILE_DIR,
-            headless=headless_mode,
-            slow_mo=500 if not headless_mode else 0,
-            env={"DISPLAY": ":0"}
-        )
+
+        if self.use_auth_profile:
+            logging.info(f"認証プロファイル ({PROFILE_DIR}) を使用してブラウザを起動します。")
+            if not os.path.exists(PROFILE_DIR):
+                raise FileNotFoundError(f"認証プロファイル {PROFILE_DIR} が見つかりません。")
+
+            lockfile_path = os.path.join(PROFILE_DIR, "SingletonLock")
+            if os.path.exists(lockfile_path):
+                logging.warning(f"古いロックファイル {lockfile_path} が見つかったため、削除します。")
+                os.remove(lockfile_path)
+            
+            self.context = self.playwright.chromium.launch_persistent_context(
+                user_data_dir=PROFILE_DIR,
+                headless=headless_mode,
+                slow_mo=500 if not headless_mode else 0,
+                env={"DISPLAY": ":0"}
+            )
+        else:
+            logging.info("新しいブラウザセッション（認証プロファイルなし）で起動します。")
+            browser = self.playwright.chromium.launch(
+                headless=headless_mode,
+                slow_mo=500 if not headless_mode else 0,
+                env={"DISPLAY": ":0"}
+            )
+            self.context = browser.new_context(locale="ja-JP")
+
         self.page = self.context.new_page()
 
     def _teardown_browser(self):
@@ -54,7 +66,10 @@ class BaseTask(ABC):
     def run(self):
         """タスクの実行フローを管理する"""
         success = False
-        logging.info(f"「{self.action_name}」アクションを開始します。目標件数: {self.target_count}")
+        if self.target_count is not None:
+            logging.info(f"「{self.action_name}」アクションを開始します。目標件数: {self.target_count}")
+        else:
+            logging.info(f"「{self.action_name}」アクションを開始します。")
 
         if self.needs_browser:
             with sync_playwright() as p:
