@@ -25,43 +25,24 @@
                     <small class="form-text text-muted d-block">ONにするとブラウザを非表示で実行します（本番用）。OFFにするとブラウザが表示され、VNCで動作を確認できます（デバッグ用）。</small>
                 </div>
 
-                <!-- 商品調達方法設定 -->
-                <div class="mb-4">
-                    <label class="form-label"><strong>商品調達方法（スケジュール実行時）</strong></label>
-                    <div class="form-check">
-                        <input class="form-check-input" type="radio" name="procurementMethod" id="procure-search" value="search">
-                        <label class="form-check-label" for="procure-search">
-                            楽天市場から商品を検索・調達
-                        </label>
-                        <div class="form-text text-muted">DBに登録されたキーワードを元に楽天市場を検索します。</div>
-                    </div>
-                    <div class="form-check">
-                        <input class="form-check-input" type="radio" name="procurementMethod" id="procure-api" value="api">
-                        <label class="form-check-label" for="procure-api">
-                            楽天APIから商品を調達 <span class="badge bg-warning text-dark">未実装</span>
-                        </label>
-                        <div class="form-text text-muted">楽天APIを利用して商品を調達します。（この機能はまだ実装されていません）</div>
-                    </div>
-                </div>
-
                 <button class="btn btn-primary" onclick="saveGlobalConfig()">
                     <i class="bi bi-save me-1"></i> 設定を保存
                 </button>
-            </div>
-        </div>
-        <!-- JSONインポートカード -->
-        <div class="card mb-4">
-            <div class="card-header">
-                <h5 class="mb-0"><i class="bi bi-upload me-2"></i>JSONから商品をインポート (ブラウザ)</h5>
-            </div>
-            <div class="card-body">
-                <p class="card-text">ここにインポートしたい商品のJSONデータを貼り付けてください。</p>
-                <div class="mb-3">
-                    <textarea id="json-import-textarea" class="form-control" rows="10" placeholder='[{"item_description": "商品名", "page_url": "...", "image_url": "..."}, ...]'></textarea>
+
+                <hr class="my-4">
+
+                <div class="d-flex justify-content-start align-items-center gap-2">
+                    <button class="btn btn-sm btn-info" onclick="runTaskNow('check-login-status', 'ログイン状態チェック', event)">
+                        <i class="bi bi-person-check-fill"></i> ログイン状態チェック
+                    </button>
+                    <button class="btn btn-sm btn-warning" onclick="runTaskNow('save-auth-state', '認証状態の保存', event)">
+                        <i class="bi bi-shield-lock-fill"></i> 認証状態の保存
+                    </button>
                 </div>
-                <button class="btn btn-primary" onclick="importFromJsonText()">
-                    <i class="bi bi-upload me-1"></i> インポート実行
-                </button>
+                <small class="form-text text-muted d-block mt-2">
+                    「認証状態の保存」はVNC経由で手動ログインが必要です。<br>
+                    「ログイン状態チェック」で現在の認証が有効か確認できます。
+                </small>
             </div>
         </div>
 
@@ -86,11 +67,22 @@
             </div>
         </div>
 
-        <!-- デバッグタスクカード -->
-        <div class="card">
+        <!-- シングルタスクカード -->
+        <div class="card mb-4">
             <div class="card-header">
-                <i class="bi bi-tools me-2"></i>システムタスク
+                <i class="bi bi-lightning-charge-fill me-2"></i>シングルタスク
             </div>
+            <div class="card-body">
+                <p class="card-text">フローに含まれる各タスクを個別に実行できます。</p>
+                <div id="single-tasks-container" class="list-group">
+                    <!-- シングルタスクはJavaScriptでここに挿入されます -->
+                </div>
+            </div>
+        </div>
+
+        <!-- その他のシステムタスクカード -->
+        <div class="card">
+            <div class="card-header"><i class="bi bi-tools me-2"></i>その他のシステムタスク</div>
             <div class="card-body">
                 <p class="card-text">ここでは、開発やデバッグ目的のタスクを手動で実行できます。</p>
                 <div id="debug-tasks-container" class="list-group">
@@ -109,11 +101,6 @@
             const response = await fetch('/api/config');
             const config = await response.json();
             document.getElementById('headless-switch').checked = config.playwright_headless;
-
-            // 調達方法のラジオボタンに値を設定
-            const procurementMethod = config.procurement_method || 'search'; // デフォルトはsearch
-            document.querySelector(`input[name="procurementMethod"][value="${procurementMethod}"]`).checked = true;
-
         } catch (error) {
             console.error('Failed to fetch global config:', error);
         }
@@ -121,12 +108,9 @@
 
     async function saveGlobalConfig() {
         const isHeadless = document.getElementById('headless-switch').checked;
-        const procurementMethod = document.querySelector('input[name="procurementMethod"]:checked').value;
 
         const payload = {
             playwright_headless: isHeadless,
-            max_delay_minutes: 5, // 現在は固定値。必要に応じて入力欄から取得
-            procurement_method: procurementMethod
         };
 
         try {
@@ -150,10 +134,22 @@
         try {
             const response = await fetch('/api/config-tasks');
             const tasks = await response.json();
-            const container = document.getElementById('debug-tasks-container');
-            container.innerHTML = '';
+            const singleTaskContainer = document.getElementById('single-tasks-container');
+            const debugTaskContainer = document.getElementById('debug-tasks-container');
+            singleTaskContainer.innerHTML = '';
+            debugTaskContainer.innerHTML = '';
+
+            const singleTaskIds = [
+                'search-and-procure-from-rakuten',
+                'rakuten-api-procure',
+                'get-post-url',
+                'create-caption-prompt'
+            ];
 
             tasks.forEach(task => {
+                // ログインチェックと認証保存は一般設定に移動したので除外
+                if (task.tag === 'check-login-status' || task.tag === 'save-auth-state') return;
+
                 const taskItem = document.createElement('div');
                 taskItem.className = 'list-group-item d-flex justify-content-between align-items-center';
                 taskItem.innerHTML = `
@@ -165,7 +161,12 @@
                         <i class="bi bi-play-fill"></i> 即時実行
                     </button>
                 `;
-                container.appendChild(taskItem);
+
+                if (singleTaskIds.includes(task.tag)) {
+                    singleTaskContainer.appendChild(taskItem);
+                } else {
+                    debugTaskContainer.appendChild(taskItem);
+                }
             });
         } catch (error) {
             console.error('Failed to fetch debug tasks:', error);
@@ -194,50 +195,6 @@
             alert(result.message);
         } catch (error) {
             console.error('Error running task:', error);
-            alert(error.message);
-        }
-    }
-
-    async function importFromJsonText() {
-        const textarea = document.getElementById('json-import-textarea');
-        const jsonText = textarea.value;
-
-        if (!jsonText.trim()) {
-            alert('JSONデータを入力してください。');
-            return;
-        }
-
-        let products;
-        try {
-            products = JSON.parse(jsonText);
-        } catch (error) {
-            alert('JSONの形式が正しくありません。角括弧 `[` で始まる配列であることを確認してください。\n\nエラー詳細: ' + error.message);
-            return;
-        }
-
-        if (!Array.isArray(products)) {
-            alert('JSONのルートは配列（ [...] ）である必要があります。');
-            return;
-        }
-
-        if (!confirm(`${products.length}件の商品データをインポートします。よろしいですか？`)) {
-            return;
-        }
-
-        try {
-            const response = await fetch('/api/import/json', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ products: products })
-            });
-            const result = await response.json();
-            if (!response.ok) {
-                throw new Error(result.message || 'インポートに失敗しました。');
-            }
-            alert(result.message);
-            textarea.value = ''; // 成功したらテキストエリアをクリア
-        } catch (error) {
-            console.error('Error importing from JSON:', error);
             alert(error.message);
         }
     }

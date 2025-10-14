@@ -13,10 +13,50 @@ from app.test_x.tasks.rakuten_api_procure_test import run_rakuten_api_procure_te
 from app.test_x.tasks.check_login_status_test import run_check_login_status_test
 from app.test_x.tasks.save_auth_state_test import run_save_auth_state_test
 
-"""
-検証用のタスク定義。
-この内容はメインのTASK_DEFINITIONSにマージされる。
-"""
+"""検証用のタスク定義。この内容はメインのTASK_DEFINITIONSにマージされる。"""
+
+# --- タスク定義の基本構造 ---
+# "タスクID": {
+#     "name_ja": "UIに表示される日本語名",
+#     "function": 実行される関数オブジェクト,
+#     "is_debug": Trueにするとシステムコンフィグのデバッグ用タスク一覧に表示される,
+#     "show_in_schedule": Falseにするとスケジュール設定画面に表示されなくなる（デフォルトはTrue）,
+#     "description": "UIに表示されるタスクの説明文",
+#     "order": UIでの表示順（小さいほど上）,
+#     "default_kwargs": {"引数名": デフォルト値}, # タスク実行時のデフォルト引数
+# }
+
+# --- フロー定義の構造 ---
+# "フローID": {
+#     "name_ja": "フローの日本語名",
+#     "function": None または プレースホルダー関数 (例: run_sample_flow_1),
+#     "flow": [ ... ], # フローの内容を定義
+#     ... (他のキーはタスク定義と同様)
+# }
+
+# --- `flow` キーの設定方法 ---
+# 1. シンプルな文字列形式（引数なし）
+#    "flow": "task-a | task-b | task-c"
+#    -> task-a, task-b, task-c を順番に実行する。
+#
+# 2. 引数を指定できるリスト形式
+#    "flow": [
+#        ("task-a", {"arg1": "value1"}),  # task-a を arg1="value1" で実行
+#        ("task-b", {}),                  # task-b を引数なしで実行
+#        ("task-c", {"arg1": 123})        # task-c を arg1=123 で実行
+#    ]
+#
+# --- フローからタスクへの引数引き渡し ---
+# フロー定義の "default_kwargs" で設定した値を、フロー内の特定のタスクに引き渡すことができる。
+#
+# "default_kwargs": {"count": 25},
+# "flow": [
+#     ("some-task", {"count": "flow_count"})
+# ]
+# -> "flow_count" という特別なキーワードを指定すると、フローに渡された 'count' 引数（この場合は25）が
+#    some-task の 'count' 引数として渡される。
+# -> このキーワード "flow_count" は app/web/api.py で解釈される固定値。
+
 TEST_TASK_DEFINITIONS = {
     "test-sample-task-a": {
         "name_ja": "【テスト】サンプルタスクA",
@@ -86,7 +126,7 @@ TEST_TASK_DEFINITIONS = {
     },
     "test-procurement-flow": {
         "name_ja": "【テスト】商品調達フロー",
-        "function": run_sample_flow_1,
+        "function": None,
         "is_debug": True,
         "default_kwargs": {"count": 25}, # フロー全体のデフォルト件数を設定
         "description": "【新しい仕組み】検索・調達→URL取得→投稿文作成を連続実行します。",
@@ -107,7 +147,7 @@ TEST_TASK_DEFINITIONS = {
     },
     "test-post-then-procure-flow": {
         "name_ja": "【テスト】投稿→調達フロー",
-        "function": run_sample_flow_1,
+        "function": None,
         "is_debug": True,
         "description": "3件投稿した後に、5件商品を調達します。",
         "flow": [
@@ -156,7 +196,7 @@ TEST_TASK_DEFINITIONS = {
     },
     "json-import-flow": {
         "name_ja": "【テスト】JSONインポート後フロー",
-        "function": run_sample_flow_1,
+        "function": None,
         "is_debug": False, # UIには表示しない
         "show_in_schedule": False,
         "description": "JSONインポート後に、URL取得と投稿文作成を連続実行します。",

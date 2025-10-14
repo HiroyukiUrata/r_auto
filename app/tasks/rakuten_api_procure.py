@@ -1,20 +1,29 @@
 import logging
 
-def procure_from_rakuten_api(count: int = 5):
+class RakutenApiProcureTask:
     """
     【未実装】楽天APIを利用して商品を検索・調達するタスクのプレースホルダー。
-    :param count: 調達する商品のおおよその件数
     """
-    logging.info("楽天APIによる商品調達タスクを開始します。")
-    logging.warning("このタスクはまだ実装されていません。")
-    
-    # 将来的にはここでAPIを叩いて商品リストを取得し、
-    # _process_and_save_products を呼び出す
-    items = []
-    if items:
-        # from app.tasks.procure import _process_and_save_products
-        # added_count, skipped_count = _process_and_save_products(items)
-        # logging.info(f"商品登録処理が完了しました。新規追加: {added_count}件, スキップ: {skipped_count}件")
-        pass
-    
-    logging.info("楽天APIによる商品調達タスクを終了します。")
+    def __init__(self, count: int = 5):
+        self.action_name = "楽天APIから商品を調達"
+        self.target_count = count
+
+    def run(self):
+        logging.info(f"「{self.action_name}」アクションを開始します。")
+        success = False
+        try:
+            self._execute_main_logic()
+            success = True
+        except Exception as e:
+            logging.error(f"「{self.action_name}」アクション中に予期せぬエラーが発生しました: {e}", exc_info=True)
+        
+        logging.info(f"「{self.action_name}」アクションを終了します。")
+        return success
+
+    def _execute_main_logic(self):
+        logging.warning("このタスクはまだ実装されていません。")
+
+def procure_from_rakuten_api(count: int = 5):
+    """ラッパー関数"""
+    task = RakutenApiProcureTask(count=count)
+    return task.run()

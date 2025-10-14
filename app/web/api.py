@@ -11,8 +11,8 @@ from pydantic import BaseModel
 # タスク定義を一元的にインポート
 from app.core.task_definitions import TASK_DEFINITIONS
 from app.core.database import get_all_inventory_products, update_product_status, delete_all_products, init_db, delete_product, update_status_for_multiple_products, delete_multiple_products, get_product_count_by_status, get_error_products_in_last_24h
-from app.tasks.posting import post_article # procure.run_procurement_flow は task_definitions から参照される
-from app.tasks.get_post_url import get_post_url
+from app.tasks.posting import run_posting
+from app.tasks.get_post_url import run_get_post_url
 from app.tasks.import_products import process_and_import_products
 from app.core.config_manager import get_config, save_config
 from app.core.scheduler_utils import run_threaded, run_task_with_random_delay
@@ -252,7 +252,7 @@ async def post_inventory_item(product_id: int):
     """指定された在庫商品を1件だけ投稿する"""
     try:
         # post_articleタスクを引数count=1, product_id=product_idで実行
-        run_threaded(post_article, count=1, product_id=product_id)
+        run_threaded(run_posting, count=1, product_id=product_id)
         return JSONResponse(content={"status": "success", "message": f"商品ID: {product_id} の投稿処理を開始しました。"})
     except Exception as e:
         logging.error(f"商品ID: {product_id} の投稿処理開始中にエラーが発生しました: {e}")
