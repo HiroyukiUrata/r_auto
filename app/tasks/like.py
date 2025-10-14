@@ -9,8 +9,8 @@ class LikeTask(BaseTask):
     """
     楽天ROOMの検索結果を巡回し、「いいね」アクションを実行する。
     """
-    def __init__(self, count: int = 10):
-        super().__init__(count=count)
+    def __init__(self, count: int = 10, max_duration_seconds: int = 600):
+        super().__init__(count=count, max_duration_seconds=max_duration_seconds)
         self.action_name = "いいね"
 
     def _execute_main_logic(self):
@@ -120,7 +120,7 @@ class LikeTask(BaseTask):
 
         logging.info(f"合計{liked_count}件の「いいね」を実行しました。")
 
-def run_like_action(count: int = 10):
+def run_like_action(count: int = 10, max_duration_seconds: int = 600):
     """ラッパー関数"""
-    task = LikeTask(count=count)
+    task = LikeTask(count=count, max_duration_seconds=max_duration_seconds)
     return task.run()

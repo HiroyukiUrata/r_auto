@@ -23,3 +23,4 @@ db/playwright_profile/
 db/playwright_profile_backup/
 db/error_trace/
 db/products.db
+db/screenshots/

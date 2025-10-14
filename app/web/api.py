@@ -24,9 +24,6 @@ app = FastAPI(
     description="システムの稼働状況やスケジュールを管理するWeb UI",
 )
 
-# --- テンプレート設定をメインからインポート ---
-from app.main import templates
-
 KEYWORDS_FILE = "db/keywords.json"
 SCHEDULE_FILE = "db/schedules.json"
 
@@ -90,37 +87,37 @@ async def read_root(request: Request):
     """
     トップページを表示し、現在のスケジュール一覧を渡す
     """
-    return templates.TemplateResponse("index.html", {"request": request})
+    return request.app.state.templates.TemplateResponse("index.html", {"request": request})
 
 @app.get("/logs", response_class=HTMLResponse)
 async def read_logs(request: Request):
     """ログ確認ページを表示する"""
-    return templates.TemplateResponse("logs.html", {"request": request})
+    return request.app.state.templates.TemplateResponse("logs.html", {"request": request})
 
 @app.get("/chat", response_class=HTMLResponse)
 async def read_chat(request: Request):
     """AIチャットページを表示する"""
-    return templates.TemplateResponse("chat.html", {"request": request})
+    return request.app.state.templates.TemplateResponse("chat.html", {"request": request})
 
 @app.get("/system-config", response_class=HTMLResponse)
 async def read_system_config(request: Request):
     """システムコンフィグページを表示する"""
-    return templates.TemplateResponse("config.html", {"request": request})
+    return request.app.state.templates.TemplateResponse("config.html", {"request": request})
 
 @app.get("/inventory", response_class=HTMLResponse)
 async def read_inventory(request: Request):
     """在庫確認ページを表示する"""
-    return templates.TemplateResponse("inventory.html", {"request": request})
+    return request.app.state.templates.TemplateResponse("inventory.html", {"request": request})
 
 @app.get("/keywords", response_class=HTMLResponse)
 async def read_keywords_page(request: Request):
     """キーワード管理ページを表示する"""
-    return templates.TemplateResponse("keywords.html", {"request": request})
+    return request.app.state.templates.TemplateResponse("keywords.html", {"request": request})
 
 @app.get("/error-management", response_class=HTMLResponse)
 async def read_error_management(request: Request):
     """エラー管理ページを表示する"""
-    return templates.TemplateResponse("error_management.html", {"request": request})
+    return request.app.state.templates.TemplateResponse("error_management.html", {"request": request})
 
 # --- API Routes ---
 @app.get("/api/schedules")
@@ -369,15 +366,22 @@ async def update_schedule(update_request: ScheduleUpdateRequest):
     # 新しい時刻リストに基づいてジョブを再作成
     for entry in update_request.times:
         if re.match(r'^([01]\d|2[0-3]):([0-5]\d)$', entry.time):
-            task_func = definition["function"]
-
             # タスク定義からのデフォルト引数を取得し、スケジュール固有の引数で上書き
             job_kwargs = definition.get("default_kwargs", {}).copy()
-            job_kwargs['task_to_run'] = task_func
             job_kwargs['count'] = entry.count
 
-            # スケジュールを登録
-            schedule.every().day.at(entry.time).do(run_threaded, run_task_with_random_delay, **job_kwargs).tag(tag)
+            task_func = definition.get("function")
+            if task_func:
+                # 通常のタスクの場合
+                job_kwargs['task_to_run'] = task_func
+                schedule.every().day.at(entry.time).do(run_threaded, run_task_with_random_delay, **job_kwargs).tag(tag)
+            elif "flow" in definition:
+                # フロータスクの場合
+                # _run_task_internal を直接呼び出す
+                schedule.every().day.at(entry.time).do(run_threaded, _run_task_internal, tag=tag, is_part_of_flow=False, **job_kwargs).tag(tag)
+            else:
+                logging.warning(f"タスク '{tag}' には実行可能な関数またはフローが定義されていません。")
+
 
     # ファイルに現在のスケジュール状態を保存
     save_schedules_to_file()
@@ -392,15 +396,17 @@ async def run_task_now(tag: str):
     """
     return _run_task_internal(tag, is_part_of_flow=False)
 
-def _run_task_internal(tag: str, is_part_of_flow: bool):
+def _run_task_internal(tag: str, is_part_of_flow: bool, **kwargs):
     """
     タスクを実行する内部関数。フローの一部かどうかもハンドリングする。
     :param tag: 実行するタスクのタグ
     :param is_part_of_flow: この実行がフローの一部であるか
+    :param kwargs: タスクに渡される追加の引数（例: count）
     """
-    # スケジュール実行から渡される引数を受け取る
-    # この関数が直接呼ばれる場合は kwargs は空
-    kwargs = locals().get('kwargs', {})
+    # スケジュールライブラリが内部的に渡す可能性のある引数を除外
+    flow_run_kwargs = {k: v for k, v in kwargs.items() if k != 'job_func'}
+
+    logging.debug(f"[_run_task_internal] tag={tag}, is_part_of_flow={is_part_of_flow}, kwargs={flow_run_kwargs}")
 
     definition = TASK_DEFINITIONS.get(tag)
     if not definition:
@@ -411,8 +417,8 @@ def _run_task_internal(tag: str, is_part_of_flow: bool):
     if flow_definition and not is_part_of_flow:
         # 1. デフォルト引数をコピー
         flow_kwargs = definition.get("default_kwargs", {}).copy()
-        # 2. スケジュール実行からの引数で上書き
-        flow_kwargs.update(kwargs)
+        # 2. スケジュール実行などから渡された引数で上書き
+        flow_kwargs.update(flow_run_kwargs)
 
         logging.info(f"--- 新フロー実行: 「{definition['name_ja']}」を開始します。 ---")
 
@@ -490,9 +496,10 @@ def _run_task_internal(tag: str, is_part_of_flow: bool):
         return JSONResponse(content={"status": "success" if result else "error", "message": message})
 
     # 上記以外のバックグラウンドで実行するタスク
-    kwargs = definition.get("default_kwargs", {}).copy()
-
-    job_thread, result_container = run_threaded(task_wrapper, **kwargs)
+    # 1. デフォルト引数を取得, 2. 実行時引数で上書き
+    final_kwargs = definition.get("default_kwargs", {}).copy() 
+    final_kwargs.update(kwargs)
+    job_thread, result_container = run_threaded(task_wrapper, **final_kwargs) 
 
     message = f"タスク「{definition['name_ja']}」の実行を開始しました。"
     logging.info(f"APIレスポンス (タスク: {tag}): {message}")

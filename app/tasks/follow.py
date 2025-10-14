@@ -73,12 +73,12 @@ class FollowTask(BaseTask):
         # --- フォロー済みユーザーの行を非表示にする ---
         # 「フォロー中」ボタンを持つ親要素を非表示にするCSSを適用
         # Tampermonkeyのロジックを参考に、aria-labelが「フォロー中」のボタンを持つbutton-wrapperを非表示にする
-        logging.info("フォロー済みのユーザーを非表示にします。")
-        page.add_style_tag(content='div[class^="button-wrapper"]:has(button[aria-label*="フォロー中"]) { display: none !important; }')
+        #logging.info("フォロー済みのユーザーを非表示にします。")
+        #page.add_style_tag(content='div[class^="button-wrapper"]:has(button[aria-label*="フォロー中"]) { display: none !important; }')
 
         # --- フォロー処理 ---
         followed_count = 0
-        last_followed_user = None # 最後にフォローしたユーザー名を記録
+        user_follow_attempts = {} # ユーザーごとのフォロー試行回数を記録
         start_time = time.time()
 
         while followed_count < self.target_count:
@@ -95,52 +95,63 @@ class FollowTask(BaseTask):
                     # ボタンがクリック可能になるまで最大5秒待つ
                     expect(follow_button).to_be_enabled(timeout=5000)
 
-                    # フォローするユーザー名を取得してログに出力
+ # フォロー対象のユーザー名を取得
                     user_name = "不明なユーザー"
+                    user_row = None # user_rowを初期化
                     try:
-                        # ボタンの祖先要素であるユーザー情報ブロックを取得
-                        # ページによって構造が違うため、より汎用的なセレクタに変更
-                        # ボタンの祖先から、プロフィール情報全体を囲む 'profile-wrapper' を探す
-                        profile_wrapper = follow_button.locator('xpath=ancestor::div[contains(@class, "profile-wrapper")]')
-                        user_name_element = profile_wrapper.locator('span[class^="profile-name"]').first
-                        user_name = user_name_element.inner_text().strip()
+                        # follow_button から一番近い profile-wrapper を探す
+                        user_row = follow_button.locator('xpath=ancestor::div[contains(@class, "profile-wrapper")]').first
+                         
+                        if user_row.count() > 0:
+                            # profile-wrapper 内のプロフィール名を取得
+                            name_element = user_row.locator('span[class*="profile-name"]').first
+                            if name_element.count() > 0:
+                                user_name = name_element.inner_text().strip()
                     except Exception:
                         logging.warning("ユーザー名の取得に失敗しましたが、フォロー処理は続行します。")
 
-                    # クリック前の「フォローする」ボタンの数を数える
-                    follow_buttons_locator = page.get_by_role("button", name="フォローする")
-                    before_count = follow_buttons_locator.count()
 
-                    is_duplicate = user_name != "不明なユーザー" and user_name == last_followed_user
+                    # like.pyを参考に、同じユーザーへの試行回数に上限を設ける
+                    current_attempts = user_follow_attempts.get(user_name, 0)
+                    if user_name != "不明なユーザー" and current_attempts >= 3:
+                        logging.warning(f"ユーザー「{user_name}」へのフォロー試行が上限の3回に達したため、スキップします。")
+                        # このユーザーの行を非表示にする
+                        if user_row and user_row.count() > 0:
+                            try:
+                                user_row.evaluate("node => node.style.display = 'none'")
+                            except Exception as e:
+                                logging.warning(f"上限到達ユーザーの非表示中にエラーが発生しましたが、処理を続行します: {e}")
+                        continue # 次のボタンを探す
 
- 
-                    # 直前にフォローしたユーザーと同じでないかチェック
-                    if is_duplicate:
-                        #logging.warning(f"ユーザー「{user_name}」を連続でフォローしますが、カウントはしません。")
-                        pass
+                    # このユーザーへのフォローが初めての場合のみ、全体の目標件数をカウントアップ
+                    if current_attempts == 0:
+                        followed_count += 1
+                    user_follow_attempts[user_name] = current_attempts + 1
+
                     follow_button.click(force=True)
 
-                    if not is_duplicate:
-                        followed_count += 1
-                        log_message = f"ユーザー「{user_name}」をフォローしました。(合計: {followed_count}件)"
+                    # like.pyのロジックを参考に、フォローしたユーザーの行をその場で非表示にする
+                    if user_row and user_row.count() > 0:
+                        try:
+                            user_row.evaluate("node => node.style.display = 'none'")
+                        except Exception as e:
+                            logging.warning(f"フォロー済みユーザーの非表示中にエラーが発生しましたが、処理を続行します: {e}")
+
+                    # このユーザーへのフォローが初めての場合のみログを出力
+                    if current_attempts == 0:
+                        log_message = f"ユーザー「{user_name}」をフォローしました。(目標: {followed_count}/{self.target_count}件)"
                         logging.info(log_message)
 
-                    last_followed_user = user_name # 最後にフォローしたユーザー名を更新
                     time.sleep(random.uniform(3, 4))
 
-                    # 実験: フォロー後に一度スクロールしてリストを更新し、同じユーザーを再度フォローするのを防ぐ
-                    #ogging.info("次のユーザーを探すため、モーダル内をスクロールします。")
-                    page.locator("div#userList").evaluate("node => node.scrollTop = node.scrollHeight")
-                    time.sleep(3) # スクロール後の読み込みを待つ
-
-                    # 1回クリックしたら、再度ボタンを探すためにループの先頭に戻る
+                    # 次のボタンを探すためにループの先頭に戻る
                     continue
 
                 except Exception as e:
                     logging.warning(f"フォロークリック中にエラーが発生しました: {e}")
                     break
             else:
-                #logging.info("フォロー可能なユーザーが見つかりません。モーダル内をスクロールします...")
+                logging.info("フォロー可能なユーザーが見つかりません。モーダル内をスクロールします...")
                 # ページ本体ではなく、フォロワー一覧のコンテナ(#userList)をスクロールする
                 page.locator("div#userList").evaluate("node => node.scrollTop = node.scrollHeight")
                 time.sleep(3) # スクロール後の読み込みを待つ

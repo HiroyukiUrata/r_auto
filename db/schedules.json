@@ -5,71 +5,71 @@
     "json-import-flow": [],
     "post-article": [
         {
-            "count": 15,
-            "time": "00:10"
+            "count": 10,
+            "time": "00:00"
         },
         {
-            "count": 15,
-            "time": "07:57"
+            "count": 10,
+            "time": "08:00"
         },
         {
-            "count": 15,
+            "count": 10,
             "time": "11:00"
         },
         {
-            "count": 15,
+            "count": 10,
             "time": "15:00"
         },
         {
-            "count": 15,
-            "time": "19:55"
+            "count": 10,
+            "time": "20:00"
         },
         {
-            "count": 15,
+            "count": 10,
             "time": "21:00"
         }
     ],
     "procure-products-flow": [
         {
-            "count": 40,
-            "time": "09:00"
+            "count": 30,
+            "time": "21:00"
         },
         {
-            "count": 40,
-            "time": "21:00"
+            "count": 30,
+            "time": "09:00"
         }
     ],
     "rakuten-api-procure": [],
     "run-follow-action": [
         {
             "count": 10,
-            "time": "00:25"
+            "time": "00:05"
         },
         {
             "count": 10,
-            "time": "08:20"
+            "time": "08:05"
         },
         {
             "count": 10,
-            "time": "11:20"
+            "time": "11:05"
         },
         {
             "count": 10,
-            "time": "15:20"
+            "time": "15:05"
         },
         {
             "count": 10,
-            "time": "20:25"
+            "time": "20:05"
         },
         {
             "count": 10,
-            "time": "21:25"
+            "time": "21:05"
         }
     ],
     "run-like-action": [
         {
             "count": 150,
-            "time": "00:15"
+            "time": "00:10"
         },
         {
             "count": 150,
@@ -77,19 +77,19 @@
         },
         {
             "count": 100,
-            "time": "11:15"
+            "time": "11:10"
         },
         {
             "count": 100,
-            "time": "15:15"
+            "time": "15:10"
         },
         {
             "count": 100,
-            "time": "20:20"
+            "time": "20:00"
         },
         {
             "count": 150,
-            "time": "21:15"
+            "time": "21:10"
         }
     ],
     "save-auth-state": [],

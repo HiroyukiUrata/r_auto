@@ -46,7 +46,9 @@ class PostingTask(BaseTask):
 
                 caption = product['ai_caption'] or f"「{product['name']}」おすすめです！ #楽天ROOM"
 
-                logging.info(f"商品「{product['name']}」をURL: {post_url} で投稿します。")
+                product_name = product['name']
+                display_name = (product_name[:97] + '...') if len(product_name) > 100 else product_name
+                logging.info(f"商品「{display_name}」を投稿します。")
                 page = self.context.new_page()
                 page.context.tracing.start(screenshots=True, snapshots=True, sources=True)
 

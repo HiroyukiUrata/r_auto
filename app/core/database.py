@@ -23,6 +23,26 @@ def init_db():
         conn = get_db_connection()
         cursor = conn.cursor()
 
+        # 最初にproductsテーブルが存在しない場合を作成する
+        # これにより、DBファイルがなくても後続のPRAGMA文でエラーが発生しなくなる
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS products (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL, -- 商品キャプション
+                url TEXT NOT NULL, -- UNIQUE制約は後で確認・適用する
+                image_url TEXT,
+                post_url TEXT,
+                procurement_keyword TEXT,
+                ai_caption TEXT,
+                status TEXT NOT NULL DEFAULT '生情報取得', -- 生情報取得, URL取得済, 投稿文作成済, 投稿準備完了, 投稿済, エラー
+                error_message TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                post_url_updated_at TIMESTAMP,
+                ai_caption_created_at TIMESTAMP,
+                posted_at TIMESTAMP
+            )
+        ''')
+
         # --- URLにUNIQUE制約があるか確認し、なければテーブルを再構築する ---
         is_url_unique = False
         # PRAGMA index_listはテーブルのインデックス情報を返す
@@ -52,59 +72,36 @@ def init_db():
             cursor.execute("DROP TABLE products_old")
             logging.info("'products_old' テーブルを削除しました。")
 
-        # productsテーブルが存在しない場合のみ作成
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS products (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL, -- 商品キャプション
-                url TEXT NOT NULL UNIQUE,
-                image_url TEXT,
-                post_url TEXT,
-                procurement_keyword TEXT,
-                ai_caption TEXT,
-                status TEXT NOT NULL DEFAULT '生情報取得', -- 生情報取得, URL取得済, 投稿文作成済, 投稿準備完了, 投稿済, エラー
-                error_message TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                post_url_updated_at TIMESTAMP,
-                ai_caption_created_at TIMESTAMP,
-                posted_at TIMESTAMP
-            )
-        ''')
-
         # --- カラム存在チェックと追加（マイグレーション処理） ---
         # 他の処理よりも先に実行することで、古いDBスキーマでもエラーなく動作するようにする
-        cursor.execute("PRAGMA table_info(products)")
-        columns = [row['name'] for row in cursor.fetchall()]
-        if 'image_url' not in columns:
-            cursor.execute("ALTER TABLE products ADD COLUMN image_url TEXT")
-        if 'created_at' not in columns:
-            # SQLiteの古いバージョンはALTER TABLEでの動的デフォルト値をサポートしないため、2段階で追加
-            cursor.execute("ALTER TABLE products ADD COLUMN created_at TIMESTAMP")
-            # 既存のレコードには、他のタイムスタンプから推測できる最も古い日時を設定
-            cursor.execute("UPDATE products SET created_at = COALESCE(post_url_updated_at, ai_caption_created_at, posted_at, CURRENT_TIMESTAMP) WHERE created_at IS NULL")
-        if 'post_url' not in columns:
-            cursor.execute("ALTER TABLE proNOWucts ADD COLUMN post_url TEXT")
-            logging.info("productsテーブルに 'post_url' カラムを追加しました。")
-        if 'post_url_updated_at' not in columns:
-            cursor.execute("ALTER TABLE products ADD COLUMN post_url_updated_at TIMESTAMP")
-            cursor.execute("UPDATE products SET post_url_updated_at = COALESCE(ai_caption_created_at, posted_at) WHERE post_url_updated_at IS NULL AND post_url IS NOT NULL")
-            logging.info("productsテーブルに 'post_url_updated_at' カラムを追加しました。")
-        if 'ai_caption' not in columns:
-            cursor.execute("ALTER TABLE products ADD COLUMN ai_caption TEXT")
-            logging.info("productsテーブルに 'ai_caption' カラムを追加しました。")
-        if 'ai_caption_created_at' not in columns:
-            cursor.execute("ALTER TABLE products ADD COLUMN ai_caption_created_at TIMESTAMP")
-            cursor.execute("UPDATE products SET ai_caption_created_at = posted_at WHERE ai_caption_created_at IS NULL AND ai_caption IS NOT NULL")
-            logging.info("productsテーブルに 'ai_caption_created_at' カラムを追加しました。")
-        if 'posted_at' not in columns:
-            cursor.execute("ALTER TABLE products ADD COLUMN posted_at TIMESTAMP")
-            logging.info("productsテーブルに 'posted_at' カラムを追加しました。")
-        if 'procurement_keyword' not in columns:
-            cursor.execute("ALTER TABLE products ADD COLUMN procurement_keyword TEXT")
-            logging.info("productsテーブルに 'procurement_keyword' カラムを追加しました。")
-        if 'error_message' not in columns:
-            cursor.execute("ALTER TABLE products ADD COLUMN error_message TEXT")
-            logging.info("productsテーブルに 'error_message' カラムを追加しました。")
+        def add_column_if_not_exists(cursor, column_name, column_type, update_query=None):
+            cursor.execute("PRAGMA table_info(products)")
+            columns = [row['name'] for row in cursor.fetchall()]
+            if column_name not in columns:
+                try:
+                    cursor.execute(f"ALTER TABLE products ADD COLUMN {column_name} {column_type}")
+                    if update_query:
+                        cursor.execute(update_query)
+                    logging.info(f"productsテーブルに '{column_name}' カラムを追加しました。")
+                except sqlite3.Error as e:
+                    logging.error(f"'{column_name}' カラムの追加に失敗しました: {e}")
+
+        # タイプミスを修正し、重複していた行を削除
+        add_column_if_not_exists(cursor, 'post_url', 'TEXT')
+
+        add_column_if_not_exists(cursor, 'image_url', 'TEXT')
+        add_column_if_not_exists(cursor, 'created_at', 'TIMESTAMP', 
+                                 "UPDATE products SET created_at = COALESCE(post_url_updated_at, ai_caption_created_at, posted_at, CURRENT_TIMESTAMP) WHERE created_at IS NULL")
+        add_column_if_not_exists(cursor, 'post_url_updated_at', 'TIMESTAMP', 
+                                 "UPDATE products SET post_url_updated_at = COALESCE(ai_caption_created_at, posted_at) WHERE post_url_updated_at IS NULL AND post_url IS NOT NULL")
+        add_column_if_not_exists(cursor, 'ai_caption', 'TEXT')
+        add_column_if_not_exists(cursor, 'ai_caption_created_at', 'TIMESTAMP', 
+                                 "UPDATE products SET ai_caption_created_at = posted_at WHERE ai_caption_created_at IS NULL AND ai_caption IS NOT NULL")
+        add_column_if_not_exists(cursor, 'posted_at', 'TIMESTAMP')
+        add_column_if_not_exists(cursor, 'procurement_keyword', 'TEXT')
+        add_column_if_not_exists(cursor, 'error_message', 'TEXT')
+
+        # `proNOWucts` のタイプミスがあった行は削除
 
         conn.commit()
         conn.close()

@@ -1,14 +1,10 @@
 import threading
 import uvicorn
 import logging
-
 from fastapi.templating import Jinja2Templates
 from app.core.scheduler import start_scheduler
 from app.web.api import app
 from app.core.database import init_db
-
-# --- アプリケーション全体で共有するテンプレート設定 ---
-templates = Jinja2Templates(directory="web/templates")
 
 def run_api_server():
     """FastAPIサーバーを起動する"""
@@ -17,6 +13,9 @@ def run_api_server():
 if __name__ == "__main__":
     # アプリケーション全体で利用するログ設定を一元化
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+    # アプリケーション全体で共有するテンプレート設定をapp.stateに格納
+    app.state.templates = Jinja2Templates(directory="web/templates")
 
     # スケジューラをバックグラウンドスレッドで実行
     # データベースを初期化

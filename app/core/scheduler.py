@@ -6,6 +6,7 @@ import os
 
 # タスク定義を一元的にインポート
 from app.core.task_definitions import TASK_DEFINITIONS
+from app.web.api import _run_task_internal # フロー実行のためにインポート
 from app.core.scheduler_utils import run_threaded, run_task_with_random_delay
 
 SCHEDULE_FILE = "db/schedules.json"
@@ -24,15 +25,22 @@ def load_schedules_from_file():
             if definition:
                 # timesは {"time": "HH:MM", "count": N} のリスト
                 for entry in times:
-                    task_func = definition["function"]
-
                     # タスク定義からのデフォルト引数を取得し、スケジュール固有の引数で上書き
                     job_kwargs = definition.get("default_kwargs", {}).copy()
-                    job_kwargs['task_to_run'] = task_func
                     job_kwargs['count'] = entry.get('count', 1)
 
-                    # スケジュールを登録
-                    schedule.every().day.at(entry['time']).do(run_threaded, run_task_with_random_delay, **job_kwargs).tag(tag)
+                    task_func = definition.get("function")
+                    if task_func:
+                        # 通常のタスクの場合
+                        job_kwargs['task_to_run'] = task_func
+                        schedule.every().day.at(entry['time']).do(run_threaded, run_task_with_random_delay, **job_kwargs).tag(tag)
+                    elif "flow" in definition:
+                        # フロータスクの場合
+                        # _run_task_internal を直接呼び出す
+                        # is_part_of_flow=False を明示的に渡す
+                        schedule.every().day.at(entry['time']).do(run_threaded, _run_task_internal, tag=tag, is_part_of_flow=False, **job_kwargs).tag(tag)
+                    else:
+                        logging.warning(f"タスク '{tag}' には実行可能な関数またはフローが定義されていません。")
 
         logging.info(f"{SCHEDULE_FILE} からスケジュールを読み込みました。")
         return True
