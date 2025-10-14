@@ -16,10 +16,10 @@ class LikeTask(BaseTask):
     def _execute_main_logic(self):
         page = self.page
 
-        # ひらがな「あ」から「ん」までのリストからランダムに1文字選ぶ
-        #hiragana_chars = "あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほまみむめもやゆよらりるれろわをん"
-        hiragana_chars = "ん"
-        random_keyword = random.choice(hiragana_chars)
+        # ひらがな「あ」から「ん」までのリストからランダムに異なる2文字を選び、全角スペースで連結
+        hiragana_chars = "あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほまみむめもやゆよらりるれろわをん"
+        two_random_chars = random.sample(hiragana_chars, 2)
+        random_keyword = "　".join(two_random_chars)
         target_url = f"https://room.rakuten.co.jp/search/item?keyword={random_keyword}&colle=&comment=&like=&user_id=&user_name=&original_photo=0"
        
         logging.info(f"ランダムなキーワード「{random_keyword}」で検索結果ページに移動します...")
@@ -48,7 +48,7 @@ class LikeTask(BaseTask):
 
             # --- 「いいね」ボタンを1つずつ探してクリック ---
             # 「いいね」済みではない、最初の「いいね」ボタンを探す
-            button_to_click = page.locator("a.icon-like.right:not(.isLiked)").first
+            button_to_click = page.locator("a.icon-like.right:not(.isLiked):visible").first
 
             if button_to_click.count() > 0:
                 try:
@@ -56,7 +56,7 @@ class LikeTask(BaseTask):
                     user_name = "不明なユーザー"
                     try:
                         # ボタンの祖先要素である投稿アイテム全体(<div class="item">)を探す
-                        item_container = button_to_click.locator('xpath=ancestor::div[contains(@class, "item") and not(contains(@class, "items-search"))]')
+                        item_container = button_to_click.locator('xpath=ancestor::div[contains(@class, "item")][1]')
                         user_name_element = item_container.locator('div.owner span.name.ng-binding').first
                         user_name = user_name_element.inner_text().strip()
                     except Exception:
@@ -65,11 +65,14 @@ class LikeTask(BaseTask):
                     # ユーザーごとの「いいね」回数をチェック
                     current_user_likes = user_like_counts.get(user_name, 0)
                     if user_name != "不明なユーザー" and current_user_likes >= 3:
-                        logging.info(f"ユーザー「{user_name}」への「いいね」が上限の3回に達したため、このユーザーの投稿をスキップします。")
-                        # このユーザーの投稿をすべて非表示にする
-                        # 特殊文字をエスケープする必要があるため、単純なf-stringは避ける
-                        page.add_style_tag(content=f'div.item:has(div.owner span.name:has-text("{user_name}")) {{ display: none !important; }}')
-                        time.sleep(1) # スタイル適用を待つ
+                        #logging.info(f"ユーザー「{user_name}」への「いいね」が上限の3回に達したため、このユーザーの投稿をスキップします。")
+                        # このユーザーの投稿を非表示にする
+                        try:
+                            item_container.evaluate("node => node.style.display = 'none'")
+                        except Exception as e:
+                            logging.warning(f"投稿の非表示中にエラーが発生しましたが、処理を続行します: {e}")
+                        
+                        # 次の有効なボタンを見つけるためにループを継続
                         continue # 次のボタンを探す
 
                     # 直前に「いいね」したユーザーと同じでないかチェック
@@ -78,15 +81,24 @@ class LikeTask(BaseTask):
                     # ボタンがクリック可能になるまで最大5秒待つ
                     expect(button_to_click).to_be_enabled(timeout=5000)
                     button_to_click.click()
+
+                    # 「いいね」した投稿をその場で非表示にして、次のループで見つけないようにする
+                    try:
+                        item_container.evaluate("node => node.style.display = 'none'")
+                    except Exception as e:
+                        logging.warning(f"投稿の非表示中にエラーが発生しましたが、処理を続行します: {e}")
                     
-                    liked_count += 1
+                    # このユーザーへの「いいね」が初めての場合のみ、全体の目標件数をカウントアップ
+                    if current_user_likes == 0:
+                        liked_count += 1
                     user_like_counts[user_name] = current_user_likes + 1
                     
-                    log_message = f"ユーザー「{user_name}」の投稿に「いいね」しました。(合計: {liked_count}件, このユーザーへ: {user_like_counts[user_name]}回目)"
-                    if is_duplicate:
-                        logging.info(f"連続で{log_message}")
-                    else:
-                        logging.info(log_message)
+                    user_likes_this_time = user_like_counts[user_name]
+                    # このユーザーへの「いいね」が初めての場合のみログを出力する
+                    if user_likes_this_time == 1:
+                        log_message = f"ユーザー「{user_name}」の投稿に「いいね」しました。(目標: {liked_count}/{self.target_count}件)"
+                        if is_duplicate: logging.info(f"連続で{log_message}")
+                        else: logging.info(log_message)
 
                     last_liked_user = user_name # 最後に「いいね」したユーザー名を更新
                     time.sleep(random.uniform(1, 2)) # 人間らしい間隔
@@ -102,7 +114,7 @@ class LikeTask(BaseTask):
 
             # 新しいボタンが見つからなかった場合、スクロールする
             else:
-                logging.info("いいね可能なボタンが見つかりません。ページをスクロールします...")
+                #logging.info("いいね可能なボタンが見つかりません。ページをスクロールします...")
                 page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
                 time.sleep(3) # スクロール後の読み込みを待つ
 

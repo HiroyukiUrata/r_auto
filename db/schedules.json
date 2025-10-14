@@ -2,6 +2,7 @@
     "check-login-status": [],
     "create-caption-prompt": [],
     "get-post-url": [],
+    "json-import-flow": [],
     "post-article": [
         {
             "count": 15,
@@ -30,8 +31,12 @@
     ],
     "procure-products-flow": [
         {
-            "count": 20,
-            "time": "08:30"
+            "count": 40,
+            "time": "09:00"
+        },
+        {
+            "count": 40,
+            "time": "21:00"
         }
     ],
     "rakuten-api-procure": [],

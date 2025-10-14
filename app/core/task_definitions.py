@@ -89,7 +89,7 @@ TASK_DEFINITIONS = {
         "name_ja": "いいね活動",
         "function": run_like_action,
         "is_debug": False,
-        "default_kwargs": {"count": 3},
+        "default_kwargs": {"count": 15},
         "description": "設定されたキーワードに基づいて「いいね」アクションを実行します。",
         "order": 60,
     },

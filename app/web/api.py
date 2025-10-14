@@ -491,11 +491,6 @@ def _run_task_internal(tag: str, is_part_of_flow: bool):
 
     # 上記以外のバックグラウンドで実行するタスク
     kwargs = definition.get("default_kwargs", {}).copy()
-    # 即時実行の場合、記事投稿は10件に設定
-    if tag == "post-article":
-        kwargs['count'] = 10 # 記事投稿は10件
-    elif tag in ["run-like-action", "run-follow-action", "procure-products-flow"]:
-        kwargs['count'] = 10
 
     job_thread, result_container = run_threaded(task_wrapper, **kwargs)
 
