@@ -401,3 +401,20 @@ def delete_multiple_products(product_ids: list[int]):
         return cursor.rowcount
     finally:
         conn.close()
+
+def update_product_order(product_ids: list[int]):
+    """商品のリスト順に基づいてpriorityを更新する"""
+    if not product_ids:
+        return
+
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        # リストの先頭が高い優先度になるように、priorityを降順で設定
+        max_priority = len(product_ids)
+        for i, product_id in enumerate(product_ids):
+            cursor.execute("UPDATE products SET priority = ? WHERE id = ?", (max_priority - i, product_id))
+        conn.commit()
+        logging.info(f"{len(product_ids)}件の商品の順序を更新しました。")
+    finally:
+        conn.close()

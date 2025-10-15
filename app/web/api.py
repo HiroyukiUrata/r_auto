@@ -10,7 +10,7 @@ from pydantic import BaseModel
 
 # タスク定義を一元的にインポート
 from app.core.task_definitions import TASK_DEFINITIONS
-from app.core.database import get_all_inventory_products, update_product_status, delete_all_products, init_db, delete_product, update_status_for_multiple_products, delete_multiple_products, get_product_count_by_status, get_error_products_in_last_24h, update_product_priority
+from app.core.database import get_all_inventory_products, update_product_status, delete_all_products, init_db, delete_product, update_status_for_multiple_products, delete_multiple_products, get_product_count_by_status, get_error_products_in_last_24h, update_product_priority, update_product_order
 from app.tasks.posting import run_posting
 from app.tasks.get_post_url import run_get_post_url
 from app.tasks.import_products import process_and_import_products
@@ -376,6 +376,17 @@ async def update_priority(product_id: int, request: PriorityUpdateRequest):
     except Exception as e:
         logging.error(f"商品ID {product_id} の優先度更新中にエラー: {e}")
         return JSONResponse(status_code=500, content={"status": "error", "message": "優先度の更新に失敗しました。"})
+
+@app.post("/api/inventory/update-order")
+async def update_inventory_order(request: BulkUpdateRequest):
+    """在庫商品の表示順（優先度）を一括で更新する"""
+    try:
+        update_product_order(request.product_ids)
+        return JSONResponse(content={"status": "success", "message": "商品の順序を更新しました。"})
+    except Exception as e:
+        logging.error(f"商品順序の一括更新中にエラーが発生しました: {e}")
+        return JSONResponse(status_code=500, content={"status": "error", "message": "順序の更新に失敗しました。"})
+
 
 @app.post("/api/inventory/bulk-complete")
 async def bulk_complete_inventory_items(request: BulkUpdateRequest):

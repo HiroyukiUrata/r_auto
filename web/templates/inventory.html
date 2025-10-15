@@ -51,9 +51,9 @@
         <thead>
             <tr>
                 <th scope="col" style="width: 5%;"></th>
+                <th scope="col" style="width: 5%;"></th>
                 <th scope="col" style="width: 7%;">サムネイル</th>
-                <th scope="col" style="width: 58%;">商品情報</th>
-                <th scope="col" style="width: 7%;">優先度</th>
+                <th scope="col" style="width: 60%;">商品情報</th>
                 <th scope="col" style="width: 7%;">ステータス</th>
                 <th scope="col" style="width: 8%;">作成日</th>
             </tr>
@@ -108,9 +108,10 @@
         border: 3px solid #0d6efd; /* Bootstrapのプライマリカラーで枠線を太く、色を濃くする */
         padding: 1px; /* 枠線の太さが増えた分、パディングを調整して画像のサイズ感を維持 */
     }
-    .priority-input {
-        width: 60px;
-        margin: auto;
+    .inventory-thumbnail {
+        width: 80px;
+        height: 80px;
+        object-fit: cover;
     }
     /* スマートフォンなどの小さい画面向けのスタイル */
     @media (max-width: 767.98px) {
@@ -126,17 +127,13 @@
             }
             /* 各列の幅を再調整 */
             td:nth-child(5) { width: 15%; }  /* ステータス */
-            td:nth-child(4) { width: 10%; }  /* 優先度 (狭くする) */
-            td:nth-child(3) { width: 60%; }  /* 商品情報 (広げる) */
-            td:nth-child(2) { width: 15%; }
-
-        }
-
-        /* 画面幅が狭い場合、優先度入力ボックスの幅を調整 */
-        .priority-input {
-            width: 30px;
-            padding-left: 0.25rem;
-            padding-right: 0.25rem;
+            td:nth-child(4) { width: 65%; }  /* 商品情報 */
+            td:nth-child(3) { width: 15%; }  /* サムネイル */
+            td:nth-child(2) { display: table-cell; width: 5%; } /* ハンドル列を表示 */
+            .inventory-thumbnail {
+                width: 40px;
+                height: 40px;
+            }
         }
     }
 
@@ -163,10 +160,20 @@
         /* チェックボックス列を常に非表示にする */
         display: none;
     }
+    /* ドラッグ中のゴースト要素のスタイル */
+    .sortable-ghost {
+        opacity: 0.4;
+        background-color: #c8ebfb;
+    }
+    .drag-handle {
+        cursor: grab;
+        color: #adb5bd;
+    }
 </style>
 {% endblock %}
 
 {% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
 <script>
     // グローバルスコープにモーダルインスタンスを保持
     let infoModalInstance = null;
@@ -260,28 +267,6 @@
             console.error('Error:', error);
             alert(error.message);
         }
-    }
-
-    let priorityUpdateTimeout;
-    function updatePriority(productId, priority) {
-        // 連続した変更をまとめるためのデバウンス処理
-        clearTimeout(priorityUpdateTimeout);
-        priorityUpdateTimeout = setTimeout(async () => {
-            try {
-                const response = await fetch(`/api/inventory/${productId}/priority`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ priority: parseInt(priority, 10) })
-                });
-                if (!response.ok) {
-                    const result = await response.json();
-                    throw new Error(result.message || '優先度の更新に失敗しました。');
-                }
-                // 成功時は何もしない（UIは既に更新されている）
-            } catch (error) {
-                alert(`エラー: ${error.message}`);
-            }
-        }, 500); // 500ms待ってからAPIを呼び出す
     }
 
     function getSelectedProductIds() {
@@ -417,17 +402,17 @@
                             <td>
                                 <input class="form-check-input product-checkbox" type="checkbox" value="${product.id}">
                             </td>
+                            <td class="text-center drag-handle">
+                                <i class="bi bi-grip-vertical"></i>
+                            </td>
                             <td>
                                 <a href="${product.url}" target="_blank" rel="noopener noreferrer">
-                                    <img src="${product.image_url || 'https://via.placeholder.com/80'}" alt="${product.name}" class="img-thumbnail" style="width: 100%; height: auto; aspect-ratio: 1 / 1; object-fit: cover;">
+                                    <img src="${product.image_url || 'https://via.placeholder.com/80'}" alt="${product.name}" class="img-thumbnail inventory-thumbnail">
                                 </a>
                             </td>
                             <td class="text-start">
                                 <div class="fw-bold truncate-cell" title="${product.name || ''}">${product.name || ''}</div>
                                 <div class="text-muted small truncate-cell" title="${product.ai_caption || ''}">${product.ai_caption || ''}</div>
-                            </td>
-                            <td class="text-center">
-                                <input type="number" class="form-control form-control-sm text-center priority-input" value="${product.priority || 0}" oninput="updatePriority(${product.id}, this.value)">
                             </td>
                             <td class="text-center" onclick="showInfoModal(this)" data-name="${product.name || ''}" data-caption="${product.ai_caption || ''}" data-post-url="${product.post_url || ''}" data-procurement-keyword="${product.procurement_keyword || ''}">${statusHtml}</td>
                             <td>
@@ -436,6 +421,30 @@
                         </tr>
                     `;
                     tableBody.innerHTML += row;
+                });
+
+                // SortableJSの初期化
+                new Sortable(tableBody, {
+                    animation: 150,
+                    ghostClass: 'sortable-ghost',
+                    handle: '.drag-handle', // ドラッグハンドルを専用のクラスに限定
+                    onEnd: async function (evt) {
+                        const productIds = Array.from(tableBody.querySelectorAll('tr')).map(tr => tr.id.replace('product-row-', ''));
+                        try {
+                            const response = await fetch('/api/inventory/update-order', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ product_ids: productIds })
+                            });
+                            if (!response.ok) {
+                                const result = await response.json();
+                                throw new Error(result.message || '順序の更新に失敗しました。');
+                            }
+                        } catch (error) {
+                            alert(`エラー: ${error.message}`);
+                            location.reload(); // エラー時はUIを元に戻すためにリロード
+                        }
+                    }
                 });
             });
 
