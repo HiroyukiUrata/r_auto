@@ -92,6 +92,7 @@
 
 {% block scripts %}
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
     <script>
         async function saveSchedule(tag, isEnabled, times) {
@@ -179,9 +180,52 @@
                 `;
                 container.innerHTML += cardHtml;
             });
+
+            // --- ここから追加 ---
+            // スケジュールカードのホバーイベントでグラフをハイライト
+            container.addEventListener('mouseover', (event) => {
+                const card = event.target.closest('.card[id^="task-card-"]');
+                if (card && scheduleChartInstance) {
+                    const tag = card.id.replace('task-card-', '');
+                    highlightChartDataset(tag);
+                }
+            });
+
+            container.addEventListener('mouseout', (event) => {
+                unhighlightChartDataset();
+            });
+            // --- ここまで追加 ---
         }
 
         let scheduleChartInstance = null;
+        // グラフの棒の先端に円を描画するカスタムプラグイン
+        const matchstickPlugin = {
+            id: 'matchstick',
+            afterDatasetsDraw(chart) {
+                const { ctx } = chart;
+
+                // データセット（タスクごと）にループ
+                chart.data.datasets.forEach((dataset, i) => {
+                    const meta = chart.getDatasetMeta(i);
+                    // 凡例クリックで非表示にされていないデータセットのみ描画
+                    if (meta.visible) {
+                        // データセット内の各データポイント（棒グラフ）にループ
+                        meta.data.forEach(point => {
+                            // 枠線と塗りの色を設定
+                            ctx.strokeStyle = dataset.backgroundColor;
+                            ctx.fillStyle = dataset.backgroundColor;
+                            ctx.lineWidth =12; // 枠線の太さ
+
+                            // 棒の先端に円を描画
+                            ctx.beginPath();
+                            ctx.arc(point.x, point.y, point.width / 2, 0, 12 * Math.PI);
+                            ctx.fill();
+                            ctx.stroke();
+                        });
+                    }
+                });
+            }
+        };
         function renderScheduleChart(schedules) {
             const ctx = document.getElementById('scheduleChart').getContext('2d');
 
@@ -192,6 +236,15 @@
                 'run-follow-action': 'rgb(75, 192, 192)',
                 'procure-products-flow': 'rgb(255, 206, 86)',
                 'default': 'rgb(153, 102, 255)'
+            };
+
+            // 現在時刻を示すためのアノテーションプラグイン設定
+            const annotation = {
+                type: 'line',
+                borderColor: 'red',
+                borderWidth: 2,
+                scaleID: 'x',
+                value: new Date() // 現在時刻
             };
 
             const datasets = [];
@@ -205,7 +258,9 @@
                 datasets.push({
                     label: job.name_ja,
                     data: dataPoints,
+                    tag: job.tag, // ハイライト機能のためにタグを追加
                     backgroundColor: (colors[job.tag] || colors.default).replace(')', ', 0.7)').replace('rgb', 'rgba'),
+                    barPercentage: 0.7, // バーの幅を少し太くする
                 });
             });
 
@@ -215,13 +270,21 @@
 
             scheduleChartInstance = new Chart(ctx, {
                 type: 'bar',
+                plugins: [matchstickPlugin], // マッチ棒プラグインを登録
                 data: {
                     datasets: datasets
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false,
+                    },
                     plugins: {
+                        legend: {
+                            display: false // 凡例を非表示にする
+                        },
                         title: { display: true, text: 'タスク実行時刻と目標件数' },
                         tooltip: {
                             callbacks: {
@@ -232,6 +295,10 @@
                                     return `目標件数: ${tooltipItem.raw.y}`;
                                 }
                             }
+                        },
+                        // 現在時刻の線を表示するためのアノテーション設定
+                        annotation: {
+                            annotations: { annotation }
                         }
                     },
                     scales: {
@@ -261,6 +328,30 @@
                 }
             });
         }
+
+        // --- ここから追加 ---
+        // グラフの特定のデータセットをハイライトする関数
+        function highlightChartDataset(tagToHighlight) {
+            if (!scheduleChartInstance) return;
+
+            scheduleChartInstance.data.datasets.forEach((dataset, index) => {
+                const meta = scheduleChartInstance.getDatasetMeta(index);
+                if (dataset.tag === tagToHighlight) {
+                    meta.hidden = false;
+                } else {
+                    meta.hidden = true;
+                }
+            });
+            scheduleChartInstance.update();
+        }
+
+        // グラフのハイライトを解除する関数
+        function unhighlightChartDataset() {
+            if (!scheduleChartInstance) return;
+            scheduleChartInstance.data.datasets.forEach((dataset, index) => scheduleChartInstance.getDatasetMeta(index).hidden = false);
+            scheduleChartInstance.update();
+        }
+        // --- ここまで追加 ---
 
         function addTime(button, tag, hasCount) {
             const cardBody = button.closest('.card-body');
