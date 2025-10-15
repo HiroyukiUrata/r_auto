@@ -297,7 +297,7 @@ class FollowTask(BaseTask):
             if success:
                 followed_count += 1
                 # log_message = f"ユーザー「{user_name_to_follow}」のフォローに成功し、状態遷移を確認しました。(実行: {followed_count}/{len(self.target_users)}件)"
-                log_message = f"{user_name_to_follow}」をフォローしました。({followed_count}/{len(self.target_users)})"
+                log_message = f"{user_name_to_follow}をフォローしました。({followed_count}/{len(self.target_users)})"
                 logging.info(log_message)
             
             #time.sleep(random.uniform(2, 3)) # フォロー間隔

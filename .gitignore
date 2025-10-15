@@ -15,12 +15,6 @@ venv/
 
 # R-Auto specific
 .env
-db/gemini_prompt.json
-db/gemini_response_after.json
 
-# Playwright profile
-db/playwright_profile/
-db/playwright_profile_backup/
-db/error_trace/
-db/products.db
-db/screenshots/
+# Ignore all contents of the db directory, as they are user-specific or generated at runtime.
+db/
