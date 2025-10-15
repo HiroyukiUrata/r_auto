@@ -4,29 +4,33 @@
 
 {% block content %}
 <div class="row mb-4">
-    <div class="col-md-12">
-        <div class="card">
-            <div class="card-header">
-                <i class="bi bi-collection-fill me-2"></i>キーワードプロファイル管理
-            </div>
-            <div class="card-body">
-                <div class="row g-2 align-items-center">
-                    <div class="col-sm-4">
-                        <label for="profile-select" class="form-label">プロファイルを選択</label>
-                        <select id="profile-select" class="form-select"></select>
+    <div class="accordion" id="profileAccordion">
+        <div class="accordion-item">
+            <h2 class="accordion-header" id="headingOne">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseOne" aria-expanded="false" aria-controls="collapseOne">
+                    <i class="bi bi-collection-fill me-2"></i>キーワードプロファイル管理
+                </button>
+            </h2>
+            <div id="collapseOne" class="accordion-collapse collapse" aria-labelledby="headingOne" data-bs-parent="#profileAccordion">
+                <div class="accordion-body">
+                    <div class="row g-2 align-items-center">
+                        <div class="col-sm-4">
+                            <label for="profile-select" class="form-label">プロファイルを選択</label>
+                            <select id="profile-select" class="form-select"></select>
+                        </div>
+                        <div class="col-sm-8 d-flex align-items-end gap-2">
+                            <button class="btn btn-primary" onclick="loadProfile()"><i class="bi bi-box-arrow-in-down me-1"></i>読み込み</button>
+                            <button class="btn btn-danger" onclick="deleteProfile()"><i class="bi bi-trash me-1"></i>削除</button>
+                        </div>
                     </div>
-                    <div class="col-sm-8 d-flex align-items-end gap-2">
-                        <button class="btn btn-primary" onclick="loadProfile()"><i class="bi bi-box-arrow-in-down me-1"></i>読み込み</button>
-                        <button class="btn btn-danger" onclick="deleteProfile()"><i class="bi bi-trash me-1"></i>削除</button>
+                    <hr>
+                    <div class="row g-2 align-items-center">
+                        <div class="col-sm-4">
+                            <label for="new-profile-name" class="form-label">現在のキーワードを名前を付けて保存</label>
+                            <input type="text" id="new-profile-name" class="form-control" placeholder="例: ファッション用">
+                        </div>
+                        <div class="col-sm-8 d-flex align-items-end"><button class="btn btn-success" onclick="saveProfile()"><i class="bi bi-save me-1"></i>保存</button></div>
                     </div>
-                </div>
-                <hr>
-                <div class="row g-2 align-items-center">
-                    <div class="col-sm-4">
-                        <label for="new-profile-name" class="form-label">現在のキーワードを名前を付けて保存</label>
-                        <input type="text" id="new-profile-name" class="form-control" placeholder="例: ファッション用">
-                    </div>
-                    <div class="col-sm-8 d-flex align-items-end"><button class="btn btn-success" onclick="saveProfile()"><i class="bi bi-save me-1"></i>保存</button></div>
                 </div>
             </div>
         </div>
