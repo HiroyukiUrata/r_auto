@@ -1,12 +1,64 @@
 {% extends "base.html" %}
 
-{% block title %}ログ確認 - {{ super() }}{% endblock %}
+{% block title %}ログ確認 - R-Auto Control Panel{% endblock %}
 
 {% block content %}
-<div class="card">
-    <div class="card-header">ログ確認</div>
-    <div class="card-body">
-        <p>ここにタスクの実行ログが表示されます。</p>
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">ログ確認</h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <div class="form-check form-switch me-3">
+            <input class="form-check-input" type="checkbox" role="switch" id="auto-scroll-switch" checked>
+            <label class="form-check-label" for="auto-scroll-switch">自動スクロール</label>
+        </div>
+        <button type="button" class="btn btn-sm btn-outline-secondary" id="refresh-btn">
+            <i class="bi bi-arrow-clockwise me-1"></i>更新
+        </button>
     </div>
 </div>
+
+<div id="log-container" class="bg-dark text-light p-3 rounded" style="height: 70vh; overflow-y: auto; font-family: monospace; white-space: pre-wrap; word-wrap: break-word; font-size: 0.8rem;">
+    <p>ログを読み込んでいます...</p>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const logContainer = document.getElementById('log-container');
+        const refreshBtn = document.getElementById('refresh-btn');
+        const autoScrollSwitch = document.getElementById('auto-scroll-switch');
+        let intervalId = null;
+
+        async function fetchLogs() {
+            try {
+                const response = await fetch('/api/logs');
+                if (!response.ok) {
+                    throw new Error(`サーバーエラー: ${response.status}`);
+                }
+                const logText = await response.text();
+                logContainer.textContent = logText;
+
+                // 自動スクロールが有効な場合、一番下までスクロール
+                if (autoScrollSwitch.checked) {
+                    logContainer.scrollTop = logContainer.scrollHeight;
+                }
+            } catch (error) {
+                logContainer.textContent = `ログの取得に失敗しました: ${error.message}`;
+                console.error(error);
+            }
+        }
+
+        // 更新ボタンのクリックイベント
+        refreshBtn.addEventListener('click', fetchLogs);
+
+        // 5秒ごとにログを自動更新
+        function startAutoRefresh() {
+            fetchLogs(); // まず一度実行
+            intervalId = setInterval(fetchLogs, 5000);
+        }
+
+        // ページ読み込み時に自動更新を開始
+        startAutoRefresh();
+    });
+</script>
 {% endblock %}

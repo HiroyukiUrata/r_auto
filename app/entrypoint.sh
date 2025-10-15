@@ -16,10 +16,6 @@ sleep 2
 # Start VNC server
 x11vnc -display :0 -forever -nopw &
 
-# Start Python app
-echo "Starting Python application (FastAPI server and scheduler)..."
-python -m app.main &
-
-# Keep container running
-echo "Entrypoint setup complete. Container is running."
-exec sleep infinity
+# Execute the command passed to the script (from docker-compose command)
+echo "Entrypoint setup complete. Starting main process..."
+exec "$@"

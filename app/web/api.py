@@ -1,5 +1,5 @@
-from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi import APIRouter, Request, HTTPException
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 from fastapi.templating import Jinja2Templates
 import schedule
 import re
@@ -14,15 +14,11 @@ from app.core.database import get_all_inventory_products, update_product_status,
 from app.tasks.posting import run_posting
 from app.tasks.get_post_url import run_get_post_url
 from app.tasks.import_products import process_and_import_products
+from app.core.logging_config import LOG_FILE
 from app.core.config_manager import get_config, save_config
 from app.core.scheduler_utils import run_threaded, run_task_with_random_delay
 from datetime import date, timedelta
 
-# --- FastAPI App Setup ---
-app = FastAPI(
-    title="R-Auto Control Panel",
-    description="システムの稼働状況やスケジュールを管理するWeb UI",
-)
 
 KEYWORDS_FILE = "db/keywords.json"
 SCHEDULE_FILE = "db/schedules.json"
@@ -67,45 +63,47 @@ class KeywordsUpdateRequest(BaseModel):
 
 
 # --- HTML Routes ---
-@app.get("/", response_class=HTMLResponse)
+router = APIRouter()
+
+@router.get("/", response_class=HTMLResponse)
 async def read_root(request: Request):
     """
     トップページを表示し、現在のスケジュール一覧を渡す
     """
     return request.app.state.templates.TemplateResponse("index.html", {"request": request})
 
-@app.get("/logs", response_class=HTMLResponse)
+@router.get("/logs", response_class=HTMLResponse)
 async def read_logs(request: Request):
     """ログ確認ページを表示する"""
     return request.app.state.templates.TemplateResponse("logs.html", {"request": request})
 
-@app.get("/chat", response_class=HTMLResponse)
+@router.get("/chat", response_class=HTMLResponse)
 async def read_chat(request: Request):
     """AIチャットページを表示する"""
     return request.app.state.templates.TemplateResponse("chat.html", {"request": request})
 
-@app.get("/system-config", response_class=HTMLResponse)
+@router.get("/system-config", response_class=HTMLResponse)
 async def read_system_config(request: Request):
     """システムコンフィグページを表示する"""
     return request.app.state.templates.TemplateResponse("config.html", {"request": request})
 
-@app.get("/inventory", response_class=HTMLResponse)
+@router.get("/inventory", response_class=HTMLResponse)
 async def read_inventory(request: Request):
     """在庫確認ページを表示する"""
     return request.app.state.templates.TemplateResponse("inventory.html", {"request": request})
 
-@app.get("/keywords", response_class=HTMLResponse)
+@router.get("/keywords", response_class=HTMLResponse)
 async def read_keywords_page(request: Request):
     """キーワード管理ページを表示する"""
     return request.app.state.templates.TemplateResponse("keywords.html", {"request": request})
 
-@app.get("/error-management", response_class=HTMLResponse)
+@router.get("/error-management", response_class=HTMLResponse)
 async def read_error_management(request: Request):
     """エラー管理ページを表示する"""
     return request.app.state.templates.TemplateResponse("error_management.html", {"request": request})
 
 # --- API Routes ---
-@app.get("/api/schedules")
+@router.get("/api/schedules")
 async def get_schedules():
     """現在のスケジュール情報をJSONで返す"""
     # 1. タスク定義を元にレスポンスの雛形を作成
@@ -170,7 +168,7 @@ def _load_schedules_from_file():
         with open(SCHEDULE_FILE, "r") as f: return json.load(f)
     except (IOError, json.JSONDecodeError): return {}
 
-@app.get("/api/schedule-profiles")
+@router.get("/api/schedule-profiles")
 async def get_schedule_profiles():
     """保存されているスケジュールプロファイルの一覧を返す"""
     os.makedirs(SCHEDULE_PROFILES_DIR, exist_ok=True)
@@ -180,7 +178,7 @@ async def get_schedule_profiles():
             profiles.append(os.path.splitext(filename)[0])
     return JSONResponse(content=sorted(profiles))
 
-@app.post("/api/schedule-profiles")
+@router.post("/api/schedule-profiles")
 async def save_schedule_profile(request: ProfileNameRequest):
     """現在のスケジュールを新しいプロファイルとして保存する"""
     profile_name = request.profile_name
@@ -203,7 +201,7 @@ async def save_schedule_profile(request: ProfileNameRequest):
         logging.error(f"プロファイル '{profile_name}' の保存中にエラー: {e}")
         return JSONResponse(status_code=500, content={"status": "error", "message": "プロファイルの保存に失敗しました。"})
 
-@app.put("/api/schedule-profiles/{profile_name}")
+@router.put("/api/schedule-profiles/{profile_name}")
 async def load_schedule_profile(profile_name: str):
     """指定されたプロファイルを現在のスケジュールとして読み込む"""
     profile_path = os.path.join(SCHEDULE_PROFILES_DIR, f"{profile_name}.json")
@@ -223,7 +221,7 @@ async def load_schedule_profile(profile_name: str):
         logging.error(f"プロファイル '{profile_name}' の読み込み中にエラー: {e}")
         return JSONResponse(status_code=500, content={"status": "error", "message": "プロファイルの読み込みに失敗しました。"})
 
-@app.delete("/api/schedule-profiles/{profile_name}")
+@router.delete("/api/schedule-profiles/{profile_name}")
 async def delete_schedule_profile(profile_name: str):
     """指定されたプロファイルを削除する"""
     profile_path = os.path.join(SCHEDULE_PROFILES_DIR, f"{profile_name}.json")
@@ -236,14 +234,14 @@ async def delete_schedule_profile(profile_name: str):
         logging.error(f"プロファイル '{profile_name}' の削除中にエラー: {e}")
         return JSONResponse(status_code=500, content={"status": "error", "message": "プロファイルの削除に失敗しました。"})
 
-@app.get("/api/keyword-profiles")
+@router.get("/api/keyword-profiles")
 async def get_keyword_profiles():
     """保存されているキーワードプロファイルの一覧を返す"""
     os.makedirs(KEYWORD_PROFILES_DIR, exist_ok=True)
     profiles = [os.path.splitext(f)[0] for f in os.listdir(KEYWORD_PROFILES_DIR) if f.endswith(".json")]
     return JSONResponse(content=sorted(profiles))
 
-@app.post("/api/keyword-profiles")
+@router.post("/api/keyword-profiles")
 async def save_keyword_profile(request: ProfileNameRequest):
     """現在のキーワードを新しいプロファイルとして保存する"""
     profile_name = request.profile_name.strip()
@@ -261,7 +259,7 @@ async def save_keyword_profile(request: ProfileNameRequest):
     except Exception as e:
         return JSONResponse(status_code=500, content={"status": "error", "message": f"プロファイルの保存に失敗しました: {e}"})
 
-@app.put("/api/keyword-profiles/{profile_name}")
+@router.put("/api/keyword-profiles/{profile_name}")
 async def load_keyword_profile(profile_name: str):
     """指定されたプロファイルを現在のキーワードとして読み込む"""
     profile_path = os.path.join(KEYWORD_PROFILES_DIR, f"{profile_name}.json")
@@ -275,7 +273,7 @@ async def load_keyword_profile(profile_name: str):
     except Exception as e:
         return JSONResponse(status_code=500, content={"status": "error", "message": f"プロファイルの読み込みに失敗しました: {e}"})
 
-@app.delete("/api/keyword-profiles/{profile_name}")
+@router.delete("/api/keyword-profiles/{profile_name}")
 async def delete_keyword_profile(profile_name: str):
     """指定されたキーワードプロファイルを削除する"""
     profile_path = os.path.join(KEYWORD_PROFILES_DIR, f"{profile_name}.json")
@@ -287,7 +285,7 @@ async def delete_keyword_profile(profile_name: str):
     except Exception as e:
         return JSONResponse(status_code=500, content={"status": "error", "message": f"プロファイルの削除に失敗しました: {e}"})
 
-@app.get("/api/config-tasks")
+@router.get("/api/config-tasks")
 async def get_config_tasks():
     """システムコンフィグ用のタスクリストをJSONで返す"""
     debug_tasks = []
@@ -302,12 +300,12 @@ async def get_config_tasks():
     
     return JSONResponse(content=sorted(debug_tasks, key=lambda x: x["order"]))
 
-@app.get("/api/config")
+@router.get("/api/config")
 async def read_config():
     """現在の設定をJSONで返す"""
     return JSONResponse(content=get_config())
 
-@app.get("/api/inventory")
+@router.get("/api/inventory")
 async def get_inventory():
     """在庫商品（「投稿済」以外）のリストをJSONで返す"""
     products = get_all_inventory_products()
@@ -315,14 +313,14 @@ async def get_inventory():
     products_list = [dict(product) for product in products]
     return JSONResponse(content=products_list)
 
-@app.get("/api/errors")
+@router.get("/api/errors")
 async def get_error_products():
     """エラー商品（過去24時間）のリストをJSONで返す"""
     products = get_error_products_in_last_24h()
     # get_error_products_in_last_24h は既に辞書のリストを返す
     return JSONResponse(content=products)
 
-@app.get("/api/inventory/summary")
+@router.get("/api/inventory/summary")
 async def get_inventory_summary():
     """在庫商品のステータスごとの件数を返す"""
     try:
@@ -332,7 +330,7 @@ async def get_inventory_summary():
         logging.error(f"在庫サマリーの取得中にエラーが発生しました: {e}")
         return JSONResponse(status_code=500, content={"status": "error", "message": "サマリーの取得に失敗しました。"})
 
-@app.post("/api/inventory/{product_id}/complete")
+@router.post("/api/inventory/{product_id}/complete")
 async def complete_inventory_item(product_id: int):
     """指定された在庫商品を「投稿済」ステータスに更新する"""
     try:
@@ -343,7 +341,7 @@ async def complete_inventory_item(product_id: int):
         logging.error(f"商品ID: {product_id} のステータス更新中にエラーが発生しました: {e}")
         return JSONResponse(status_code=500, content={"status": "error", "message": "ステータスの更新に失敗しました。"})
 
-@app.delete("/api/inventory/{product_id}")
+@router.delete("/api/inventory/{product_id}")
 async def delete_inventory_item(product_id: int):
     """指定された在庫商品を削除する"""
     try:
@@ -355,7 +353,7 @@ async def delete_inventory_item(product_id: int):
         logging.error(f"商品ID: {product_id} の削除中にエラーが発生しました: {e}")
         return JSONResponse(status_code=500, content={"status": "error", "message": "サーバーエラーにより削除に失敗しました。"})
 
-@app.post("/api/inventory/{product_id}/post")
+@router.post("/api/inventory/{product_id}/post")
 async def post_inventory_item(product_id: int):
     """指定された在庫商品を1件だけ投稿する"""
     try:
@@ -366,7 +364,7 @@ async def post_inventory_item(product_id: int):
         logging.error(f"商品ID: {product_id} の投稿処理開始中にエラーが発生しました: {e}")
         return JSONResponse(status_code=500, content={"status": "error", "message": "投稿処理の開始に失敗しました。"})
 
-@app.post("/api/inventory/{product_id}/priority")
+@router.post("/api/inventory/{product_id}/priority")
 async def update_priority(product_id: int, request: PriorityUpdateRequest):
     """指定された商品の優先度を更新する"""
     try:
@@ -377,7 +375,7 @@ async def update_priority(product_id: int, request: PriorityUpdateRequest):
         logging.error(f"商品ID {product_id} の優先度更新中にエラー: {e}")
         return JSONResponse(status_code=500, content={"status": "error", "message": "優先度の更新に失敗しました。"})
 
-@app.post("/api/inventory/update-order")
+@router.post("/api/inventory/update-order")
 async def update_inventory_order(request: BulkUpdateRequest):
     """在庫商品の表示順（優先度）を一括で更新する"""
     try:
@@ -388,7 +386,7 @@ async def update_inventory_order(request: BulkUpdateRequest):
         return JSONResponse(status_code=500, content={"status": "error", "message": "順序の更新に失敗しました。"})
 
 
-@app.post("/api/inventory/bulk-complete")
+@router.post("/api/inventory/bulk-complete")
 async def bulk_complete_inventory_items(request: BulkUpdateRequest):
     """複数の在庫商品を一括で「投稿済」ステータスに更新する"""
     try:
@@ -398,7 +396,7 @@ async def bulk_complete_inventory_items(request: BulkUpdateRequest):
         logging.error(f"商品の一括ステータス更新中にエラーが発生しました: {e}")
         return JSONResponse(status_code=500, content={"status": "error", "message": "一括更新に失敗しました。"})
 
-@app.post("/api/inventory/bulk-delete")
+@router.post("/api/inventory/bulk-delete")
 async def bulk_delete_inventory_items(request: BulkUpdateRequest):
     """複数の在庫商品を一括で削除する"""
     try:
@@ -408,7 +406,7 @@ async def bulk_delete_inventory_items(request: BulkUpdateRequest):
         logging.error(f"商品の一括削除中にエラーが発生しました: {e}")
         return JSONResponse(status_code=500, content={"status": "error", "message": "一括削除に失敗しました。"})
 
-@app.post("/api/products/bulk-status-update")
+@router.post("/api/products/bulk-status-update")
 async def bulk_status_update_products(request: BulkStatusUpdateRequest):
     """複数の商品を一括で指定のステータスに更新する"""
     try:
@@ -418,7 +416,7 @@ async def bulk_status_update_products(request: BulkStatusUpdateRequest):
         logging.error(f"商品の一括ステータス更新中にエラーが発生しました: {e}")
         return JSONResponse(status_code=500, content={"status": "error", "message": "一括更新に失敗しました。"})
 
-@app.get("/api/keywords")
+@router.get("/api/keywords")
 async def get_keywords():
     """キーワードをJSONファイルから読み込んで返す"""
     try:
@@ -432,7 +430,7 @@ async def get_keywords():
         logging.error(f"キーワードファイルの読み込みに失敗しました: {e}")
         return JSONResponse(status_code=500, content={"status": "error", "message": "キーワードの読み込みに失敗しました。"})
 
-@app.post("/api/keywords")
+@router.post("/api/keywords")
 async def save_keywords(request: KeywordsUpdateRequest):
     """キーワードをJSONファイルに保存する"""
     try:
@@ -444,7 +442,7 @@ async def save_keywords(request: KeywordsUpdateRequest):
         return JSONResponse(status_code=500, content={"status": "error", "message": "キーワードの保存に失敗しました。"})
 
 
-@app.post("/api/import/json")
+@router.post("/api/import/json")
 async def import_from_json(request: JsonImportRequest):
     """ブラウザから送信されたJSONデータを使って商品をインポートする"""
     try:
@@ -463,7 +461,7 @@ async def import_from_json(request: JsonImportRequest):
         logging.error(f"JSONからのインポート処理中にエラーが発生しました: {e}")
         return JSONResponse(status_code=500, content={"status": "error", "message": "インポート処理中にサーバーエラーが発生しました。"})
 
-@app.post("/api/products/delete-all")
+@router.post("/api/products/delete-all")
 async def delete_all_products_endpoint():
     """すべての商品データを削除する"""
     try:
@@ -474,7 +472,7 @@ async def delete_all_products_endpoint():
         logging.error(f"全商品データの削除中にエラーが発生しました: {e}")
         return JSONResponse(status_code=500, content={"status": "error", "message": "サーバーエラーにより削除に失敗しました。"})
 
-@app.post("/api/config")
+@router.post("/api/config")
 async def update_config(config_request: ConfigUpdateRequest):
     """設定を更新する"""
     current_config = get_config()
@@ -485,7 +483,7 @@ async def update_config(config_request: ConfigUpdateRequest):
     return {"status": "success", "message": "設定を更新しました。"}
 
 
-@app.post("/api/schedules/update")
+@router.post("/api/schedules/update")
 async def update_schedule(update_request: ScheduleUpdateRequest):
     """指定されたタグのジョブの実行時刻をすべて更新する"""
     tag = update_request.tag
@@ -531,13 +529,28 @@ async def update_schedule(update_request: ScheduleUpdateRequest):
 
     return {"status": "success", "message": f"Task '{tag}' schedule updated."}
 
-@app.post("/api/tasks/{tag}/run")
+@router.post("/api/tasks/{tag}/run")
 async def run_task_now(tag: str):
     """
     指定されたタスクを即時実行する。
     フローの起点となるタスクとして実行される。
     """
     return _run_task_internal(tag, is_part_of_flow=False)
+
+@router.get("/api/logs", response_class=PlainTextResponse)
+async def get_logs():
+    """ログファイルの内容をテキスト形式で返します。"""
+    try:
+        if not os.path.exists(LOG_FILE):
+            return "ログファイルはまだ作成されていません。"
+        
+        with open(LOG_FILE, "r", encoding="utf-8") as f:
+            # ファイルの末尾から最大1000行を読み込む
+            lines = f.readlines()
+            return "".join(lines[-1000:])
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"ログの読み込みに失敗しました: {str(e)}")
+
 
 def _run_task_internal(tag: str, is_part_of_flow: bool, **kwargs):
     """

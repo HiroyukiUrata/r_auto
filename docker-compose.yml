@@ -17,8 +17,8 @@ services:
       - TZ=Asia/Tokyo # タイムゾーンを日本時間に設定
     env_file:
       - .env
-    # command: python -m app.main # entrypoint.shで起動するため不要
     tty: true
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
     
 # まだWeb/Dockerfileがない場合はコメントアウト
 #  web:

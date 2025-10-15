@@ -1,9 +1,11 @@
-import logging
 import random
 import time
 
 from playwright.sync_api import expect
 from app.core.base_task import BaseTask
+import logging
+
+logger = logging.getLogger(__name__)
 
 class LikeTask(BaseTask):
     """
@@ -21,17 +23,17 @@ class LikeTask(BaseTask):
         two_random_chars = random.sample(hiragana_chars, 2)
         random_keyword = "　".join(two_random_chars)
         target_url = f"https://room.rakuten.co.jp/search/item?keyword={random_keyword}&colle=&comment=&like=&user_id=&user_name=&original_photo=0"
-       
-        logging.info(f"ランダムなキーワード「{random_keyword}」で検索結果ページに移動します...")
+
+        logger.info(f"ランダムなキーワード「{random_keyword}」で検索結果ページに移動します...")
         page.goto(target_url)
 
         # ページのネットワークが落ち着くまで待つ（動的コンテンツの読み込み完了を期待）
-        logging.info("ページの読み込みと動的コンテンツの生成を待っています...")
+        logger.info("ページの読み込みと動的コンテンツの生成を待っています...")
         page.wait_for_load_state("networkidle", timeout=30000)
         time.sleep(2) # 念のため少し待つ
 
         # --- いいね済みボタンを非表示にする ---
-        logging.info("「いいね」済みボタンを非表示にします。")
+        logger.info("「いいね」済みボタンを非表示にします。")
         page.add_style_tag(content="a.icon-like.isLiked { display: none !important; }")
 
         # --- 「いいね」処理のループ ---
@@ -43,7 +45,7 @@ class LikeTask(BaseTask):
         while liked_count < self.target_count:
             elapsed_time = time.time() - start_time
             if elapsed_time > self.max_duration_seconds:
-                logging.info(f"最大実行時間（{self.max_duration_seconds}秒）に達したため、タスクを終了します。")
+                logger.info(f"最大実行時間（{self.max_duration_seconds}秒）に達したため、タスクを終了します。")
                 break
 
             # --- 「いいね」ボタンを1つずつ探してクリック ---
@@ -60,7 +62,7 @@ class LikeTask(BaseTask):
                         user_name_element = item_container.locator('div.owner span.name.ng-binding').first
                         user_name = user_name_element.inner_text().strip()
                     except Exception:
-                        logging.warning("ユーザー名の取得に失敗しましたが、「いいね」処理は続行します。")
+                        logger.warning("ユーザー名の取得に失敗しましたが、「いいね」処理は続行します。")
 
                     # ユーザーごとの「いいね」回数をチェック
                     current_user_likes = user_like_counts.get(user_name, 0)
@@ -70,7 +72,7 @@ class LikeTask(BaseTask):
                         try:
                             item_container.evaluate("node => node.style.display = 'none'")
                         except Exception as e:
-                            logging.warning(f"投稿の非表示中にエラーが発生しましたが、処理を続行します: {e}")
+                            logger.warning(f"投稿の非表示中にエラーが発生しましたが、処理を続行します: {e}")
                         
                         # 次の有効なボタンを見つけるためにループを継続
                         continue # 次のボタンを探す
@@ -86,7 +88,7 @@ class LikeTask(BaseTask):
                     try:
                         item_container.evaluate("node => node.style.display = 'none'")
                     except Exception as e:
-                        logging.warning(f"投稿の非表示中にエラーが発生しましたが、処理を続行します: {e}")
+                        logger.warning(f"投稿の非表示中にエラーが発生しましたが、処理を続行します: {e}")
                     
                     # このユーザーへの「いいね」が初めての場合のみ、全体の目標件数をカウントアップ
                     if current_user_likes == 0:
@@ -97,8 +99,8 @@ class LikeTask(BaseTask):
                     # このユーザーへの「いいね」が初めての場合のみログを出力する
                     if user_likes_this_time == 1:
                         log_message = f"「{user_name}」の投稿に「いいね」しました。({liked_count}/{self.target_count})"
-                        if is_duplicate: logging.info(f"連続で{log_message}")
-                        else: logging.info(log_message)
+                        if is_duplicate: logger.info(f"連続で{log_message}")
+                        else: logger.info(log_message)
 
                     last_liked_user = user_name # 最後に「いいね」したユーザー名を更新
                     time.sleep(random.uniform(1, 2)) # 人間らしい間隔
@@ -108,7 +110,7 @@ class LikeTask(BaseTask):
                     time.sleep(random.uniform(1, 2)) # スクロール後の読み込みを待つ
                     continue 
                 except Exception as e:
-                    logging.warning(f"「いいね」クリック中にエラーが発生しました: {e}")
+                    logger.warning(f"「いいね」クリック中にエラーが発生しました: {e}")
                     # エラーが発生しても処理を継続するため、ループを抜ける
                     break
 
@@ -118,7 +120,7 @@ class LikeTask(BaseTask):
                 page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
                 time.sleep(3) # スクロール後の読み込みを待つ
 
-        logging.info(f"合計{liked_count}件の「いいね」を実行しました。")
+        logger.info(f"合計{liked_count}件の「いいね」を実行しました。")
 
 def run_like_action(count: int = 10, max_duration_seconds: int = 600):
     """ラッパー関数"""
