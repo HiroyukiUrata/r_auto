@@ -6,6 +6,7 @@ from app.tasks import (
     run_follow_action,
     run_like_action,
     run_save_auth_state,
+    run_backup_database,
 )
 from app.tasks.rakuten_search_procure import search_and_procure_from_rakuten
 from app.tasks.rakuten_api_procure import procure_from_rakuten_api
@@ -153,6 +154,15 @@ TASK_DEFINITIONS = {
         "is_debug": True,
         "description": "ステータスが「URL取得済」の商品について、Geminiで投稿文を作成します。",
         "order": 40,
+    },
+
+    "backup-database": {
+        "name_ja": "データベースバックアップ",
+        "function": run_backup_database,
+        "is_debug": True, # システムコンフィグ画面に表示
+        "show_in_schedule": True, # スケジュール画面にも表示
+        "description": "データベース(products.db)のバックアップをdb/backupディレクトリに作成します。",
+        "order": 50,
     },
 
 }

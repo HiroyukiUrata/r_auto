@@ -191,8 +191,17 @@
         }
     }
 
-    document.addEventListener('DOMContentLoaded', () => {
+    // このページ専用のスクリプト
+    document.addEventListener('DOMContentLoaded', function() {
         fetchDebugTasks();
     });
 </script>
 {% endblock %}
+```
+
+これらの変更を適用してアプリケーションを再起動すると、トップページのスケジュール管理画面で各時刻設定の横にトグルスイッチが表示され、スケジュールの有効/無効を切り替えられるようになります。
+
+<!--
+[PROMPT_SUGGESTION]バックアップファイルからデータベースを復元する機能を追加してください。[/PROMPT_SUGGESTION]
+[PROMPT_SUGGESTION]Web UIに、現在のバックアップファイル一覧を表示する機能を追加してください。[/PROMPT_SUGGESTION]
+-->

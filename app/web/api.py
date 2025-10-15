@@ -126,9 +126,12 @@ async def get_schedules():
     # 1. タスク定義を元にレスポンスの雛形を作成
     all_tasks = {}
     for tag, definition in TASK_DEFINITIONS.items():
-        # デバッグタスクはスケジュール対象外
-        # is_debugがFalseで、show_in_scheduleが明示的にFalseでないタスクのみ表示
-        if not definition.get("is_debug", False) and definition.get("show_in_schedule", True):
+        # スケジュールに表示する条件:
+        # 1. is_debugがFalseである (通常のタスク)
+        # 2. または、is_debugがTrueでも、show_in_scheduleが明示的にTrueである (デバッグタスクだがスケジュールも許可)
+        is_schedulable = not definition.get("is_debug", False) or definition.get("show_in_schedule", False)
+        if is_schedulable and definition.get("show_in_schedule", True):
+
             all_tasks[tag] = {
                 "tag": tag, "name_ja": definition["name_ja"], "times": [], "next_run": None
             }
