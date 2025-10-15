@@ -52,14 +52,14 @@ class PostingTask(BaseTask):
                 page = self.context.new_page()
                 page.context.tracing.start(screenshots=True, snapshots=True, sources=True)
 
-                logging.info(f"投稿ページにアクセスします: {post_url}")
+                #logging.info(f"投稿ページにアクセスします: {post_url}")
                 page.goto(post_url, wait_until="networkidle", timeout=60000)
 
                 textarea_locator = page.locator(locators.POST_TEXTAREA)
                 textarea_locator.fill(caption)
 
                 page.locator(locators.SUBMIT_BUTTON).first.click(timeout=10000)
-                logging.info("投稿ボタンをクリックしました。")
+                #logging.info("投稿ボタンをクリックしました。")
                 page.wait_for_timeout(15000) # 投稿完了を待つ
                 
                 page.context.tracing.stop() # トレースを停止するが、ファイルは保存しない

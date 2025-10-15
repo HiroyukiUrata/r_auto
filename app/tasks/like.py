@@ -96,7 +96,7 @@ class LikeTask(BaseTask):
                     user_likes_this_time = user_like_counts[user_name]
                     # このユーザーへの「いいね」が初めての場合のみログを出力する
                     if user_likes_this_time == 1:
-                        log_message = f"ユーザー「{user_name}」の投稿に「いいね」しました。(目標: {liked_count}/{self.target_count}件)"
+                        log_message = f"「{user_name}」の投稿に「いいね」しました。({liked_count}/{self.target_count})"
                         if is_duplicate: logging.info(f"連続で{log_message}")
                         else: logging.info(log_message)
 

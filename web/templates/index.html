@@ -1,7 +1,6 @@
 {% extends "base.html" %}
 
 {% block title %}スケジュール設定 - {{ super() }}{% endblock %}
-
 {% block content %}
         <div class="row mb-4">
             <div class="col-md-12">
@@ -17,6 +16,18 @@
                             </div>
                             <div class="col-md-4"><button class="btn btn-primary" onclick="saveGlobalConfig()">設定を保存</button></div>
                         </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="row mb-4">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header">
+                        <i class="bi bi-bar-chart-line-fill me-2"></i>スケジュール概要
+                    </div>
+                    <div class="card-body">
+                        <canvas id="scheduleChart" style="max-height: 250px;"></canvas>
                     </div>
                 </div>
             </div>
@@ -44,6 +55,8 @@
 {% endblock %}
 
 {% block scripts %}
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
     <script>
         async function saveSchedule(tag, times) {
             try {
@@ -73,6 +86,9 @@
             const schedules = await response.json();
             const container = document.getElementById('schedules-container');
             container.innerHTML = '';
+
+            // スケジュールグラフを描画
+            renderScheduleChart(schedules);
 
             schedules.forEach(job => {
                 // 件数設定が可能なタスクのタグリスト
@@ -121,6 +137,87 @@
                 </div>
                 `;
                 container.innerHTML += cardHtml;
+            });
+        }
+
+        let scheduleChartInstance = null;
+        function renderScheduleChart(schedules) {
+            const ctx = document.getElementById('scheduleChart').getContext('2d');
+
+            // 色の定義
+            const colors = {
+                'post-article': 'rgb(255, 99, 132)',
+                'run-like-action': 'rgb(54, 162, 235)',
+                'run-follow-action': 'rgb(75, 192, 192)',
+                'procure-products-flow': 'rgb(255, 206, 86)',
+                'default': 'rgb(153, 102, 255)'
+            };
+
+            const datasets = [];
+            schedules.forEach(job => {
+                // 棒グラフ用のデータを作成
+                // x: 時刻, y: 件数
+                const dataPoints = job.times.map(entry => ({
+                    x: entry.time,
+                    y: entry.count
+                }));
+                datasets.push({
+                    label: job.name_ja,
+                    data: dataPoints,
+                    backgroundColor: (colors[job.tag] || colors.default).replace(')', ', 0.7)').replace('rgb', 'rgba'),
+                });
+            });
+
+            if (scheduleChartInstance) {
+                scheduleChartInstance.destroy();
+            }
+
+            scheduleChartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    datasets: datasets
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        title: { display: true, text: 'タスク実行時刻と目標件数' },
+                        tooltip: {
+                            callbacks: {
+                                title: function(context) {
+                                    return `${context[0].dataset.label} @ ${context[0].label}`;
+                                },
+                                label: function(tooltipItem) {
+                                    return `目標件数: ${tooltipItem.raw.y}`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: {
+                                parser: 'HH:mm',
+                                unit: 'hour',
+                                displayFormats: {
+                                    minute: 'HH:mm',
+                                    hour: 'HH:mm'
+                                }
+                            },
+                            grid: { display: false } // X軸のグリッド線を非表示にして見やすくする
+                        },
+                        y: {
+                            type: 'logarithmic',
+                            ticks: {
+                                callback: function(value, index, values) {
+                                    const log10 = Math.log10(value);
+                                    if (log10 === Math.floor(log10) || Math.log10(value / 2) === Math.floor(Math.log10(value / 2)) || Math.log10(value / 5) === Math.floor(Math.log10(value / 5))) { return Number(value.toPrecision(3)); }
+                                    return null;
+                                }
+                            },
+                        }
+                    }
+                }
             });
         }
 

@@ -14,7 +14,7 @@
         },
         {
             "count": 10,
-            "time": "11:00"
+            "time": "12:00"
         },
         {
             "count": 10,
@@ -68,16 +68,16 @@
     ],
     "run-like-action": [
         {
-            "count": 150,
+            "count": 110,
             "time": "00:10"
         },
         {
-            "count": 150,
+            "count": 110,
             "time": "08:10"
         },
         {
             "count": 100,
-            "time": "11:10"
+            "time": "12:10"
         },
         {
             "count": 100,
