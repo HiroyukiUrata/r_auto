@@ -37,13 +37,11 @@ class SaveAuthStateTask:
                     page = context.pages[0] if context.pages else context.new_page()
                     page.goto("https://room.rakuten.co.jp/items", wait_until="domcontentloaded", timeout=60000)
                     
-                    logging.info("ブラウザを起動しました。ログイン操作を行ってください。")
-                    logging.info("ログイン完了を待機しています... (最大5分)")
-                    my_room_link_locator = page.locator(locators.MY_ROOM_LINK)
-                    my_room_link_locator.wait_for(state='visible', timeout=300000)
-    
-                    logging.info("ログインが確認できました。3秒後にブラウザを閉じます。")
-                    time.sleep(3)
+                    logging.info("ブラウザを起動しました。ログイン操作を行い、完了したらブラウザを閉じてください。")
+                    logging.info("ブラウザが閉じられるのを待機しています...")
+                    # ユーザーがブラウザを閉じるまで無期限に待機する
+                    context.wait_for_event("close", timeout=0)
+                    logging.info("ブラウザが閉じられたため、処理を続行します。")
 
                     try:
                         logging.info("認証プロファイルのバックアップを作成します...")

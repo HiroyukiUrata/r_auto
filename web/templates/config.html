@@ -176,8 +176,8 @@
     async function runTaskNow(tag, name_ja, event) {
         let confirmMessage = `タスク「${name_ja}」を今すぐ実行しますか？`;
         if (tag === 'save-auth-state') {
-            const hostname = window.location.hostname;
-            confirmMessage += `\n\n実行後、VNCクライアントで ${hostname}:5900 に接続してください。`;
+            const hostname = window.location.hostname; // 現在アクセスしているホスト名を取得
+            confirmMessage += `\n\n【必要な手動操作】\n1. VNCクライアントで ${hostname}:5900 に接続します。\n2. 表示されたブラウザでログイン操作を行います。\n3. ログインが完了したら、ブラウザのウィンドウを閉じてください。`;
         }
 
         if (!confirm(confirmMessage)) {

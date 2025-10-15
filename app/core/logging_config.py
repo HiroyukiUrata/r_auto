@@ -5,6 +5,17 @@ from logging.handlers import RotatingFileHandler
 LOG_DIR = "logs"
 LOG_FILE = os.path.join(LOG_DIR, "app.log")
 
+class EndpointFilter(logging.Filter):
+    """特定のパスへのアクセスログをフィルタリングするクラス"""
+    def __init__(self, path: str):
+        super().__init__()
+        self._path = path
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        # uvicornのアクセスログは 'uvicorn.access' という名前で記録される
+        # ログメッセージに指定されたパスが含まれていない場合にTrueを返す
+        return self._path not in record.getMessage()
+
 def setup_logging(log_level=logging.INFO):
     """
     アプリケーションのロギングを設定します。
@@ -40,5 +51,9 @@ def setup_logging(log_level=logging.INFO):
     )
     file_handler.setFormatter(log_formatter)
     logger.addHandler(file_handler)
+
+    # uvicornのアクセスログにフィルタを追加して、/api/logsへのログを非表示にする
+    uvicorn_access_logger = logging.getLogger("uvicorn.access")
+    uvicorn_access_logger.addFilter(EndpointFilter(path="/api/logs"))
 
     logging.info("ロギング設定が完了しました。")
