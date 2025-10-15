@@ -10,7 +10,7 @@ from pydantic import BaseModel
 
 # タスク定義を一元的にインポート
 from app.core.task_definitions import TASK_DEFINITIONS
-from app.core.database import get_all_inventory_products, update_product_status, delete_all_products, init_db, delete_product, update_status_for_multiple_products, delete_multiple_products, get_product_count_by_status, get_error_products_in_last_24h
+from app.core.database import get_all_inventory_products, update_product_status, delete_all_products, init_db, delete_product, update_status_for_multiple_products, delete_multiple_products, get_product_count_by_status, get_error_products_in_last_24h, update_product_priority
 from app.tasks.posting import run_posting
 from app.tasks.get_post_url import run_get_post_url
 from app.tasks.import_products import process_and_import_products
@@ -41,6 +41,9 @@ class ScheduleUpdateRequest(BaseModel):
 
 class ProfileNameRequest(BaseModel):
     profile_name: str
+
+class PriorityUpdateRequest(BaseModel):
+    priority: int
 
 class ConfigUpdateRequest(BaseModel):
     # すべてのフィールドをオプショナル（任意）に変更
@@ -362,6 +365,17 @@ async def post_inventory_item(product_id: int):
     except Exception as e:
         logging.error(f"商品ID: {product_id} の投稿処理開始中にエラーが発生しました: {e}")
         return JSONResponse(status_code=500, content={"status": "error", "message": "投稿処理の開始に失敗しました。"})
+
+@app.post("/api/inventory/{product_id}/priority")
+async def update_priority(product_id: int, request: PriorityUpdateRequest):
+    """指定された商品の優先度を更新する"""
+    try:
+        update_product_priority(product_id, request.priority)
+        # 成功時はメッセージなしで200 OKを返す
+        return JSONResponse(content={"status": "success"})
+    except Exception as e:
+        logging.error(f"商品ID {product_id} の優先度更新中にエラー: {e}")
+        return JSONResponse(status_code=500, content={"status": "error", "message": "優先度の更新に失敗しました。"})
 
 @app.post("/api/inventory/bulk-complete")
 async def bulk_complete_inventory_items(request: BulkUpdateRequest):
