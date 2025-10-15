@@ -1,157 +1,228 @@
 {% extends "base.html" %}
 
-{% block title %}キーワード管理 - R-Auto Control Panel{% endblock %}
+{% block title %}キーワード管理 - {{ super() }}{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-    <h1 class="h2">キーワード管理</h1>
-    <div class="btn-toolbar mb-2 mb-md-0">
-        <button type="button" class="btn btn-sm btn-primary" onclick="saveKeywords()">
-            <i class="bi bi-save me-1"></i>保存
-        </button>
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-collection-fill me-2"></i>キーワードプロファイル管理
+            </div>
+            <div class="card-body">
+                <div class="row g-2 align-items-center">
+                    <div class="col-sm-4">
+                        <label for="profile-select" class="form-label">プロファイルを選択</label>
+                        <select id="profile-select" class="form-select"></select>
+                    </div>
+                    <div class="col-sm-8 d-flex align-items-end gap-2">
+                        <button class="btn btn-primary" onclick="loadProfile()"><i class="bi bi-box-arrow-in-down me-1"></i>読み込み</button>
+                        <button class="btn btn-danger" onclick="deleteProfile()"><i class="bi bi-trash me-1"></i>削除</button>
+                    </div>
+                </div>
+                <hr>
+                <div class="row g-2 align-items-center">
+                    <div class="col-sm-4">
+                        <label for="new-profile-name" class="form-label">現在のキーワードを名前を付けて保存</label>
+                        <input type="text" id="new-profile-name" class="form-control" placeholder="例: ファッション用">
+                    </div>
+                    <div class="col-sm-8 d-flex align-items-end"><button class="btn btn-success" onclick="saveProfile()"><i class="bi bi-save me-1"></i>保存</button></div>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 
 <div class="row">
-    <div class="col-md-6">
-        <div class="card">
-            <div class="card-header">
-                キーワードパネル A
-            </div>
-            <div class="card-body">
-                <p class="card-text text-muted small">ここに登録したキーワードと、パネルBのキーワードを組み合わせて商品を調達します。</p>
-                <div id="keywords-a-container" class="keywords-container border rounded p-2 mb-2" style="min-height: 200px;">
-                    <!-- キーワードタグはここに挿入されます -->
-                </div>
-                <div class="input-group">
-                    <input type="text" id="new-keyword-a" class="form-control" placeholder="新しいキーワードを追加">
+    <div class="col-md-6 mb-4">
+        <div class="card h-100">
+            <div class="card-header">キーワードA群（商品カテゴリなど）</div>
+            <div class="card-body d-flex flex-column">
+                <div id="keywords-a-container" class="keyword-container mb-3"></div>
+                <div class="input-group mt-auto">
+                    <input type="text" id="new-keyword-a" class="form-control" placeholder="キーワードを追加">
                     <button class="btn btn-outline-secondary" type="button" onclick="addKeyword('a')">追加</button>
                 </div>
             </div>
         </div>
     </div>
-    <div class="col-md-6 mt-3 mt-md-0">
-        <div class="card">
-            <div class="card-header">
-                キーワードパネル B
-            </div>
-            <div class="card-body">
-                <p class="card-text text-muted small">ここに登録したキーワードと、パネルAのキーワードを組み合わせて商品を調達します。</p>
-                <div id="keywords-b-container" class="keywords-container border rounded p-2 mb-2" style="min-height: 200px;">
-                    <!-- キーワードタグはここに挿入されます -->
-                </div>
-                <div class="input-group">
-                    <input type="text" id="new-keyword-b" class="form-control" placeholder="新しいキーワードを追加">
+    <div class="col-md-6 mb-4">
+        <div class="card h-100">
+            <div class="card-header">キーワードB群（装飾・絞り込み用）</div>
+            <div class="card-body d-flex flex-column">
+                <div id="keywords-b-container" class="keyword-container mb-3"></div>
+                <div class="input-group mt-auto">
+                    <input type="text" id="new-keyword-b" class="form-control" placeholder="キーワードを追加">
                     <button class="btn btn-outline-secondary" type="button" onclick="addKeyword('b')">追加</button>
                 </div>
             </div>
         </div>
     </div>
 </div>
+<button class="btn btn-primary" onclick="saveKeywords()"><i class="bi bi-check-circle me-1"></i>すべてのキーワードを保存</button>
 {% endblock %}
 
 {% block scripts %}
 <script>
-    // キーワードタグをレンダリングする
-    function renderKeywords(panel) {
-        const container = document.getElementById(`keywords-${panel}-container`);
-        container.innerHTML = '';
-        const keywords = getKeywordsFromPanel(panel);
-        keywords.forEach(keyword => {
-            const tag = document.createElement('span');
-            tag.className = 'badge bg-secondary me-1 mb-1';
-            tag.innerHTML = `${keyword} <button type="button" class="btn-close btn-close-white ms-1" aria-label="Close" onclick="removeKeyword('${panel}', '${keyword}')"></button>`;
-            tag.dataset.keyword = keyword;
-            container.appendChild(tag);
-        });
-    }
-
-    // パネルからキーワードの配列を取得する
-    function getKeywordsFromPanel(panel) {
-        const container = document.getElementById(`keywords-${panel}-container`);
-        return Array.from(container.querySelectorAll('.badge')).map(tag => tag.dataset.keyword);
-    }
-
-    // キーワードを削除する
-    function removeKeyword(panel, keyword) {
-        const container = document.getElementById(`keywords-${panel}-container`);
-        const tagToRemove = container.querySelector(`[data-keyword="${keyword}"]`);
-        if (tagToRemove) {
-            tagToRemove.remove();
+    async function fetchKeywords() {
+        try {
+            const response = await fetch('/api/keywords');
+            const data = await response.json();
+            renderKeywords('a', data.keywords_a);
+            renderKeywords('b', data.keywords_b);
+        } catch (error) {
+            console.error('Failed to fetch keywords:', error);
+            alert('キーワードの読み込みに失敗しました。');
         }
     }
 
-    // キーワードを追加する
-    function addKeyword(panel) {
-        const input = document.getElementById(`new-keyword-${panel}`);
+    function renderKeywords(group, keywords) {
+        const container = document.getElementById(`keywords-${group}-container`);
+        container.innerHTML = '';
+        keywords.forEach(keyword => {
+            const badge = document.createElement('span');
+            badge.className = 'badge rounded-pill bg-primary me-2 mb-2 p-2 d-inline-flex align-items-center';
+            badge.innerHTML = `
+                ${keyword}
+                <button type="button" class="btn-close btn-close-white ms-2" aria-label="Close" onclick="this.parentElement.remove()"></button>
+            `;
+            container.appendChild(badge);
+        });
+    }
+
+    function addKeyword(group) {
+        const input = document.getElementById(`new-keyword-${group}`);
         const keyword = input.value.trim();
         if (keyword) {
-            const container = document.getElementById(`keywords-${panel}-container`);
-            // 重複チェック
-            if (getKeywordsFromPanel(panel).includes(keyword)) {
-                alert('このキーワードは既に追加されています。');
-                return;
-            }
-            const tag = document.createElement('span');
-            tag.className = 'badge bg-secondary me-1 mb-1';
-            tag.innerHTML = `${keyword} <button type="button" class="btn-close btn-close-white ms-1" aria-label="Close" onclick="removeKeyword('${panel}', '${keyword}')"></button>`;
-            tag.dataset.keyword = keyword;
-            container.appendChild(tag);
+            renderKeywords(group, [keyword, ...getKeywordsFromDOM(group)]);
             input.value = '';
         }
     }
 
-    // キーワードを削除する
-    function removeKeyword(panel, keyword) {
-        const container = document.getElementById(`keywords-${panel}-container`);
-        const tagToRemove = container.querySelector(`[data-keyword="${keyword}"]`);
-        if (tagToRemove) {
-            tagToRemove.remove();
-        }
-    }
-
-    // キーワードを保存する
     async function saveKeywords() {
-        const payload = {
-            keywords_a: getKeywordsFromPanel('a'),
-            keywords_b: getKeywordsFromPanel('b')
-        };
+        const keywords_a = getKeywordsFromDOM('a');
+        const keywords_b = getKeywordsFromDOM('b');
 
         try {
+            if (!confirm('現在のキーワード設定を保存しますか？')) return;
             const response = await fetch('/api/keywords', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
+                body: JSON.stringify({ keywords_a, keywords_b })
             });
             const result = await response.json();
-            if (!response.ok) {
-                throw new Error(result.message || '保存に失敗しました。');
-            }
+            if (!response.ok) throw new Error(result.message);
             alert(result.message);
         } catch (error) {
-            console.error('Error:', error);
-            alert(error.message);
+            alert(`エラー: ${error.message}`);
         }
     }
 
-    // ページ読み込み時にキーワードを読み込む
-    document.addEventListener('DOMContentLoaded', function () {
-        fetch('/api/keywords')
-            .then(response => response.json())
-            .then(data => {
-                if (data.keywords_a && Array.isArray(data.keywords_a)) {
-                    data.keywords_a.forEach(kw => { document.getElementById('new-keyword-a').value = kw; addKeyword('a'); });
-                }
-                if (data.keywords_b && Array.isArray(data.keywords_b)) {
-                    data.keywords_b.forEach(kw => { document.getElementById('new-keyword-b').value = kw; addKeyword('b'); });
-                }
-            })
-            .catch(error => {
-                console.error('キーワードの読み込みに失敗しました:', error);
-            });
+    function getKeywordsFromDOM(group) {
+        const container = document.getElementById(`keywords-${group}-container`);
+        return Array.from(container.querySelectorAll('.badge')).map(badge => {
+            // テキストノードのみを取得して、ボタンのテキスト（"Close"など）を含めないようにする
+            return badge.childNodes[0].nodeValue.trim();
+        });
+    }
 
-        document.getElementById('new-keyword-a').addEventListener('keypress', e => { if (e.key === 'Enter') addKeyword('a'); });
-        document.getElementById('new-keyword-b').addEventListener('keypress', e => { if (e.key === 'Enter') addKeyword('b'); });
+    async function fetchProfiles() {
+        try {
+            const response = await fetch('/api/keyword-profiles');
+            const profiles = await response.json();
+            const select = document.getElementById('profile-select');
+            select.innerHTML = '<option value="">-- プロファイルを選択 --</option>';
+            profiles.forEach(p => {
+                const option = document.createElement('option');
+                option.value = p;
+                option.textContent = p;
+                select.appendChild(option);
+            });
+        } catch (error) {
+            console.error('Failed to fetch profiles:', error);
+        }
+    }
+
+    async function loadProfile() {
+        const select = document.getElementById('profile-select');
+        const profileName = select.value;
+        if (!profileName) {
+            alert('読み込むプロファイルを選択してください。');
+            return;
+        }
+        if (!confirm(`プロファイル「${profileName}」を読み込みますか？\n現在のキーワード設定は上書きされます。`)) return;
+
+        try {
+            const response = await fetch(`/api/keyword-profiles/${profileName}`, { method: 'PUT' });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.message);
+            alert(result.message);
+            await fetchKeywords(); // 画面を更新
+        } catch (error) {
+            alert(`エラー: ${error.message}`);
+        }
+    }
+
+    async function saveProfile() {
+        const input = document.getElementById('new-profile-name');
+        const profileName = input.value.trim();
+        if (!profileName) {
+            alert('プロファイル名を入力してください。');
+            return;
+        }
+        // プロファイル保存の前に、現在のUI上のキーワードを`keywords.json`に保存する
+        // これにより、UIの変更が確実にプロファイルに反映される
+        await saveKeywords();
+
+        if (!confirm(`現在のキーワード設定を「${profileName}」として保存しますか？`)) return;
+
+        try {
+            const response = await fetch('/api/keyword-profiles', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ profile_name: profileName })
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.message);
+            alert(result.message);
+            input.value = '';
+            await fetchProfiles(); // プロファイル一覧を更新
+        } catch (error) {
+            alert(`エラー: ${error.message}`);
+        }
+    }
+
+    async function deleteProfile() {
+        const select = document.getElementById('profile-select');
+        const profileName = select.value;
+        if (!profileName) {
+            alert('削除するプロファイルを選択してください。');
+            return;
+        }
+        if (!confirm(`本当にプロファイル「${profileName}」を削除しますか？この操作は元に戻せません。`)) return;
+
+        try {
+            const response = await fetch(`/api/keyword-profiles/${profileName}`, { method: 'DELETE' });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.message);
+            alert(result.message);
+            await fetchProfiles(); // プロファイル一覧を更新
+        } catch (error) {
+            alert(`エラー: ${error.message}`);
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        fetchKeywords();
+        fetchProfiles();
     });
 </script>
+{% endblock %}
+
+{% block styles %}
+<style>
+    .keyword-container {
+        min-height: 200px; /* コンテナの最小高さを確保 */
+    }
+</style>
 {% endblock %}

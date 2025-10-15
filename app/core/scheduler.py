@@ -6,10 +6,31 @@ import os
 
 # タスク定義を一元的にインポート
 from app.core.task_definitions import TASK_DEFINITIONS
-from app.web.api import _run_task_internal # フロー実行のためにインポート
 from app.core.scheduler_utils import run_threaded, run_task_with_random_delay
 
 SCHEDULE_FILE = "db/schedules.json"
+
+def _save_schedules_to_file(schedules_to_save):
+    """
+    与えられたスケジュールデータをファイルに保存する内部関数。
+    データ形式:
+    {
+        "task-tag": {
+            "enabled": true,
+            "times": [
+                {"time": "HH:MM", "count": 10},
+                ...
+            ]
+        },
+        ...
+    }
+    """
+    try:
+        with open(SCHEDULE_FILE, "w") as f:
+            json.dump(schedules_to_save, f, indent=4, sort_keys=True)
+        logging.info(f"スケジュールを {SCHEDULE_FILE} に保存しました。")
+    except IOError as e:
+        logging.error(f"スケジュールファイルの保存に失敗しました: {e}")
 
 def load_schedules_from_file():
     """ファイルからスケジュールを読み込み、ジョブを登録する"""
@@ -20,6 +41,8 @@ def load_schedules_from_file():
     try:
         with open(SCHEDULE_FILE, "r") as f:
             schedules = json.load(f)
+        
+        from app.web.api import _run_task_internal # フロー実行のためにインポート
         for tag, schedule_data in schedules.items():
             definition = TASK_DEFINITIONS.get(tag)
             if definition:
@@ -63,6 +86,19 @@ def load_schedules_from_file():
     except (IOError, json.JSONDecodeError) as e:
         logging.error(f"{SCHEDULE_FILE} の読み込みに失敗しました: {e}")
         return False
+
+def reload_schedules():
+    """現在のスケジュールをすべてクリアし、ファイルから再読み込みする"""
+    logging.info("スケジュールの再読み込みを要求されました。")
+    schedule.clear()
+    load_schedules_from_file()
+    logging.info(f"スケジュールが再読み込みされました: {schedule.get_jobs()}")
+
+def save_and_reload_schedules(schedules_to_save):
+    """スケジュールをファイルに保存し、スケジューラをリロードする"""
+    _save_schedules_to_file(schedules_to_save)
+    reload_schedules()
+
 
 def start_scheduler():
     """スケジューラを起動し、定義されたジョブを実行する"""

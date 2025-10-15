@@ -26,38 +26,8 @@ app = FastAPI(
 
 KEYWORDS_FILE = "db/keywords.json"
 SCHEDULE_FILE = "db/schedules.json"
-
-def _load_schedules_from_file():
-    """スケジュールファイルを読み込む内部関数"""
-    if not os.path.exists(SCHEDULE_FILE):
-        return {}
-    try:
-        with open(SCHEDULE_FILE, "r") as f:
-            return json.load(f)
-    except (IOError, json.JSONDecodeError):
-        return {}
-
-def _save_schedules_to_file(schedules_to_save):
-    """
-    与えられたスケジュールデータをファイルに保存する内部関数。
-    データ形式:
-    {
-        "task-tag": {
-            "enabled": true,
-            "times": [
-                {"time": "HH:MM", "count": 10},
-                ...
-            ]
-        },
-        ...
-    }
-    """
-    try:
-        with open(SCHEDULE_FILE, "w") as f:
-            json.dump(schedules_to_save, f, indent=4, sort_keys=True)
-        logging.info(f"スケジュールを {SCHEDULE_FILE} に保存しました。")
-    except IOError as e:
-        logging.error(f"スケジュールファイルの保存に失敗しました: {e}")
+SCHEDULE_PROFILES_DIR = "db/schedule_profiles"
+KEYWORD_PROFILES_DIR = "db/keyword_profiles"
 
 class TimeEntry(BaseModel):
     time: str
@@ -68,6 +38,9 @@ class ScheduleUpdateRequest(BaseModel):
     tag: str
     enabled: bool
     times: list[TimeEntry]
+
+class ProfileNameRequest(BaseModel):
+    profile_name: str
 
 class ConfigUpdateRequest(BaseModel):
     # すべてのフィールドをオプショナル（任意）に変更
@@ -186,6 +159,130 @@ async def get_schedules():
         task["times"].sort(key=lambda x: x['time'])
 
     return JSONResponse(content=list(all_tasks.values()))
+
+def _load_schedules_from_file():
+    """スケジュールファイルを読み込む内部関数"""
+    if not os.path.exists(SCHEDULE_FILE): return {}
+    try:
+        with open(SCHEDULE_FILE, "r") as f: return json.load(f)
+    except (IOError, json.JSONDecodeError): return {}
+
+@app.get("/api/schedule-profiles")
+async def get_schedule_profiles():
+    """保存されているスケジュールプロファイルの一覧を返す"""
+    os.makedirs(SCHEDULE_PROFILES_DIR, exist_ok=True)
+    profiles = []
+    for filename in os.listdir(SCHEDULE_PROFILES_DIR):
+        if filename.endswith(".json"):
+            profiles.append(os.path.splitext(filename)[0])
+    return JSONResponse(content=sorted(profiles))
+
+@app.post("/api/schedule-profiles")
+async def save_schedule_profile(request: ProfileNameRequest):
+    """現在のスケジュールを新しいプロファイルとして保存する"""
+    profile_name = request.profile_name
+    if not re.match(r'^[a-zA-Z0-9_.\-ぁ-んァ-ヶー一-龠々 ]+$', profile_name):
+        return JSONResponse(
+            status_code=400,
+            content={"status": "error", "message": "プロファイル名に使用できない文字が含まれています。"}
+        )
+    
+    profile_path = os.path.join(SCHEDULE_PROFILES_DIR, f"{profile_name}.json")
+    
+    try:
+        current_schedules = _load_schedules_from_file()
+        # `_save_schedules_to_file` は scheduler.py に移動したため、直接書き込む
+        with open(profile_path, "w") as f:
+            json.dump(current_schedules, f, indent=4, sort_keys=True)
+
+        return JSONResponse(content={"status": "success", "message": f"プロファイル「{profile_name}」を保存しました。"})
+    except Exception as e:
+        logging.error(f"プロファイル '{profile_name}' の保存中にエラー: {e}")
+        return JSONResponse(status_code=500, content={"status": "error", "message": "プロファイルの保存に失敗しました。"})
+
+@app.put("/api/schedule-profiles/{profile_name}")
+async def load_schedule_profile(profile_name: str):
+    """指定されたプロファイルを現在のスケジュールとして読み込む"""
+    profile_path = os.path.join(SCHEDULE_PROFILES_DIR, f"{profile_name}.json")
+    if not os.path.exists(profile_path):
+        return JSONResponse(status_code=404, content={"status": "error", "message": "プロファイルが見つかりません。"})
+
+    try:
+        with open(profile_path, "r") as f:
+            profile_data = json.load(f)
+        
+        # `_save_schedules_to_file` と `reload_schedules` は scheduler.py 側で処理
+        from app.core.scheduler import save_and_reload_schedules
+        save_and_reload_schedules(profile_data)
+        
+        return JSONResponse(content={"status": "success", "message": f"プロファイル「{profile_name}」を読み込みました。"})
+    except Exception as e:
+        logging.error(f"プロファイル '{profile_name}' の読み込み中にエラー: {e}")
+        return JSONResponse(status_code=500, content={"status": "error", "message": "プロファイルの読み込みに失敗しました。"})
+
+@app.delete("/api/schedule-profiles/{profile_name}")
+async def delete_schedule_profile(profile_name: str):
+    """指定されたプロファイルを削除する"""
+    profile_path = os.path.join(SCHEDULE_PROFILES_DIR, f"{profile_name}.json")
+    if not os.path.exists(profile_path):
+        return JSONResponse(status_code=404, content={"status": "error", "message": "プロファイルが見つかりません。"})
+    try:
+        os.remove(profile_path)
+        return JSONResponse(content={"status": "success", "message": f"プロファイル「{profile_name}」を削除しました。"})
+    except Exception as e:
+        logging.error(f"プロファイル '{profile_name}' の削除中にエラー: {e}")
+        return JSONResponse(status_code=500, content={"status": "error", "message": "プロファイルの削除に失敗しました。"})
+
+@app.get("/api/keyword-profiles")
+async def get_keyword_profiles():
+    """保存されているキーワードプロファイルの一覧を返す"""
+    os.makedirs(KEYWORD_PROFILES_DIR, exist_ok=True)
+    profiles = [os.path.splitext(f)[0] for f in os.listdir(KEYWORD_PROFILES_DIR) if f.endswith(".json")]
+    return JSONResponse(content=sorted(profiles))
+
+@app.post("/api/keyword-profiles")
+async def save_keyword_profile(request: ProfileNameRequest):
+    """現在のキーワードを新しいプロファイルとして保存する"""
+    profile_name = request.profile_name.strip()
+    if not profile_name or not re.match(r'^[a-zA-Z0-9_.\-ぁ-んァ-ヶ一-龠々ー ]+$', profile_name) or "/" in profile_name or "\\" in profile_name:
+        return JSONResponse(status_code=400, content={"status": "error", "message": "プロファイル名に使用できない文字が含まれています。"})
+
+    profile_path = os.path.join(KEYWORD_PROFILES_DIR, f"{profile_name}.json")
+    try:
+        if os.path.exists(KEYWORDS_FILE):
+            with open(KEYWORDS_FILE, "r") as f_src, open(profile_path, "w") as f_dst:
+                f_dst.write(f_src.read())
+            return JSONResponse(content={"status": "success", "message": f"プロファイル「{profile_name}」を保存しました。"})
+        else:
+            return JSONResponse(status_code=404, content={"status": "error", "message": "保存するキーワードファイルが見つかりません。"})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"status": "error", "message": f"プロファイルの保存に失敗しました: {e}"})
+
+@app.put("/api/keyword-profiles/{profile_name}")
+async def load_keyword_profile(profile_name: str):
+    """指定されたプロファイルを現在のキーワードとして読み込む"""
+    profile_path = os.path.join(KEYWORD_PROFILES_DIR, f"{profile_name}.json")
+    if not os.path.exists(profile_path):
+        return JSONResponse(status_code=404, content={"status": "error", "message": "プロファイルが見つかりません。"})
+
+    try:
+        with open(profile_path, "r") as f_src, open(KEYWORDS_FILE, "w") as f_dst:
+            f_dst.write(f_src.read())
+        return JSONResponse(content={"status": "success", "message": f"プロファイル「{profile_name}」を読み込みました。"})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"status": "error", "message": f"プロファイルの読み込みに失敗しました: {e}"})
+
+@app.delete("/api/keyword-profiles/{profile_name}")
+async def delete_keyword_profile(profile_name: str):
+    """指定されたキーワードプロファイルを削除する"""
+    profile_path = os.path.join(KEYWORD_PROFILES_DIR, f"{profile_name}.json")
+    if not os.path.exists(profile_path):
+        return JSONResponse(status_code=404, content={"status": "error", "message": "プロファイルが見つかりません。"})
+    try:
+        os.remove(profile_path)
+        return JSONResponse(content={"status": "success", "message": f"プロファイル「{profile_name}」を削除しました。"})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"status": "error", "message": f"プロファイルの削除に失敗しました: {e}"})
 
 @app.get("/api/config-tasks")
 async def get_config_tasks():
@@ -403,7 +500,9 @@ async def update_schedule(update_request: ScheduleUpdateRequest):
         "times": [t.dict() for t in update_request.times]
     }
 
-    _save_schedules_to_file(all_schedules)
+    # `_save_schedules_to_file` は scheduler.py 側で処理
+    from app.core.scheduler import save_and_reload_schedules
+    save_and_reload_schedules(all_schedules)
 
     return {"status": "success", "message": f"Task '{tag}' schedule updated."}
 

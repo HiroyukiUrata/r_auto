@@ -32,6 +32,35 @@
                 </div>
             </div>
         </div>
+        <div class="row mb-4">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header">
+                        <i class="bi bi-collection-fill me-2"></i>スケジュールプロファイル管理
+                    </div>
+                    <div class="card-body">
+                        <div class="row g-2 align-items-center">
+                            <div class="col-sm-4">
+                                <label for="profile-select" class="form-label">プロファイルを選択</label>
+                                <select id="profile-select" class="form-select"></select>
+                            </div>
+                            <div class="col-sm-8 d-flex align-items-end gap-2">
+                                <button class="btn btn-primary" onclick="loadProfile()"><i class="bi bi-box-arrow-in-down me-1"></i>読み込み</button>
+                                <button class="btn btn-danger" onclick="deleteProfile()"><i class="bi bi-trash me-1"></i>削除</button>
+                            </div>
+                        </div>
+                        <hr>
+                        <div class="row g-2 align-items-center">
+                            <div class="col-sm-4">
+                                <label for="new-profile-name" class="form-label">現在の設定を名前を付けて保存</label>
+                                <input type="text" id="new-profile-name" class="form-control" placeholder="例: 平日用スケジュール">
+                            </div>
+                            <div class="col-sm-8 d-flex align-items-end"><button class="btn btn-success" onclick="saveProfile()"><i class="bi bi-save me-1"></i>保存</button></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
         <div class="row">
             <div class="col-md-12">
                 <div class="card">
@@ -481,9 +510,92 @@
             allCards.forEach(card => card.classList.remove('disabled'));
         }
 
+        async function fetchProfiles() {
+            try {
+                const response = await fetch('/api/schedule-profiles');
+                const profiles = await response.json();
+                const select = document.getElementById('profile-select');
+                select.innerHTML = '<option value="">-- プロファイルを選択 --</option>';
+                profiles.forEach(p => {
+                    const option = document.createElement('option');
+                    option.value = p;
+                    option.textContent = p;
+                    select.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Failed to fetch profiles:', error);
+            }
+        }
+
+        async function loadProfile() {
+            const select = document.getElementById('profile-select');
+            const profileName = select.value;
+            if (!profileName) {
+                alert('読み込むプロファイルを選択してください。');
+                return;
+            }
+            if (!confirm(`プロファイル「${profileName}」を読み込みますか？\n現在のスケジュール設定は上書きされます。`)) return;
+
+            try {
+                const response = await fetch(`/api/schedule-profiles/${profileName}`, { method: 'PUT' });
+                const result = await response.json();
+                if (!response.ok) throw new Error(result.message);
+                alert(result.message);
+                await fetchSchedules(); // 画面を更新
+            } catch (error) {
+                alert(`エラー: ${error.message}`);
+            }
+        }
+
+        async function saveProfile() {
+            const input = document.getElementById('new-profile-name');
+            const profileName = input.value.trim();
+            if (!profileName) {
+                alert('プロファイル名を入力してください。');
+                return;
+            }
+            if (!confirm(`現在のスケジュールを「${profileName}」として保存しますか？`)) return;
+
+            try {
+                const response = await fetch('/api/schedule-profiles', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ profile_name: profileName })
+                });
+                const result = await response.json();
+                if (!response.ok) throw new Error(result.message);
+                alert(result.message);
+                input.value = '';
+                await fetchProfiles(); // プロファイル一覧を更新
+            } catch (error) {
+                alert(`エラー: ${error.message}`);
+            }
+        }
+
+        async function deleteProfile() {
+            const select = document.getElementById('profile-select');
+            const profileName = select.value;
+            if (!profileName) {
+                alert('削除するプロファイルを選択してください。');
+                return;
+            }
+            if (!confirm(`本当にプロファイル「${profileName}」を削除しますか？この操作は元に戻せません。`)) return;
+
+            try {
+                const response = await fetch(`/api/schedule-profiles/${profileName}`, { method: 'DELETE' });
+                const result = await response.json();
+                if (!response.ok) throw new Error(result.message);
+                alert(result.message);
+                await fetchProfiles(); // プロファイル一覧を更新
+            } catch (error) {
+                alert(`エラー: ${error.message}`);
+            }
+        }
+
         document.addEventListener('DOMContentLoaded', () => {
             fetchSchedules();
             fetchGlobalConfig();
+            fetchProfiles();
         });
     </script>
 {% endblock %}
