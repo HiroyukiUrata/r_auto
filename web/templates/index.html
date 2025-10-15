@@ -58,14 +58,14 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
     <script>
-        async function saveSchedule(tag, times) {
+        async function saveSchedule(tag, isEnabled, times) {
             try {
                 const response = await fetch('/api/schedules/update', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({ tag: tag, times: times }), // timesは[{time: "HH:MM", count: N}, ...]
+                    body: JSON.stringify({ tag: tag, enabled: isEnabled, times: times }),
                 });
 
                 const result = await response.json();
@@ -103,14 +103,19 @@
 
                 const cardHtml = `
                 <div class="card mb-3" id="task-card-${job.tag}">
-                    <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
-                        <div class="me-3">
-                            <h5 class="mb-0 d-inline-block me-2">${job.name_ja}</h5>
-                            <small class="text-muted">次の実行: ${job.next_run || 'N/A'}</small>
+                    <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2 ${!job.enabled ? 'bg-light' : ''}">
+                        <div class="d-flex align-items-center me-3">
+                            <div class="form-check form-switch me-2">
+                                <input class="form-check-input" type="checkbox" role="switch" id="master-toggle-${job.tag}" ${job.enabled ? 'checked' : ''} onchange="markCardAsDirty(this)">
+                            </div>
+                            <div>
+                                <h5 class="mb-0 d-inline-block me-2">${job.name_ja}</h5>
+                                ${job.enabled ? `<small class="text-muted">次の実行: ${job.next_run || 'N/A'}</small>` : '<small class="text-danger">無効</small>'}
+                            </div>
                         </div>
                         <div class="ms-auto button-group">
                             <!-- キャンセルボタンはここに挿入されます -->
-                            <button class="btn btn-success btn-sm" onclick="handleSave(this, '${job.tag}')">
+                            <button class="btn btn-success btn-sm" onclick="handleSave('${job.tag}')">
                                 <i class="bi bi-check-circle me-1"></i> 保存
                             </button>
                             <button class="btn btn-info btn-sm" onclick="runTaskNow('${job.tag}', '${job.name_ja}')">
@@ -223,8 +228,8 @@
 
         function addTime(button, tag, hasCount) {
             const cardBody = button.closest('.card-body');
-            const input = cardBody.querySelector('input[type="time"]');
-            const newTime = input.value;
+            const timeInput = cardBody.querySelector(`#time-input-${tag}`);
+            const newTime = timeInput.value;
             if (!newTime) return;
 
             let newCount = 1;
@@ -252,7 +257,7 @@
                 <button type="button" class="btn btn-sm btn-danger py-0 px-1" aria-label="削除" onclick="this.parentElement.remove(); markCardAsDirty(this);"><i class="bi bi-x-lg"></i></button>
             `;
             timesContainer.appendChild(timeEntry);
-            input.value = '';
+            timeInput.value = '';
             markCardAsDirty(button); // 保存ボタンの状態を変更
         }
 
@@ -320,9 +325,11 @@
             });
         }
 
-        async function handleSave(button, tag) {
+        async function handleSave(tag) {
             const card = document.getElementById(`task-card-${tag}`);
             const timeEntries = card.querySelectorAll('.time-entry');
+            const isEnabled = card.querySelector(`#master-toggle-${tag}`).checked;
+
             const newTimes = Array.from(timeEntries).map(entry => {
                 // .time-display の最初の子要素（テキストノード）から時刻を取得し、前後の空白を削除
                 const timeDisplaySpan = entry.querySelector('.time-display');
@@ -332,7 +339,7 @@
                 return { time, count };
             });
 
-            const success = await saveSchedule(tag, newTimes);
+            const success = await saveSchedule(tag, isEnabled, newTimes);
             if (success) {
                 alert('スケジュールを保存しました。');
                 await fetchSchedules();
@@ -409,6 +416,12 @@
             const buttonGroup = currentCard.querySelector('.card-header .button-group');
             const saveButton = buttonGroup.querySelector('.btn-success, .btn-warning');
             const runNowButton = buttonGroup.querySelector('.btn-info');
+            const cardHeader = currentCard.querySelector('.card-header');
+            const masterToggle = currentCard.querySelector(`#master-toggle-${currentCard.id.replace('task-card-', '')}`);
+
+            // マスターON/OFFでヘッダーの見た目を即時変更
+            cardHeader.classList.toggle('bg-light', !masterToggle.checked);
+            cardHeader.querySelector('.text-muted, .text-danger').innerHTML = masterToggle.checked ? `次の実行: ${currentCard.querySelector('.text-muted, .text-danger').textContent.split(': ')[1] || 'N/A'}` : '無効';
             
             // 既に編集モードでなければ、元の状態を保存し、キャンセルボタンを追加
             if (!currentCard.dataset.isDirty) {

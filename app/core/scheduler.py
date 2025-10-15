@@ -20,9 +20,21 @@ def load_schedules_from_file():
     try:
         with open(SCHEDULE_FILE, "r") as f:
             schedules = json.load(f)
-        for tag, times in schedules.items():
+        for tag, schedule_data in schedules.items():
             definition = TASK_DEFINITIONS.get(tag)
             if definition:
+                # 新旧フォーマットに対応
+                if isinstance(schedule_data, list): # 旧フォーマット
+                    task_enabled = True
+                    times = schedule_data
+                else: # 新フォーマット (辞書)
+                    task_enabled = schedule_data.get("enabled", True)
+                    times = schedule_data.get("times", [])
+
+                if not task_enabled:
+                    logging.info(f"タスク '{tag}' は無効化されているため、すべてのスケジュールをスキップします。")
+                    continue
+
                 # timesは {"time": "HH:MM", "count": N} のリスト
                 for entry in times:
                     # タスク定義からのデフォルト引数を取得し、スケジュール固有の引数で上書き
@@ -31,9 +43,13 @@ def load_schedules_from_file():
 
                     task_func = definition.get("function")
                     if task_func:
-                        # 通常のタスクの場合
-                        job_kwargs['task_to_run'] = task_func
-                        schedule.every().day.at(entry['time']).do(run_threaded, run_task_with_random_delay, **job_kwargs).tag(tag)
+                        if tag == "backup-database":
+                            # バックアップタスクは引数を取らないので、直接呼び出す
+                            schedule.every().day.at(entry['time']).do(run_threaded, task_func).tag(tag)
+                        else:
+                            # その他の通常のタスクの場合
+                            job_kwargs['task_to_run'] = task_func
+                            schedule.every().day.at(entry['time']).do(run_threaded, run_task_with_random_delay, **job_kwargs).tag(tag)
                     elif "flow" in definition:
                         # フロータスクの場合
                         # _run_task_internal を直接呼び出す

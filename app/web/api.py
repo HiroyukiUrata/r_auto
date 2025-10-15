@@ -27,23 +27,31 @@ app = FastAPI(
 KEYWORDS_FILE = "db/keywords.json"
 SCHEDULE_FILE = "db/schedules.json"
 
-def save_schedules_to_file():
-    """現在のスケジュールをJSONファイルに保存する"""
-    schedules_to_save = {}
-    # タグをキーとして実行時刻のリストを作成
-    for tag in TASK_DEFINITIONS:
-        schedules_to_save[tag] = []
+def _load_schedules_from_file():
+    """スケジュールファイルを読み込む内部関数"""
+    if not os.path.exists(SCHEDULE_FILE):
+        return {}
+    try:
+        with open(SCHEDULE_FILE, "r") as f:
+            return json.load(f)
+    except (IOError, json.JSONDecodeError):
+        return {}
 
-    for job in schedule.get_jobs():
-        if not job.tags:
-            continue
-        tag = list(job.tags)[0]
-        if tag in schedules_to_save and job.at_time:
-            time_str = job.at_time.strftime('%H:%M')
-            # ジョブの引数から 'count' を取得。見つからなければデフォルト1。
-            count = job.job_func.keywords.get('count', 1)
-            schedules_to_save[tag].append({"time": time_str, "count": count})
-
+def _save_schedules_to_file(schedules_to_save):
+    """
+    与えられたスケジュールデータをファイルに保存する内部関数。
+    データ形式:
+    {
+        "task-tag": {
+            "enabled": true,
+            "times": [
+                {"time": "HH:MM", "count": 10},
+                ...
+            ]
+        },
+        ...
+    }
+    """
     try:
         with open(SCHEDULE_FILE, "w") as f:
             json.dump(schedules_to_save, f, indent=4, sort_keys=True)
@@ -58,6 +66,7 @@ class TimeEntry(BaseModel):
 # --- Pydantic Models ---
 class ScheduleUpdateRequest(BaseModel):
     tag: str
+    enabled: bool
     times: list[TimeEntry]
 
 class ConfigUpdateRequest(BaseModel):
@@ -132,25 +141,24 @@ async def get_schedules():
         is_schedulable = not definition.get("is_debug", False) or definition.get("show_in_schedule", False)
         if is_schedulable and definition.get("show_in_schedule", True):
 
-            all_tasks[tag] = {
-                "tag": tag, "name_ja": definition["name_ja"], "times": [], "next_run": None
-            }
+            all_tasks[tag] = {"tag": tag, "name_ja": definition["name_ja"], "enabled": True, "times": [], "next_run": None}
 
-    # 2. 現在スケジュールされているジョブの情報を雛形にマージする
+    # 2. ファイルから保存されたスケジュール情報（enabledフラグ含む）を読み込んでマージ
+    saved_schedules = _load_schedules_from_file()
+    for tag, data in saved_schedules.items():
+        if tag in all_tasks:
+            if isinstance(data, dict): # 新フォーマット
+                all_tasks[tag]["enabled"] = data.get("enabled", True)
+                all_tasks[tag]["times"] = data.get("times", [])
+            elif isinstance(data, list): # 旧フォーマット
+                all_tasks[tag]["times"] = data
+
+    # 3. 現在アクティブなジョブの情報を雛形にマージする
     for job in schedule.get_jobs():
         if not job.tags:
             continue
         tag = list(job.tags)[0]
-
         if tag in all_tasks:
-            # 実行時刻を追加
-            if job.at_time:
-                time_str = job.at_time.strftime('%H:%M')
-                count = job.job_func.keywords.get('count', 1)
-                time_entry = {"time": time_str, "count": count}
-                if time_entry not in all_tasks[tag]["times"]:
-                    all_tasks[tag]["times"].append(time_entry)
-
             # 最も近い次の実行時刻を更新
             current_next_run = all_tasks[tag].get("next_run")
             # 日付オブジェクトで比較するために、文字列から変換
@@ -366,28 +374,36 @@ async def update_schedule(update_request: ScheduleUpdateRequest):
     # そのタグを持つ既存のジョブをすべてキャンセル
     schedule.clear(tag)
 
-    # 新しい時刻リストに基づいてジョブを再作成
-    for entry in update_request.times:
-        if re.match(r'^([01]\d|2[0-3]):([0-5]\d)$', entry.time):
-            # タスク定義からのデフォルト引数を取得し、スケジュール固有の引数で上書き
-            job_kwargs = definition.get("default_kwargs", {}).copy()
-            job_kwargs['count'] = entry.count
+    # タスクが有効な場合のみ、新しい時刻リストに基づいてジョブを再作成
+    if update_request.enabled:
+        for entry in update_request.times:
+            if re.match(r'^([01]\d|2[0-3]):([0-5]\d)$', entry.time):
+                # タスク定義からのデフォルト引数を取得し、スケジュール固有の引数で上書き
+                job_kwargs = definition.get("default_kwargs", {}).copy()
+                job_kwargs['count'] = entry.count
 
-            task_func = definition.get("function")
-            if task_func:
-                # 通常のタスクの場合
-                job_kwargs['task_to_run'] = task_func
-                schedule.every().day.at(entry.time).do(run_threaded, run_task_with_random_delay, **job_kwargs).tag(tag)
-            elif "flow" in definition:
-                # フロータスクの場合
-                # _run_task_internal を直接呼び出す
-                schedule.every().day.at(entry.time).do(run_threaded, _run_task_internal, tag=tag, is_part_of_flow=False, **job_kwargs).tag(tag)
-            else:
-                logging.warning(f"タスク '{tag}' には実行可能な関数またはフローが定義されていません。")
+                task_func = definition.get("function")
+                if task_func:
+                    # 通常のタスクの場合
+                    job_kwargs['task_to_run'] = task_func
+                    schedule.every().day.at(entry.time).do(run_threaded, run_task_with_random_delay, **job_kwargs).tag(tag)
+                elif "flow" in definition:
+                    # フロータスクの場合
+                    schedule.every().day.at(entry.time).do(run_threaded, _run_task_internal, tag=tag, is_part_of_flow=False, **job_kwargs).tag(tag)
+                else:
+                    logging.warning(f"タスク '{tag}' には実行可能な関数またはフローが定義されていません。")
 
+    # --- スケジュールファイルの保存ロジックを修正 ---
+    # 既存のスケジュールを読み込み、今回の更新対象タグのデータだけを差し替える
+    all_schedules = _load_schedules_from_file()
 
-    # ファイルに現在のスケジュール状態を保存
-    save_schedules_to_file()
+    # 新しい形式で保存: {"enabled": bool, "times": [...]}
+    all_schedules[tag] = {
+        "enabled": update_request.enabled,
+        "times": [t.dict() for t in update_request.times]
+    }
+
+    _save_schedules_to_file(all_schedules)
 
     return {"status": "success", "message": f"Task '{tag}' schedule updated."}
 
