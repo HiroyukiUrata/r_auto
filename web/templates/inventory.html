@@ -165,6 +165,16 @@
         opacity: 0.4;
         background-color: #c8ebfb;
     }
+    .move-buttons {
+        position: absolute;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        background-color: white;
+        border: 1px solid #dee2e6;
+        border-radius: .25rem;
+        padding: 2px;
+    }
     .drag-handle {
         cursor: grab;
         color: #adb5bd;
@@ -459,8 +469,8 @@
 
         // テーブル行のクリックイベントリスナー
         document.getElementById('inventory-table-body').addEventListener('click', function (e) {
-            // ボタンやリンク、チェックボックス自体をクリックした場合は何もしない
-            if (e.target.closest('a, button, .form-check-input')) return;
+            // ボタン、リンク、チェックボックス、ドラッグハンドル自体をクリックした場合は行選択を無効にする
+            if (e.target.closest('a, button, .form-check-input, .drag-handle')) return;
 
             const row = e.target.closest('tr');
             const checkbox = row.querySelector('.product-checkbox');
@@ -468,6 +478,107 @@
                 checkbox.click(); // チェックボックスのクリックイベントを発火させる
             }
         });
+
+        // 長押しで移動ボタンを表示するためのイベントリスナー
+        let longPressTimer = null;
+        document.getElementById('inventory-table-body').addEventListener('touchstart', function(e) {
+            const handle = e.target.closest('.drag-handle');
+            if (handle) {
+                // 既にボタンが表示されている場合は、何もしない
+                if (handle.querySelector('.move-buttons')) {
+                    return;
+                }
+
+                // 長押しタイマーを開始
+                longPressTimer = setTimeout(() => {
+                    showMoveButtons(handle, e);
+                    longPressTimer = null; // タイマーをリセット
+                }, 500); // 500ミリ秒（0.5秒）で長押しと判定
+            }
+        });
+
+        document.getElementById('inventory-table-body').addEventListener('touchend', function(e) {
+            // 指が離れたらタイマーをキャンセル
+            clearTimeout(longPressTimer);
+        });
+
+        document.getElementById('inventory-table-body').addEventListener('touchmove', function(e) {
+            // 指が動いたら（スクロールやドラッグ開始）タイマーをキャンセル
+            clearTimeout(longPressTimer);
+        });
+
+        // 移動ボタン表示関数
+        function showMoveButtons(handleCell, event) {
+            event.stopPropagation();
+            // 既存のボタンをすべて削除
+            removeMoveButtons();
+
+            const row = handleCell.closest('tr');
+            const tableBody = row.parentElement;
+
+            const buttonContainer = document.createElement('div');
+            buttonContainer.className = 'move-buttons';
+            buttonContainer.innerHTML = `
+                <button class="btn btn-sm btn-light p-0" data-action="move-top" title="一番上に移動"><i class="bi bi-chevron-double-up"></i></button>
+                <button class="btn btn-sm btn-light p-0" data-action="move-bottom" title="一番下に移動"><i class="bi bi-chevron-double-down"></i></button>
+            `;
+
+            // ボタンのクリックイベントをここで登録
+            buttonContainer.addEventListener('click', function(e) {
+                const button = e.target.closest('button');
+                if (button && button.dataset.action === 'move-top') moveRowTop(button, e);
+                if (button && button.dataset.action === 'move-bottom') moveRowBottom(button, e);
+            });
+
+            handleCell.appendChild(buttonContainer);
+        }
+
+        function moveRowTop(button, event) {
+            event.stopPropagation();
+            event.preventDefault();
+            const row = button.closest('tr');
+            const tableBody = row.parentElement;
+            tableBody.prepend(row);
+            removeMoveButtons();
+            saveOrder();
+        }
+
+        function moveRowBottom(button, event) {
+            event.stopPropagation();
+            event.preventDefault();
+            const row = button.closest('tr');
+            const tableBody = row.parentElement;
+            tableBody.append(row);
+            removeMoveButtons();
+            saveOrder();
+        }
+
+        function removeMoveButtons() {
+            document.querySelectorAll('.move-buttons').forEach(el => el.remove());
+        }
+
+        async function saveOrder() {
+            const tableBody = document.getElementById('inventory-table-body');
+            const productIds = Array.from(tableBody.querySelectorAll('tr')).map(tr => tr.id.replace('product-row-', ''));
+            try {
+                await fetch('/api/inventory/update-order', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ product_ids: productIds })
+                });
+            } catch (error) {
+                alert(`エラー: 順序の保存に失敗しました。`);
+            }
+        }
+
+        // ボタン以外の場所をクリックしたらボタンを消す
+        document.addEventListener('click', function(event) {
+            // クリックされたのが移動ボタンのコンテナでなければ、ボタンを削除
+            if (!event.target.closest('.move-buttons')) {
+                removeMoveButtons();
+            }
+        });
+
     });
 </script>
 {% endblock %}
