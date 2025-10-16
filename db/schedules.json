@@ -1,14 +1,14 @@
 {
     "backup-database": {
-        "enabled": true,
+        "enabled": false,
         "times": [
             {
                 "count": 1,
-                "time": "23:59"
+                "time": "11:59"
             },
             {
                 "count": 1,
-                "time": "11:59"
+                "time": "23:59"
             }
         ]
     },
@@ -17,7 +17,7 @@
     "get-post-url": [],
     "json-import-flow": [],
     "post-article": {
-        "enabled": true,
+        "enabled": false,
         "times": [
             {
                 "count": 10,
@@ -54,7 +54,7 @@
         ]
     },
     "procure-products-flow": {
-        "enabled": true,
+        "enabled": false,
         "times": [
             {
                 "count": 30,
@@ -68,7 +68,7 @@
     },
     "rakuten-api-procure": [],
     "run-follow-action": {
-        "enabled": true,
+        "enabled": false,
         "times": [
             {
                 "count": 10,
@@ -97,7 +97,7 @@
         ]
     },
     "run-like-action": {
-        "enabled": true,
+        "enabled": false,
         "times": [
             {
                 "count": 110,

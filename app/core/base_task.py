@@ -5,7 +5,7 @@ from abc import ABC, abstractmethod
 from typing import Optional
 
 from playwright.sync_api import sync_playwright, BrowserContext, Page
-from app.core.config_manager import is_headless
+from app.core.config_manager import is_headless, SCREENSHOT_DIR
 
 PROFILE_DIR = "db/playwright_profile"
 
@@ -103,11 +103,10 @@ class BaseTask(ABC):
         """エラー発生時にスクリーンショットを保存する"""
         if self.page:
             try:
-                screenshot_dir = "db/screenshots"
-                os.makedirs(screenshot_dir, exist_ok=True)
+                os.makedirs(SCREENSHOT_DIR, exist_ok=True)
                 timestamp = time.strftime("%Y%m%d-%H%M%S")
                 safe_action_name = "".join(c for c in self.action_name if c.isalnum() or c in (' ', '_')).rstrip()
-                screenshot_path = os.path.join(screenshot_dir, f"{prefix}_{safe_action_name}_{timestamp}.png")
+                screenshot_path = os.path.join(SCREENSHOT_DIR, f"{prefix}_{safe_action_name}_{timestamp}.png")
                 self.page.screenshot(path=screenshot_path)
                 logging.info(f"エラー発生時のスクリーンショットを {screenshot_path} に保存しました。")
             except Exception as ss_e:

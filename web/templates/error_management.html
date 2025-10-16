@@ -4,7 +4,7 @@
 
 {% block content %}
 <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-    <h1 class="h2">🚨 エラー管理</h1>
+    <h1 class="h2">🚨 エラー商品管理</h1>
     <div class="btn-toolbar mb-2 mb-md-0">
         <div class="btn-group me-2" id="bulk-action-group">
             <button type="button" class="btn btn-sm btn-outline-primary" onclick="bulkUpdateStatus('投稿準備完了')" disabled>
@@ -47,6 +47,40 @@
         </tbody>
     </table>
 </div>
+
+<hr class="my-4">
+
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">📸 Playwrightタスク エラー画面確認</h1>
+</div>
+<p>Playwrightタスクの実行中にエラーが発生した際に自動で保存されたスクリーンショットです。新しいものが一番上に表示されます。</p>
+
+{% if files %}
+    <div class="list-group">
+    {% for file in files %}
+        <div class="list-group-item d-flex justify-content-between align-items-center" id="screenshot-{{ loop.index }}">
+            <a href="/api/screenshots/{{ file }}" class="text-decoration-none text-dark flex-grow-1" target="_blank">
+                <div>
+                    <i class="bi bi-image me-2"></i>
+                    <strong>{{ file_details[file].action_name }}</strong>
+                    <br>
+                    <small class="text-muted">エラー発生日時: {{ file_details[file].error_timestamp }}</small>
+                </div>
+            </a>
+            <div class="d-flex align-items-center">
+                <span class="badge bg-secondary rounded-pill me-3">{{ file }}</span>
+                <button class="btn btn-sm btn-outline-danger" onclick="deleteScreenshot(this, '{{ file }}')" title="このスクリーンショットを削除">
+                    <i class="bi bi-trash"></i>
+                </button>
+            </div>
+        </div>
+    {% endfor %}
+    </div>
+{% else %}
+    <div class="alert alert-info" role="alert">
+        現在、保存されているスクリーンショットはありません。
+    </div>
+{% endif %}
 
 <!-- 商品情報詳細モーダル -->
 <div class="modal fade" id="infoModal" tabindex="-1" aria-labelledby="infoModalLabel" aria-hidden="true">
@@ -124,6 +158,28 @@
 
 {% block scripts %}
 <script>
+    async function deleteScreenshot(buttonElement, filename) {
+        if (!confirm(`本当にスクリーンショット「${filename}」を削除しますか？\nこの操作は元に戻せません。`)) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/screenshots/${filename}`, {
+                method: 'DELETE',
+            });
+
+            const result = await response.json();
+            if (!response.ok) {
+                throw new Error(result.detail || '削除に失敗しました。');
+            }
+
+            // 成功したら、リストからその項目を削除
+            buttonElement.closest('.list-group-item').remove();
+        } catch (error) {
+            alert(`エラー: ${error.message}`);
+        }
+    }
+
     let infoModalInstance = null;
 
     function showInfoModal(element) {

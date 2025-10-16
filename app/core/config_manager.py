@@ -3,6 +3,7 @@ import logging
 import os
 
 CONFIG_FILE = "db/config.json"
+SCREENSHOT_DIR = "db/screenshots"
 # デフォルト設定に playwright_headless を追加
 DEFAULT_CONFIG = {
     "max_delay_minutes": 5,
