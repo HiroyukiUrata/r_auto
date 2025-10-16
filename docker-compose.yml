@@ -8,7 +8,6 @@ services:
       - ./app:/workspace/app # ソースコードをマウント
       - ./db:/workspace/db   # DBデータをマウント
       - ./web:/workspace/web # Webリソースをマウント
-      - ./app/entrypoint.sh:/usr/local/bin/entrypoint.sh  # ←追加！
     working_dir: /workspace # コンテナ内の作業ディレクトリを明示的に指定
     ports:
       - "8000:8000" # Web UIアクセス用にポートを開放
