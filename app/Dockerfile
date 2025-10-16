@@ -1,14 +1,18 @@
-# ベースイメージq
+# ベースイメージ
 FROM python:3.11-slim
 
 # 作業ディレクトリ
 WORKDIR /workspace
 
 # VNCとブラウザ表示に必要なパッケージをインストール
+# --no-install-recommends で不要な推奨パッケージをスキップし、
+# 最後に apt-get clean と /var/lib/apt/lists/* の削除を行うことでイメージサイズを削減します。
 RUN apt-get update && apt-get install -y --no-install-recommends \
     x11vnc \
     xvfb \
-    xauth
+    xauth \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
 # Pythonパッケージコピーとインストール
 COPY app/requirements.txt .
