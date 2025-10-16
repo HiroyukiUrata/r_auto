@@ -27,4 +27,3 @@ ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 
 # デフォルトのコマンド。docker-compose.ymlのcommandで上書きされる。
 CMD ["python", "-m", "app.main"]
- 
