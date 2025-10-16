@@ -632,15 +632,16 @@ def _run_task_internal(tag: str, is_part_of_flow: bool, **kwargs):
         # save-auth-stateは手動操作のため、タイムアウトを長めに設定(5分+α)
         timeout = 310 if "save-auth-state" in tag else 60
 
-        job_thread, result_container = run_threaded(task_wrapper, **kwargs)
+        # task_wrapperは後続タスクを呼び出す可能性があるため、直接タスク関数を呼び出す
+        task_func = definition["function"]
+        job_thread, result_container = run_threaded(task_func, **kwargs)
         job_thread.join(timeout=timeout) # タスクに応じた時間待つ
         if job_thread.is_alive():
             return JSONResponse(status_code=500, content={"status": "error", "message": "タスクがタイムアウトしました。"})
         
         result = result_container.get('result')
         logging.info(f"スレッドから受け取った結果 (タスク: {tag}): {result} (型: {type(result)})")
-        
-        if "check-login-status" in tag:
+        if "check-login-status" in tag or "test-check-login-status" in tag:
             message = "成功: ログイン状態が維持されています。" if result else "失敗: ログイン状態が確認できませんでした。"
         elif "save-auth-state" in tag:
             message = "成功: 認証状態を保存しました。" if result else "失敗: 認証状態の保存に失敗しました。詳細はログを確認してください。"

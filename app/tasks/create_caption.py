@@ -4,10 +4,12 @@ import os
 import re
 from playwright.sync_api import sync_playwright, TimeoutError
 import math
-from app.core.config_manager import is_headless
+import time
+from app.core.base_task import BaseTask
 from app.core.database import get_products_for_caption_creation, get_products_count_for_caption_creation, update_ai_caption, update_product_status
 
 PROMPT_FILE = "app/prompts/caption_prompt.txt"
+DEBUG_DIR = "db/debug"
 
 # --- Gemini応答のJSONを整形・修正するためのヘルパー関数 ---
 def fix_indentation(text):
@@ -51,27 +53,15 @@ def extract_json_from_text(text):
     logging.warning("テキストからJSONブロックを特定できませんでした。元のテキストをそのまま使用します。")
     return text
 
-class CreateCaptionTask:
+class CreateCaptionTask(BaseTask):
     """
     Geminiを使い投稿文を生成するタスク。
-    このタスクはログインプロファイルを使わないため、BaseTaskを継承せず、
-    独自のPlaywrightインスタンス管理を行う。
     """
     def __init__(self, count: int = 0):
+        super().__init__(count=count)
         self.action_name = "投稿文作成 (Gemini)"
-        self.target_count = count # このタスクでは未使用
-
-    def run(self):
-        logging.info(f"「{self.action_name}」アクションを開始します。")
-        success = False
-        try:
-            self._execute_main_logic()
-            success = True
-        except Exception as e:
-            logging.error(f"「{self.action_name}」アクション中に予期せぬエラーが発生しました: {e}", exc_info=True)
-        
-        logging.info(f"「{self.action_name}」アクションを終了します。")
-        return success
+        self.use_auth_profile = False # 認証プロファイルは不要
+        self.needs_browser = True
 
     def _execute_main_logic(self):
         # 一度にGeminiに送信する最大件数
@@ -88,98 +78,108 @@ class CreateCaptionTask:
             return
         logging.info(f"投稿文作成対象の全商品: {total_products_count}件")
 
-        with sync_playwright() as p:
-            headless_mode = is_headless()
-            logging.info(f"Playwright ヘッドレスモード: {headless_mode}")
-            browser = p.chromium.launch(
-                headless=headless_mode,
-                slow_mo=500 if not headless_mode else 0,
-                env={"DISPLAY": ":0"} if not headless_mode else {}
-            )
+        max_batches = math.ceil(total_products_count / MAX_PRODUCTS_PER_BATCH)
+        logging.info(f"最大バッチ処理回数: {max_batches}回")
 
+        for batch_num in range(1, max_batches + 1):
+            products = get_products_for_caption_creation(limit=MAX_PRODUCTS_PER_BATCH)
+            if not products:
+                logging.info("投稿文作成対象の商品がなくなったため、処理を終了します。")
+                break
+
+            logging.info(f"--- バッチ {batch_num}/{max_batches} を開始します。処理件数: {len(products)}件 ---")
+
+            items_data = [{"page_url": p["url"], "item_description": p["name"], "image_url": p["image_url"], "ai_caption": ""} for p in products]
+            
+            full_prompt = ""
             try:
-                max_batches = math.ceil(total_products_count / MAX_PRODUCTS_PER_BATCH)
-                logging.info(f"最大バッチ処理回数: {max_batches}回")
+                with open(PROMPT_FILE, "r", encoding="utf-8") as f:
+                    prompt_template = f.read()
 
-                for batch_num in range(1, max_batches + 1):
-                    products = get_products_for_caption_creation(limit=MAX_PRODUCTS_PER_BATCH)
-                    if not products:
-                        logging.info("投稿文作成対象の商品がなくなったため、処理を終了します。")
-                        break
+                json_string = json.dumps(items_data, indent=2, ensure_ascii=False)
+                full_prompt = f"{prompt_template}\n\n以下のJSON配列の各要素について、`ai_caption`を生成してください。`page_url`をキーとして、元のJSON配列の形式を維持して返してください。\n\n```json\n{json_string}\n```"
+                
+                # 生成したプロンプトを毎回上書き保存
+                os.makedirs(DEBUG_DIR, exist_ok=True)
+                with open(os.path.join(DEBUG_DIR, "last_gemini_prompt.txt"), "w", encoding="utf-8") as f:
+                    f.write(full_prompt)
 
-                    logging.info(f"--- バッチ {batch_num}/{max_batches} を開始します。処理件数: {len(products)}件 ---")
+                self.context.grant_permissions(["clipboard-read", "clipboard-write"])
+                page = self.page
+                page.goto("https://gemini.google.com/app", wait_until="domcontentloaded", timeout=60000)
 
-                    items_data = [{"page_url": p["url"], "item_description": p["name"], "image_url": p["image_url"], "ai_caption": ""} for p in products]
+                prompt_input = page.get_by_label("ここにプロンプトを入力してください").or_(page.get_by_placeholder("Gemini に相談")).or_(page.get_by_role("textbox"))
+                prompt_input.wait_for(state="visible", timeout=30000)
+                prompt_input.click()
 
-                    page = None
-                    try:
-                        with open(PROMPT_FILE, "r", encoding="utf-8") as f:
-                            prompt_template = f.read()
+                page.evaluate("text => navigator.clipboard.writeText(text)", full_prompt)
+                prompt_input.press("Control+V")
+                prompt_input.press("Enter")
+                logging.info("プロンプトを送信しました。")
+                
+                try:
+                    page.get_by_label("生成を停止").wait_for(state="hidden", timeout=120000)
+                except TimeoutError:
+                    logging.error(f"バッチ {batch_num}: Geminiの応答待機中にタイムアウトしました。")
+                    self._save_debug_info(full_prompt, "gemini_response_timeout")
+                    for product in products: update_product_status(product['id'], 'エラー')
+                    continue
 
-                        json_string = json.dumps(items_data, indent=2, ensure_ascii=False)
-                        full_prompt = f"{prompt_template}\n\n以下のJSON配列の各要素について、`ai_caption`を生成してください。`page_url`をキーとして、元のJSON配列の形式を維持して返してください。\n\n```json\n{json_string}\n```"
+                try:
+                    dynamic_timeout = (60 + len(products) * 15) * 1000
+                    page.wait_for_function("() => document.querySelectorAll('.response-container-content .code-container').length > 0 && document.querySelectorAll('.response-container-content .code-container')[document.querySelectorAll('.response-container-content .code-container').length - 1].innerText.trim().endsWith(']')", timeout=dynamic_timeout)
+                except TimeoutError:
+                    logging.warning("応答JSONの表示待機がタイムアウトしました。不完全な状態でもコピーを試みます。")
+                    self._save_debug_info(full_prompt, "json_wait_timeout")
+                
+                copy_button_locator = page.locator(".response-container-content").last.get_by_label("コードをコピー")
+                copy_button_locator.wait_for(state="visible", timeout=30000)
+                copy_button_locator.click()
+                page.wait_for_timeout(10000)
 
-                        context = browser.new_context(locale="ja-JP", timezone_id="Asia/Tokyo", permissions=["clipboard-read", "clipboard-write"])
-                        page = context.new_page()
-                        page.goto("https://gemini.google.com/app", wait_until="domcontentloaded", timeout=60000)
+                generated_items = None
+                generated_json_str = page.evaluate("() => navigator.clipboard.readText()")
+                try:
+                    cleaned_str = fix_indentation(clean_raw_json(generated_json_str))
+                    generated_items = json.loads(cleaned_str)
+                except json.JSONDecodeError:
+                    json_part_str = extract_json_from_text(generated_json_str)
+                    cleaned_str = fix_indentation(clean_raw_json(json_part_str))
+                    generated_items = json.loads(cleaned_str)
 
-                        prompt_input = page.get_by_label("ここにプロンプトを入力してください").or_(page.get_by_placeholder("Gemini に相談")).or_(page.get_by_role("textbox"))
-                        prompt_input.wait_for(state="visible", timeout=30000)
-                        prompt_input.click()
+                if generated_items:
+                    fix_ai_caption(generated_items)
+                    url_to_caption = {item['page_url']: item.get('ai_caption') for item in generated_items}
+                    updated_count = 0
+                    for product in products:
+                        caption = url_to_caption.get(product['url'])
+                        if caption:
+                            update_ai_caption(product['id'], caption)
+                            updated_count += 1
+                    logging.info(f"バッチ {batch_num}: {updated_count}件の投稿文をデータベースに保存しました。")
 
-                        page.evaluate("text => navigator.clipboard.writeText(text)", full_prompt)
-                        prompt_input.press("Control+V")
-                        prompt_input.press("Enter")
-                        logging.info("プロンプトを送信しました。")
-                        
-                        try:
-                            page.get_by_label("生成を停止").wait_for(state="hidden", timeout=120000)
-                        except TimeoutError:
-                            logging.error(f"バッチ {batch_num}: Geminiの応答待機中にタイムアウトしました。")
-                            for product in products: update_product_status(product['id'], 'エラー')
-                            continue
+            except Exception as e:
+                logging.error(f"プロンプトの生成またはコピー中にエラーが発生しました: {e}", exc_info=True)
+                self._save_debug_info(full_prompt, "general_error")
+                for product in products: update_product_status(product['id'], 'エラー')
+                # BaseTaskのエラーハンドリングに任せるため、例外を再送出
+                raise
 
-                        try:
-                            dynamic_timeout = (60 + len(products) * 15) * 1000
-                            page.wait_for_function("() => document.querySelectorAll('.response-container-content .code-container').length > 0 && document.querySelectorAll('.response-container-content .code-container')[document.querySelectorAll('.response-container-content .code-container').length - 1].innerText.trim().endsWith(']')", timeout=dynamic_timeout)
-                        except TimeoutError:
-                            logging.warning("応答JSONの表示待機がタイムアウトしました。不完全な状態でもコピーを試みます。")
-                        
-                        copy_button_locator = page.locator(".response-container-content").last.get_by_label("コードをコピー")
-                        copy_button_locator.wait_for(state="visible", timeout=30000)
-                        copy_button_locator.click()
-                        page.wait_for_timeout(10000)
+    def _save_debug_info(self, prompt_text: str, error_type: str):
+        """エラー発生時のデバッグ情報（プロンプトとスクリーンショット）を保存する"""
+        try:
+            timestamp = time.strftime("%Y%m%d-%H%M%S")
+            # BaseTaskのスクリーンショット機能を利用
+            self._take_screenshot_on_error(prefix=f"{error_type}_{timestamp}")
 
-                        generated_items = None
-                        generated_json_str = page.evaluate("() => navigator.clipboard.readText()")
-                        try:
-                            cleaned_str = fix_indentation(clean_raw_json(generated_json_str))
-                            generated_items = json.loads(cleaned_str)
-                        except json.JSONDecodeError:
-                            json_part_str = extract_json_from_text(generated_json_str)
-                            cleaned_str = fix_indentation(clean_raw_json(json_part_str))
-                            generated_items = json.loads(cleaned_str)
-
-                        if generated_items:
-                            fix_ai_caption(generated_items)
-                            url_to_caption = {item['page_url']: item.get('ai_caption') for item in generated_items}
-                            updated_count = 0
-                            for product in products:
-                                caption = url_to_caption.get(product['url'])
-                                if caption:
-                                    update_ai_caption(product['id'], caption)
-                                    updated_count += 1
-                            logging.info(f"バッチ {batch_num}: {updated_count}件の投稿文をデータベースに保存しました。")
-
-                    except Exception as e:
-                        logging.error(f"プロンプトの生成またはコピー中にエラーが発生しました: {e}")
-                        for product in products: update_product_status(product['id'], 'エラー')
-                        continue
-                    finally:
-                        if page and not page.is_closed(): page.close()
-
-            finally:
-                if browser and browser.is_connected(): browser.close()
+            # プロンプトを保存
+            if prompt_text:
+                prompt_filename = os.path.join(DEBUG_DIR, f"error_prompt_{error_type}_{timestamp}.txt")
+                with open(prompt_filename, "w", encoding="utf-8") as f:
+                    f.write(prompt_text)
+                logging.info(f"エラー発生時のプロンプトを {prompt_filename} に保存しました。")
+        except Exception as e:
+            logging.error(f"デバッグ情報の保存中にエラーが発生しました: {e}")
 
 def create_caption_prompt(count: int = 0):
     """ラッパー関数"""

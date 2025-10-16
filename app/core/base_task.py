@@ -37,19 +37,21 @@ class BaseTask(ABC):
             if os.path.exists(lockfile_path):
                 logging.warning(f"古いロックファイル {lockfile_path} が見つかったため、削除します。")
                 os.remove(lockfile_path)
-            
+
             self.context = self.playwright.chromium.launch_persistent_context(
                 user_data_dir=PROFILE_DIR,
                 headless=headless_mode,
                 slow_mo=500 if not headless_mode else 0,
-                env={"DISPLAY": ":0"}
+                env={"DISPLAY": ":0"},
+                args=["--disable-blink-features=AutomationControlled"] # 自動化検知を回避する引数を追加
             )
         else:
             logging.info("新しいブラウザセッション（認証プロファイルなし）で起動します。")
             browser = self.playwright.chromium.launch(
                 headless=headless_mode,
                 slow_mo=500 if not headless_mode else 0,
-                env={"DISPLAY": ":0"}
+                env={"DISPLAY": ":0"},
+                args=["--disable-blink-features=AutomationControlled"] # 自動化検知を回避する引数を追加
             )
             self.context = browser.new_context(locale="ja-JP")
 
@@ -76,27 +78,28 @@ class BaseTask(ABC):
                 self.playwright = p
                 try:
                     self._setup_browser()
-                    self._execute_main_logic()
-                    success = True
+                    # _execute_main_logic の戻り値（True/False）を success 変数に格納する
+                    success = self._execute_main_logic()
                 except FileNotFoundError as e:
                     logging.error(f"ファイルが見つかりません: {e}")
                 except Exception as e:
                     logging.error(f"「{self.action_name}」アクション中に予期せぬエラーが発生しました: {e}", exc_info=True)
                     self._take_screenshot_on_error()
+                    success = False # 例外発生時は明確に False とする
                 finally:
                     self._teardown_browser()
         else:
             # ブラウザ不要のタスク
             try:
-                self._execute_main_logic()
-                success = True
+                success = self._execute_main_logic()
             except Exception as e:
                 logging.error(f"「{self.action_name}」アクション中にエラーが発生しました: {e}", exc_info=True)
+                success = False
 
         logging.info(f"「{self.action_name}」アクションを終了します。")
         return success
 
-    def _take_screenshot_on_error(self):
+    def _take_screenshot_on_error(self, prefix: str = "error"):
         """エラー発生時にスクリーンショットを保存する"""
         if self.page:
             try:
@@ -104,7 +107,7 @@ class BaseTask(ABC):
                 os.makedirs(screenshot_dir, exist_ok=True)
                 timestamp = time.strftime("%Y%m%d-%H%M%S")
                 safe_action_name = "".join(c for c in self.action_name if c.isalnum() or c in (' ', '_')).rstrip()
-                screenshot_path = os.path.join(screenshot_dir, f"error_{safe_action_name}_{timestamp}.png")
+                screenshot_path = os.path.join(screenshot_dir, f"{prefix}_{safe_action_name}_{timestamp}.png")
                 self.page.screenshot(path=screenshot_path)
                 logging.info(f"エラー発生時のスクリーンショットを {screenshot_path} に保存しました。")
             except Exception as ss_e:

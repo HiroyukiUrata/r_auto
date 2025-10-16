@@ -3,19 +3,22 @@ import os
 import shutil
 from datetime import datetime
 
+from app.core.base_task import BaseTask
+
 DB_FILE = "db/products.db"
 BACKUP_DIR = "db/backup"
 MAX_BACKUPS = 5 # 保持するバックアップの最大数
 
-class BackupDatabaseTask:
+class BackupDatabaseTask(BaseTask):
     """
     データベースファイルをバックアップするタスク。
     """
     def __init__(self):
+        super().__init__()
         self.action_name = "データベースバックアップ"
+        self.needs_browser = False # このタスクはブラウザを必要としない
 
-    def run(self):
-        logging.info(f"「{self.action_name}」タスクを開始します。")
+    def _execute_main_logic(self):
         try:
             # 1. バックアップを作成
             os.makedirs(BACKUP_DIR, exist_ok=True)
