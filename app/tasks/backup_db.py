@@ -45,17 +45,17 @@ class BackupDatabaseTask(BaseTask):
 
     def _cleanup_old_backups(self):
         """古いバックアップファイルを削除して、最大保持数を超えないようにする"""
-        logging.info(f"古いバックアップのクリーンアップ処理を開始します（最大保持数: {MAX_BACKUPS}件）。")
+        logging.debug(f"古いバックアップのクリーンアップ処理を開始します（最大保持数: {MAX_BACKUPS}件）。")
         try:
             backup_files = sorted([f for f in os.listdir(BACKUP_DIR) if f.startswith("products_") and f.endswith(".db")])
 
             if len(backup_files) > MAX_BACKUPS:
                 files_to_delete = backup_files[:-MAX_BACKUPS]
-                logging.info(f"保持数を超えたため、{len(files_to_delete)}件の古いバックアップを削除します。")
+                logging.debug(f"保持数を超えたため、{len(files_to_delete)}件の古いバックアップを削除します。")
                 for filename in files_to_delete:
                     filepath = os.path.join(BACKUP_DIR, filename)
                     os.remove(filepath)
-                    logging.info(f"  - 削除しました: {filepath}")
+                    logging.debug(f"  - 削除しました: {filepath}")
         except Exception as e:
             logging.error(f"古いバックアップの削除中にエラーが発生しました: {e}", exc_info=True)
 

@@ -24,16 +24,16 @@ class LikeTask(BaseTask):
         random_keyword = "　".join(two_random_chars)
         target_url = f"https://room.rakuten.co.jp/search/item?keyword={random_keyword}&colle=&comment=&like=&user_id=&user_name=&original_photo=0"
 
-        logger.info(f"ランダムなキーワード「{random_keyword}」で検索結果ページに移動します...")
+        logger.debug(f"ランダムなキーワード「{random_keyword}」で検索結果ページに移動します...")
         page.goto(target_url)
 
         # ページのネットワークが落ち着くまで待つ（動的コンテンツの読み込み完了を期待）
-        logger.info("ページの読み込みと動的コンテンツの生成を待っています...")
+        logger.debug("ページの読み込みと動的コンテンツの生成を待っています...")
         page.wait_for_load_state("networkidle", timeout=30000)
         time.sleep(2) # 念のため少し待つ
 
         # --- いいね済みボタンを非表示にする ---
-        logger.info("「いいね」済みボタンを非表示にします。")
+        logger.debug("「いいね」済みボタンを非表示にします。")
         page.add_style_tag(content="a.icon-like.isLiked { display: none !important; }")
 
         # --- 「いいね」処理のループ ---
@@ -99,8 +99,8 @@ class LikeTask(BaseTask):
                     # このユーザーへの「いいね」が初めての場合のみログを出力する
                     if user_likes_this_time == 1:
                         log_message = f"「{user_name}」の投稿に「いいね」しました。({liked_count}/{self.target_count})"
-                        if is_duplicate: logger.info(f"連続で{log_message}")
-                        else: logger.info(log_message)
+                        if is_duplicate: logger.debug(f"連続で{log_message}")
+                        else: logger.debug(log_message)
 
                     last_liked_user = user_name # 最後に「いいね」したユーザー名を更新
                     time.sleep(random.uniform(1, 2)) # 人間らしい間隔

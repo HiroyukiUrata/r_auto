@@ -1,7 +1,6 @@
 import logging
 from playwright.sync_api import TimeoutError
 from app.core.base_task import BaseTask # Import from core
-from app import locators
 
 class CheckLoginStatusTask(BaseTask): # Class name is already correct
     """
@@ -18,7 +17,7 @@ class CheckLoginStatusTask(BaseTask): # Class name is already correct
 
         try:
             logging.info("「my ROOM」リンクをクリックします。")
-            my_room_link_locator = page.locator(locators.MY_ROOM_LINK)
+            my_room_link_locator = page.locator('a:has-text("my ROOM")')
             my_room_link_locator.wait_for(state='visible', timeout=10000)
             my_room_link_locator.click()
 

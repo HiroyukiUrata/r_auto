@@ -15,7 +15,7 @@ from app.core.database import get_all_inventory_products, update_product_status,
 from app.tasks.posting import run_posting
 from app.tasks.get_post_url import run_get_post_url
 from app.tasks.import_products import process_and_import_products
-from app.core.logging_config import LOG_FILE
+from app.core.logging_config import LOG_FILE # ログファイルのパスをインポート
 from app.core.config_manager import get_config, save_config, SCREENSHOT_DIR
 from app.core.scheduler_utils import run_threaded, run_task_with_random_delay
 from datetime import date, timedelta

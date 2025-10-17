@@ -44,16 +44,16 @@ class SaveAuthStateTask:
                     logging.info("ブラウザが閉じられたため、処理を続行します。")
 
                     try:
-                        logging.info("認証プロファイルのバックアップを作成します...")
+                        logging.debug("認証プロファイルのバックアップを作成します...")
                         if os.path.exists(BACKUP_PROFILE_DIR):
                             shutil.rmtree(BACKUP_PROFILE_DIR)
                         ignore_patterns = shutil.ignore_patterns('Singleton*', '*.lock', '*Cache*')
                         shutil.copytree(PROFILE_DIR, BACKUP_PROFILE_DIR, ignore=ignore_patterns)
-                        logging.info(f"プロファイルのバックアップを {BACKUP_PROFILE_DIR} に作成しました。")
+                        logging.debug(f"プロファイルのバックアップを {BACKUP_PROFILE_DIR} に作成しました。")
                     except Exception as e:
                         logging.error(f"プロファイルのバックアップ作成中にエラーが発生しました: {e}")
                     
-                    logging.info("認証状態の保存タスク成功。Trueを返します。")
+                    logging.debug("認証状態の保存タスク成功。Trueを返します。")
                     return True
         except Exception as e:
             logging.error(f"認証状態の保存中にエラーが発生しました: {e}")
