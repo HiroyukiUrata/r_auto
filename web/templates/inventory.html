@@ -13,6 +13,9 @@
             <button type="button" class="btn btn-sm btn-outline-secondary" id="select-all-toggle-btn" onclick="toggleSelectAll()">
                 <i class="bi bi-check-square me-1"></i>すべて選択
             </button>
+            <button type="button" class="btn btn-sm btn-outline-info" id="shuffle-btn">
+                <i class="bi bi-shuffle me-1"></i>シャッフル
+            </button>
             <button type="button" class="btn btn-sm btn-outline-danger" id="bulk-delete-btn" onclick="bulkDelete()" disabled>
                 <i class="bi bi-trash-fill me-1"></i>選択した項目を削除
             </button>
@@ -577,6 +580,27 @@
             if (!event.target.closest('.move-buttons')) {
                 removeMoveButtons();
             }
+        });
+
+        // シャッフルボタンのイベントリスナー
+        document.getElementById('shuffle-btn').addEventListener('click', () => {
+            const tableBody = document.getElementById('inventory-table-body');
+            const rows = Array.from(tableBody.children);
+
+            // 1行以下の場合は何もしない
+            if (rows.length <= 1) return;
+
+            // Fisher-Yatesアルゴリズムで配列をシャッフル
+            for (let i = rows.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [rows[i], rows[j]] = [rows[j], rows[i]];
+            }
+
+            // シャッフルされた行をテーブルに再追加してDOMを更新
+            rows.forEach(row => tableBody.appendChild(row));
+
+            // 既存の順序保存関数を呼び出して変更をDBに保存
+            saveOrder();
         });
 
     });
