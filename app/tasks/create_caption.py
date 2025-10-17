@@ -42,12 +42,12 @@ def extract_json_from_text(text):
     """テキストの中から ```json ... ``` または [...] のブロックを抽出する"""
     match = re.search(r"```json\s*([\s\S]*?)\s*```", text)
     if match:
-        logging.info("```json ... ``` ブロックを抽出しました。")
+        logging.debug("```json ... ``` ブロックを抽出しました。")
         return match.group(1)
     
     match = re.search(r"\[[\s\S]*\]", text)
     if match:
-        logging.info("[...] ブロックを抽出しました。")
+        logging.debug("[...] ブロックを抽出しました。")
         return match.group(0)
     
     logging.warning("テキストからJSONブロックを特定できませんでした。元のテキストをそのまま使用します。")
@@ -79,7 +79,7 @@ class CreateCaptionTask(BaseTask):
         logging.info(f"投稿文作成対象の全商品: {total_products_count}件")
 
         max_batches = math.ceil(total_products_count / MAX_PRODUCTS_PER_BATCH)
-        logging.info(f"最大バッチ処理回数: {max_batches}回")
+        logging.debug(f"最大バッチ処理回数: {max_batches}回")
 
         for batch_num in range(1, max_batches + 1):
             products = get_products_for_caption_creation(limit=MAX_PRODUCTS_PER_BATCH)

@@ -8,9 +8,6 @@ from playwright.sync_api import expect, Locator, Error
 # BaseTaskのインポート
 from app.core.base_task import BaseTask
 
-# ロギング設定を簡略化（必要に応じて調整してください）
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-
 class FollowTask(BaseTask):
     """
     楽天ROOMのユーザーを検索し、「フォロー」アクションを実行する。（導線修正・安定版）
@@ -79,7 +76,7 @@ class FollowTask(BaseTask):
                 #logging.info(f"高さが変わらなかったため、このロードは完了したと判断します。")
                 # 3回連続で変わらない場合、終端の可能性が高いと判断
                 if scroll_count >= 3: 
-                    logging.info("3回以上の連続スクロールで高さが変わらなかったため、リスト終端と判断します。")
+                    logging.debug("3回以上の連続スクロールで高さが変わらなかったため、リスト終端と判断します。")
                     return True
                 # 連続で高さが変わらないがまだロード途中かもしれないので、今回はロード済みとしてループを抜ける
                 break 
@@ -298,7 +295,7 @@ class FollowTask(BaseTask):
                 followed_count += 1
                 # log_message = f"ユーザー「{user_name_to_follow}」のフォローに成功し、状態遷移を確認しました。(実行: {followed_count}/{len(self.target_users)}件)"
                 log_message = f"{user_name_to_follow}をフォローしました。({followed_count}/{len(self.target_users)})"
-                logging.info(log_message)
+                logging.debug(log_message)
             
             #time.sleep(random.uniform(2, 3)) # フォロー間隔
 

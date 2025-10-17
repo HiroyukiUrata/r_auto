@@ -19,13 +19,16 @@ class GetPostUrlTask(BaseTask):
             logging.info("投稿URL取得対象の商品はありません。")
             return
 
-        logging.info(f"{len(products)}件の商品を対象に投稿URL取得処理を開始します。")
+        total_count = len(products)
+        logging.info(f"{total_count}件の商品を対象に投稿URL取得処理を開始します。")
 
+        success_count = 0
+        error_count = 0
         for product in products:
             # BaseTaskが起動したブラウザコンテキスト内で、商品ごとに新しいページを作成
             page = self.context.new_page()
             try:
-                logging.info(f"商品ID: {product['id']} の処理を開始... URL: {product['url']}")
+                logging.debug(f"商品ID: {product['id']} の処理を開始... URL: {product['url']}")
                 page.goto(product['url'], wait_until='domcontentloaded', timeout=30000)
 
                 # "ROOMに投稿" のリンクを探す
@@ -34,22 +37,25 @@ class GetPostUrlTask(BaseTask):
                 post_url = post_link_locator.get_attribute('href')
 
                 if post_url:
-                    logging.info(f"  -> 投稿URL取得成功: {post_url}")
+                    logging.debug(f"  -> 投稿URL取得成功: {post_url}")
                     update_post_url(product['id'], post_url)
+                    success_count += 1
                 else:
                     logging.warning(f"  -> 商品ID: {product['id']} の投稿URLが見つかりませんでした。ステータスを「エラー」に更新します。")
                     update_product_status(product['id'], 'エラー')
+                    error_count += 1
 
             except Exception as e:
                 logging.error(f"  -> 商品ID: {product['id']} の処理中に予期せぬ例外が発生しました。")
                 logging.error(traceback.format_exc())
                 update_product_status(product['id'], 'エラー')
+                error_count += 1
             finally:
                 # 1商品ごとの処理が終わったら、必ずページを閉じる
                 if page and not page.is_closed():
                     page.close()
         
-        logging.info("投稿URL取得処理が完了しました。")
+        logging.info(f"投稿URL取得処理が完了しました。成功: {success_count}件, 失敗: {error_count}件 (対象: {total_count}件)")
 
 def run_get_post_url():
     """ラッパー関数"""

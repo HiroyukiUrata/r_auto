@@ -55,7 +55,7 @@ def load_schedules_from_file():
                     times = schedule_data.get("times", [])
 
                 if not task_enabled:
-                    logging.info(f"タスク '{tag}' は無効化されているため、すべてのスケジュールをスキップします。")
+                    logging.debug(f"タスク '{tag}' は無効化されているため、すべてのスケジュールをスキップします。")
                     continue
 
                 # timesは {"time": "HH:MM", "count": N} のリスト
@@ -81,7 +81,7 @@ def load_schedules_from_file():
                     else:
                         logging.warning(f"タスク '{tag}' には実行可能な関数またはフローが定義されていません。")
 
-        logging.info(f"{SCHEDULE_FILE} からスケジュールを読み込みました。")
+        logging.debug(f"{SCHEDULE_FILE} からスケジュールを読み込みました。")
         return True
     except (IOError, json.JSONDecodeError) as e:
         logging.error(f"{SCHEDULE_FILE} の読み込みに失敗しました: {e}")
@@ -89,10 +89,11 @@ def load_schedules_from_file():
 
 def reload_schedules():
     """現在のスケジュールをすべてクリアし、ファイルから再読み込みする"""
-    logging.info("スケジュールの再読み込みを要求されました。")
+    logging.debug("スケジュールの再読み込みを要求されました。")
     schedule.clear()
     load_schedules_from_file()
-    logging.info(f"スケジュールが再読み込みされました: {schedule.get_jobs()}")
+    logging.info(f"スケジュールが再読み込みされました。")
+    #logging.info(f"スケジュールが再読み込みされました: {schedule.get_jobs()}")
 
 def save_and_reload_schedules(schedules_to_save):
     """スケジュールをファイルに保存し、スケジューラをリロードする"""
@@ -108,7 +109,9 @@ def start_scheduler():
     if not load_schedules_from_file():
         logging.info("デフォルトのスケジュールは設定されていません。UIから設定してください。")
 
-    logging.info(f"スケジュールが設定されました: {schedule.get_jobs()}")
+    #logging.info(f"スケジュールが設定されました: {schedule.get_jobs()}")
+
+    logging.info(f"スケジュールが設定されました。")
 
     while True:
         schedule.run_pending()

@@ -244,7 +244,7 @@ def update_product_priority(product_id: int, priority: int):
     conn.execute("UPDATE products SET priority = ? WHERE id = ?", (priority, product_id))
     conn.commit()
     conn.close()
-    logging.info(f"商品ID: {product_id} の優先度を {priority} に更新しました。")
+    logging.debug(f"商品ID: {product_id} の優先度を {priority} に更新しました。")
 
 def get_all_keywords() -> list[dict]:
     """
@@ -279,7 +279,7 @@ def update_post_url(product_id, post_url):
         now_jst_iso = datetime.now(jst).isoformat()
         conn.execute("UPDATE products SET post_url = ?, post_url_updated_at = ?, status = 'URL取得済' WHERE id = ?", (post_url, now_jst_iso, product_id))
         conn.commit()
-        logging.info(f"商品ID: {product_id} の投稿URLを更新し、ステータスを「URL取得済」に変更しました。")
+        logging.d(f"商品ID: {product_id} の投稿URLを更新し、ステータスを「URL取得済」に変更しました。")
     finally:
         conn.close()
 
@@ -292,7 +292,7 @@ def update_ai_caption(product_id, caption):
         now_jst_iso = datetime.now(jst).isoformat()
         conn.execute("UPDATE products SET ai_caption = ?, ai_caption_created_at = ?, status = '投稿準備完了' WHERE id = ?", (caption, now_jst_iso, product_id))
         conn.commit()
-        logging.info(f"商品ID: {product_id} のAI投稿文を更新し、ステータスを「投稿準備完了」に変更しました。")
+        logging.debug(f"商品ID: {product_id} のAI投稿文を更新し、ステータスを「投稿準備完了」に変更しました。")
     finally:
         conn.close()
 
@@ -415,6 +415,6 @@ def update_product_order(product_ids: list[int]):
         for i, product_id in enumerate(product_ids):
             cursor.execute("UPDATE products SET priority = ? WHERE id = ?", (max_priority - i, product_id))
         conn.commit()
-        logging.info(f"{len(product_ids)}件の商品の順序を更新しました。")
+        logging.debug(f"{len(product_ids)}件の商品の順序を更新しました。")
     finally:
         conn.close()

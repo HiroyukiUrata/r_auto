@@ -2,7 +2,6 @@ import logging
 import os
 from app.core.base_task import BaseTask
 from app.core.database import get_all_ready_to_post_products, update_product_status, get_product_by_id
-from app import locators
 
 TRACE_DIR = "db/error_trace"
 
@@ -55,10 +54,10 @@ class PostingTask(BaseTask):
                 #logging.info(f"投稿ページにアクセスします: {post_url}")
                 page.goto(post_url, wait_until="networkidle", timeout=60000)
 
-                textarea_locator = page.locator(locators.POST_TEXTAREA)
+                textarea_locator = page.locator("textarea[name='content']")
                 textarea_locator.fill(caption)
 
-                page.locator(locators.SUBMIT_BUTTON).first.click(timeout=10000)
+                page.locator('button.collect-btn:has-text("完了")').first.click(timeout=10000)
                 #logging.info("投稿ボタンをクリックしました。")
                 page.wait_for_timeout(15000) # 投稿完了を待つ
                 

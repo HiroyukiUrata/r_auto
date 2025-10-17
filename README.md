@@ -26,6 +26,7 @@
 │   ├── core/         # アプリケーションの中核機能（DB, スケジューラ, タスク定義など）
 │   ├── tasks/        # 各自動化タスクのロジック
 │   ├── web/          # FastAPIのAPIエンドポイントとWebサーバー関連
+│   ├── locators/     # (削除済み) Playwrightのセレクタ管理
 │   ├── prompts/      # AI用のプロンプトファイル
 │   ├── Dockerfile
 │   └── main.py       # アプリケーションのエントリポイント

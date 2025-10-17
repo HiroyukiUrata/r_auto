@@ -44,13 +44,13 @@ class RakutenSearchProcureTask(BaseTask):
             keyword_b = random.choice(keywords_b)
             combined_keyword = f"{keyword_a} {keyword_b}"
             search_keywords.append(combined_keyword)
-            logging.info(f"キーワードA「{keyword_a}」とキーワードB「{keyword_b}」を組み合わせて検索します: 「{combined_keyword}」")
+            logging.debug(f"キーワードA「{keyword_a}」とキーワードB「{keyword_b}」を組み合わせて検索します: 「{combined_keyword}」")
         else:
             search_keywords = keywords_a
             random.shuffle(search_keywords)
-            logging.info("キーワードAのみで検索します。")
+            logging.debug("キーワードAのみで検索します。")
         
-        logging.info(f"商品調達の目標件数: {self.target_count}件")
+        logging.debug(f"商品調達の目標件数: {self.target_count}件")
 
         items = []
         # BaseTaskが管理するページオブジェクトを使用
@@ -58,7 +58,7 @@ class RakutenSearchProcureTask(BaseTask):
         try:
             for keyword in search_keywords:
                 if len(items) >= self.target_count:
-                    logging.info(f"目標件数 ({self.target_count}件) に達したため、キーワード検索を終了します。")
+                    logging.debug(f"目標件数 ({self.target_count}件) に達したため、キーワード検索を終了します。")
                     break
 
                 page_num = 1
@@ -70,15 +70,15 @@ class RakutenSearchProcureTask(BaseTask):
                         break
 
                     search_url = f"https://search.rakuten.co.jp/search/mall/{keyword}/?p={page_num}"
-                    logging.info(f"検索ページにアクセスします (Page {page_num}): {search_url}")
+                    logging.debug(f"検索ページにアクセスします (Page {page_num}): {search_url}")
                     page.goto(search_url, wait_until="domcontentloaded", timeout=60000)
 
                     product_cards = page.locator("div.searchresultitem")
                     num_found_on_page = product_cards.count()
-                    logging.info(f"ページ {page_num} から {num_found_on_page} 件の商品が見つかりました。")
+                    logging.debug(f"ページ {page_num} から {num_found_on_page} 件の商品が見つかりました。")
 
                     if num_found_on_page == 0:
-                        logging.info(f"このキーワード「{keyword}」ではこれ以上商品が見つかりませんでした。次のキーワードに進みます。")
+                        logging.debug(f"このキーワード「{keyword}」ではこれ以上商品が見つかりませんでした。次のキーワードに進みます。")
                         break
 
                     for i, card in enumerate(product_cards.all()):
@@ -91,12 +91,12 @@ class RakutenSearchProcureTask(BaseTask):
                         if url_element.count() and image_element.count():
                             page_url = url_element.get_attribute('href')
                             if product_exists_by_url(page_url):
-                                logging.info(f"  スキップ(DB重複): この商品は既にDBに存在します。 URL: {page_url[:50]}...")
+                                logging.debug(f"  スキップ(DB重複): この商品は既にDBに存在します。 URL: {page_url[:50]}...")
                                 continue
 
                             item_data = {"item_description": image_element.get_attribute('alt'), "page_url": page_url, "image_url": image_element.get_attribute('src'), "procurement_keyword": keyword}
                             items.append(item_data)
-                            logging.info(f"  [{len(items)}/{self.target_count}] 商品情報を収集: {item_data['item_description'][:30]}...")
+                            logging.debug(f"  [{len(items)}/{self.target_count}] 商品情報を収集: {item_data['item_description'][:30]}...")
                         else:
                             logging.warning(f"  商品カード {i+1} から必要な情報（商品名、URL、画像）を取得できませんでした。")
                     
@@ -105,7 +105,7 @@ class RakutenSearchProcureTask(BaseTask):
             logging.error(f"楽天市場のスクレイピング中にエラーが発生しました: {e}")
 
         if items:
-            logging.info(f"収集した {len(items)} 件の商品をデータベースに登録します。")
+            logging.debug(f"収集した {len(items)} 件の商品をデータベースに登録します。")
             added_count, skipped_count = process_and_import_products(items)
             logging.info(f"商品登録処理が完了しました。新規追加: {added_count}件, スキップ: {skipped_count}件")
         else:
