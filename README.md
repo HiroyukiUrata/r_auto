@@ -1,4 +1,4 @@
-# R-Auto Control Panel v.1.0.1
+# R-Auto Control Panel v.1.0.2
 
 某SNSの自動化タスクを管理・実行するためのWebアプリケーションです。
 
