@@ -5,19 +5,21 @@
 {% block content %}
 <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
     <h1 class="h2">ログ確認</h1>
-    <div class="btn-toolbar mb-2 mb-md-0">
-        <div class="form-check form-switch me-3">
-            <input class="form-check-input" type="checkbox" role="switch" id="auto-scroll-switch" checked>
-            <label class="form-check-label" for="auto-scroll-switch">自動スクロール</label>
-        </div>
-        <button type="button" class="btn btn-sm btn-outline-secondary" id="refresh-btn" title="手動で更新">
-            <i class="bi bi-arrow-clockwise"></i>
-        </button>
-    </div>
 </div>
 
 <div id="log-container" class="bg-dark text-light p-3 rounded" style="height: 70vh; overflow-y: auto; font-family: monospace; white-space: pre-wrap; word-wrap: break-word; font-size: 0.8rem;">
     <p>ログを読み込んでいます...</p>
+</div>
+
+<!-- フローティングコントロール -->
+<div id="floating-controls" class="p-2 bg-light border rounded-pill shadow-sm">
+    <div class="form-check form-switch d-inline-block me-2 align-middle">
+        <input class="form-check-input" type="checkbox" role="switch" id="auto-scroll-switch" checked>
+        <label class="form-check-label" for="auto-scroll-switch">自動スクロール</label>
+    </div>
+    <button type="button" class="btn btn-sm btn-outline-secondary rounded-circle" id="refresh-btn" title="手動で更新" style="width: 32px; height: 32px; line-height: 1;">
+        <i class="bi bi-arrow-clockwise"></i>
+    </button>
 </div>
 
 <!-- 画面右下に表示する「一番上に戻る」ボタン -->
@@ -37,6 +39,14 @@
         height: 50px;
         font-size: 1.5rem;
         z-index: 1050; /* トースト通知より手前に表示 */
+    }
+    #floating-controls {
+        position: fixed;
+        top: 80px; /* ヘッダーの高さに応じて調整 */
+        right: 20px;
+        z-index: 1050;
+        display: flex;
+        align-items: center;
     }
 </style>
 {% endblock %}
@@ -62,6 +72,13 @@
                 // 自動スクロールが有効な場合、一番下までスクロール
                 if (autoScrollSwitch.checked) {
                     logContainer.scrollTop = logContainer.scrollHeight;
+                }
+
+                // ★追加: ログ更新後にもボタンの表示状態をチェックする
+                if (logContainer.scrollTop > 200) {
+                    scrollToTopBtn.style.display = 'block';
+                } else {
+                    scrollToTopBtn.style.display = 'none';
                 }
             } catch (error) {
                 logContainer.textContent = `ログの取得に失敗しました: ${error.message}`;
