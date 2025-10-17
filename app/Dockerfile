@@ -20,10 +20,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Playwrightのブラウザをインストール
 RUN playwright install --with-deps
 
-# Copy and set permissions for the entrypoint script
-COPY app/entrypoint.sh /usr/local/bin/
+# エントリポイントスクリプトをコピーして実行権限を付与
+COPY ./app/entrypoint.sh /usr/local/bin/
+# Windowsの改行コード(CRLF)をLinux(LF)に変換し、実行権限を付与
+RUN sed -i 's/\r$//' /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 
 # デフォルトのコマンド。docker-compose.ymlのcommandで上書きされる。
-CMD ["python", "-m", "app.main"] 
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]

@@ -10,8 +10,8 @@
             <input class="form-check-input" type="checkbox" role="switch" id="auto-scroll-switch" checked>
             <label class="form-check-label" for="auto-scroll-switch">自動スクロール</label>
         </div>
-        <button type="button" class="btn btn-sm btn-outline-secondary" id="refresh-btn">
-            <i class="bi bi-arrow-clockwise me-1"></i>更新
+        <button type="button" class="btn btn-sm btn-outline-secondary" id="refresh-btn" title="手動で更新">
+            <i class="bi bi-arrow-clockwise"></i>
         </button>
     </div>
 </div>
@@ -19,6 +19,26 @@
 <div id="log-container" class="bg-dark text-light p-3 rounded" style="height: 70vh; overflow-y: auto; font-family: monospace; white-space: pre-wrap; word-wrap: break-word; font-size: 0.8rem;">
     <p>ログを読み込んでいます...</p>
 </div>
+
+<!-- 画面右下に表示する「一番上に戻る」ボタン -->
+<button type="button" class="btn btn-primary rounded-circle" id="scroll-to-top-btn" title="一番上に戻る">
+    <i class="bi bi-arrow-up"></i>
+</button>
+{% endblock %}
+
+{% block styles %}
+<style>
+    #scroll-to-top-btn {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        display: none; /* 最初は非表示 */
+        width: 50px;
+        height: 50px;
+        font-size: 1.5rem;
+        z-index: 1050; /* トースト通知より手前に表示 */
+    }
+</style>
 {% endblock %}
 
 {% block scripts %}
@@ -26,6 +46,7 @@
     document.addEventListener('DOMContentLoaded', function () {
         const logContainer = document.getElementById('log-container');
         const refreshBtn = document.getElementById('refresh-btn');
+        const scrollToTopBtn = document.getElementById('scroll-to-top-btn');
         const autoScrollSwitch = document.getElementById('auto-scroll-switch');
         let intervalId = null;
 
@@ -50,6 +71,21 @@
 
         // 更新ボタンのクリックイベント
         refreshBtn.addEventListener('click', fetchLogs);
+
+        // 一番上に戻るボタンのクリックイベント
+        scrollToTopBtn.addEventListener('click', function() {
+            logContainer.scrollTop = 0; // 一番上にスクロール
+            autoScrollSwitch.checked = false; // 自動スクロールをオフにする
+        });
+
+        // ログコンテナのスクロールイベント
+        logContainer.addEventListener('scroll', function() {
+            if (logContainer.scrollTop > 200) { // 200px以上スクロールしたら表示
+                scrollToTopBtn.style.display = 'block';
+            } else {
+                scrollToTopBtn.style.display = 'none';
+            }
+        });
 
         // 5秒ごとにログを自動更新
         function startAutoRefresh() {

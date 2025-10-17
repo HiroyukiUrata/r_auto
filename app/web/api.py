@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Request, HTTPException
-from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, FileResponse
 from fastapi.templating import Jinja2Templates
 import schedule
 import re
@@ -7,6 +7,7 @@ import logging
 import os
 import json
 from pydantic import BaseModel
+from pathlib import Path
 
 # タスク定義を一元的にインポート
 from app.core.task_definitions import TASK_DEFINITIONS
@@ -15,7 +16,7 @@ from app.tasks.posting import run_posting
 from app.tasks.get_post_url import run_get_post_url
 from app.tasks.import_products import process_and_import_products
 from app.core.logging_config import LOG_FILE
-from app.core.config_manager import get_config, save_config
+from app.core.config_manager import get_config, save_config, SCREENSHOT_DIR
 from app.core.scheduler_utils import run_threaded, run_task_with_random_delay
 from datetime import date, timedelta
 
@@ -100,7 +101,49 @@ async def read_keywords_page(request: Request):
 @router.get("/error-management", response_class=HTMLResponse)
 async def read_error_management(request: Request):
     """エラー管理ページを表示する"""
-    return request.app.state.templates.TemplateResponse("error_management.html", {"request": request})
+    # ファイル名を解析するための正規表現パターン
+    # 例: error_いいね_20231027-103045.png
+    filename_pattern = re.compile(r'^(?P<prefix>[^_]+)_(?P<action_name>.+)_(?P<timestamp>\d{8}-\d{6})\.png$')
+    
+    files = []
+    file_details = {}
+    
+    screenshot_path = Path(SCREENSHOT_DIR)
+    if screenshot_path.exists():
+        try:
+            # ファイルを更新日時の降順（新しいものが上）でソート
+            sorted_paths = sorted(
+                screenshot_path.iterdir(),
+                key=lambda f: f.stat().st_mtime,
+                reverse=True
+            )
+        except FileNotFoundError:
+            sorted_paths = []
+
+        for f_path in sorted_paths:
+            if f_path.is_file() and f_path.suffix.lower() == '.png':
+                filename = f_path.name
+                files.append(filename)
+                
+                action_name = "不明なアクション"
+                error_timestamp_display = "不明な日時"
+
+                match = filename_pattern.match(filename)
+                if match:
+                    parsed_data = match.groupdict()
+                    action_name = parsed_data['action_name'].replace('_', ' ') # アンダースコアをスペースに
+                    raw_timestamp = parsed_data['timestamp']
+                    try:
+                        from datetime import datetime
+                        dt_obj = datetime.strptime(raw_timestamp, '%Y%m%d-%H%M%S')
+                        error_timestamp_display = dt_obj.strftime('%Y-%m-%d %H:%M:%S')
+                    except ValueError:
+                        error_timestamp_display = f"不正な日時 ({raw_timestamp})"
+                
+                file_details[filename] = {'action_name': action_name, 'error_timestamp': error_timestamp_display}
+
+    # 既存のエラー商品表示機能はそのままに、スクリーンショットの情報を追加で渡す
+    return request.app.state.templates.TemplateResponse("error_management.html", {"request": request, "files": files, "file_details": file_details})
 
 # --- API Routes ---
 @router.get("/api/schedules")
@@ -395,6 +438,33 @@ async def bulk_complete_inventory_items(request: BulkUpdateRequest):
     except Exception as e:
         logging.error(f"商品の一括ステータス更新中にエラーが発生しました: {e}")
         return JSONResponse(status_code=500, content={"status": "error", "message": "一括更新に失敗しました。"})
+
+@router.get("/api/screenshots/{filename}")
+async def get_screenshot_file(filename: str):
+    """スクリーンショット画像ファイルを返す"""
+    # ファイル名の安全性を確認（ディレクトリトラバーサル攻撃を防ぐ）
+    if ".." in filename or "/" in filename or "\\" in filename:
+        raise HTTPException(status_code=400, detail="不正なファイル名です。")
+    
+    file_path = Path(SCREENSHOT_DIR) / filename
+    if not file_path.is_file():
+        raise HTTPException(status_code=404, detail="ファイルが見つかりません。")
+    return FileResponse(path=file_path, media_type="image/png")
+
+@router.delete("/api/screenshots/{filename}")
+async def delete_screenshot_file(filename: str):
+    """指定されたスクリーンショットファイルを削除する"""
+    # ファイル名の安全性を確認（ディレクトリトラバーサル攻撃を防ぐ）
+    if ".." in filename or "/" in filename or "\\" in filename:
+        raise HTTPException(status_code=400, detail="不正なファイル名です。")
+    
+    file_path = Path(SCREENSHOT_DIR) / filename
+    if not file_path.is_file():
+        raise HTTPException(status_code=404, detail="ファイルが見つかりません。")
+    
+    os.remove(file_path)
+    logging.info(f"スクリーンショットを削除しました: {file_path}")
+    return JSONResponse(content={"status": "success", "message": "ファイルを削除しました。"})
 
 @router.post("/api/inventory/bulk-delete")
 async def bulk_delete_inventory_items(request: BulkUpdateRequest):
