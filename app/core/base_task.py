@@ -60,10 +60,14 @@ class BaseTask(ABC):
     def _teardown_browser(self):
         """ブラウザコンテキストを閉じる"""
         if self.context:
-            logging.debug("処理が完了しました。5秒後にブラウザを閉じます...")
-            time.sleep(5)
-            self.context.close()
-            logging.debug("ブラウザコンテキストを閉じました。")
+            logging.debug("ブラウザコンテキストを閉じています...")
+            try:
+                self.context.close()
+                # close()が完了し、プロファイルがディスクに書き込まれるのを少し待つ
+                time.sleep(2)
+                logging.debug("ブラウザコンテキストを正常に閉じました。")
+            except Exception as e:
+                logging.error(f"ブラウザコンテキストのクローズ中にエラーが発生しました: {e}")
 
     def run(self):
         """タスクの実行フローを管理する"""

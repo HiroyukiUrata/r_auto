@@ -283,7 +283,7 @@ class FollowTask(BaseTask):
                     # 状態遷移に失敗した場合（タイムアウトなど）
                     if attempt == max_retries - 1:
                         # 最終試行でも失敗した場合のみ、エラーログを出力し、次のユーザーへ
-                        logging.error(f"ユーザー「{user_name_to_follow}」のフォローは、{max_retries}回の試行後も失敗しました。このユーザーをスキップします。エラー詳細: {e.__class__.__name__}")
+                        logging.debug(f"ユーザー「{user_name_to_follow}」のフォローは、{max_retries}回の試行後も失敗しました。このユーザーをスキップします。エラー詳細: {e.__class__.__name__}")
                         break # 内側のループを抜けて、次のユーザーの処理へ
                     
                     # リトライが残っている場合は警告ログを出力して続行
