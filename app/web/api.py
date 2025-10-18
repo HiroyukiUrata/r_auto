@@ -136,7 +136,7 @@ async def read_error_management(request: Request):
                     try:
                         from datetime import datetime
                         dt_obj = datetime.strptime(raw_timestamp, '%Y%m%d-%H%M%S')
-                        error_timestamp_display = dt_obj.strftime('%Y-%m-%d %H:%M:%S')
+                        error_timestamp_display = dt_obj.strftime('%Y-%m-%d %H:%M')
                     except ValueError:
                         error_timestamp_display = f"不正な日時 ({raw_timestamp})"
                 

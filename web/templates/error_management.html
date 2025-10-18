@@ -7,19 +7,20 @@
     <h1 class="h2">🚨 エラー商品管理</h1>
     <div class="btn-toolbar mb-2 mb-md-0">
         <div class="btn-group me-2" id="bulk-action-group">
-            <button type="button" class="btn btn-sm btn-outline-primary" onclick="bulkUpdateStatus('投稿準備完了')" disabled>
-                <i class="bi bi-arrow-clockwise me-1"></i>選択を再投稿準備
+            <button type="button" class="btn btn-sm btn-outline-primary" onclick="bulkUpdateStatus('投稿準備完了')" disabled title="選択した商品を「投稿準備完了」ステータスに変更します">
+                <i class="bi bi-arrow-clockwise me-1"></i>☀️ 再投稿準備
             </button>
             <button type="button" class="btn btn-sm btn-outline-primary dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-expanded="false" disabled>
                 <span class="visually-hidden">Toggle Dropdown</span>
             </button>
             <ul class="dropdown-menu">
-                <li><a class="dropdown-item" href="#" onclick="event.preventDefault(); bulkUpdateStatus('投稿準備完了')">選択を「投稿準備完了」にする</a></li>
-                <li><a class="dropdown-item" href="#" onclick="event.preventDefault(); bulkUpdateStatus('対象外')">選択を「対象外」にする</a></li>
+                <li><a class="dropdown-item" href="#" onclick="event.preventDefault(); bulkUpdateStatus('投稿準備完了')">☀️ 「投稿準備完了」にする</a></li>
                 <li><hr class="dropdown-divider"></li>
-                <li><a class="dropdown-item" href="#" onclick="event.preventDefault(); bulkUpdateStatus('生情報取得')">選択を「生情報取得」に戻す</a></li>
-                <li><a class="dropdown-item" href="#" onclick="event.preventDefault(); bulkUpdateStatus('URL取得済')">選択を「URL取得済」に戻す</a></li>
-                <li><a class="dropdown-item" href="#" onclick="event.preventDefault(); bulkUpdateStatus('投稿済')">選択を「投稿済」にする</a></li>
+                <li><a class="dropdown-item" href="#" onclick="event.preventDefault(); bulkUpdateStatus('生情報取得')">☁️ 「生情報取得」に戻す</a></li>
+                <li><a class="dropdown-item" href="#" onclick="event.preventDefault(); bulkUpdateStatus('URL取得済')">⛅️ 「URL取得済」に戻す</a></li>
+                <li><hr class="dropdown-divider"></li>
+                <li><a class="dropdown-item" href="#" onclick="event.preventDefault(); bulkUpdateStatus('投稿済')">🚀 「投稿済」にする</a></li>
+                <li><a class="dropdown-item" href="#" onclick="event.preventDefault(); bulkUpdateStatus('対象外')">☔ 「対象外」にする</a></li>
             </ul>
             <button type="button" class="btn btn-sm btn-outline-secondary" id="select-all-toggle-btn" onclick="toggleSelectAll()">
                 <i class="bi bi-check-square me-1"></i>すべて選択
@@ -38,8 +39,9 @@
                 <th scope="col" style="width: 5%;"></th>
                 <th scope="col" style="width: 8%;">サムネイル</th>
                 <th scope="col" style="width: 5%;">ID</th>
-                <th scope="col" style="width: 57%;">商品情報</th>
-                <th scope="col" style="width: 15%;">ステータス</th>
+                <th scope="col" style="width: 38%;">商品情報</th>
+                <th scope="col" style="width: 20%;">各種タイムスタンプ</th>
+                <th scope="col" style="width: 10%;">ステータス</th>
             </tr>
         </thead>
         <tbody id="error-table-body">
@@ -91,21 +93,17 @@
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
-        <!-- 全データベース項目表示用アコーディオン -->
-        <div class="accordion" id="accordionFullData">
-            <div class="accordion-item">
-                <h2 class="accordion-header" id="headingOne">
-                <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapseOne" aria-expanded="true" aria-controls="collapseOne">
-                    全データベース項目
-                </button>
-                </h2>
-                <div id="collapseOne" class="accordion-collapse collapse show" aria-labelledby="headingOne" data-bs-parent="#accordionFullData">
-                <div class="accordion-body">
-                    <pre><code id="modal-full-data" style="font-size: 0.8rem;"></code></pre>
-                </div>
-                </div>
-            </div>
-        </div>
+        <h5 class="text-danger"><i class="bi bi-exclamation-triangle-fill me-2"></i>エラーメッセージ</h5>
+        <pre id="modal-error-message" class="bg-light p-3 rounded mb-3" style="white-space: pre-wrap; word-break: break-all; font-size: 0.9rem;"></pre>
+        
+        <h5 class="mt-4"><i class="bi bi-clock-history me-2"></i>タイムスタンプ</h5>
+        <ul class="list-group list-group-flush mb-3" id="modal-timestamps">
+            <!-- JSでここにタイムスタンプが挿入されます -->
+        </ul>
+
+        <h5 class="mt-4"><i class="bi bi-database me-2"></i>全データ</h5>
+        <pre><code id="modal-full-data" class="bg-light p-3 rounded" style="font-size: 0.8rem; display: block;"></code></pre>
+
       </div>
       <div class="modal-footer">
         <a href="#" id="modal-post-link" class="btn btn-primary" target="_blank" rel="noopener noreferrer" style="display: none;"><i class="bi bi-box-arrow-up-right me-1"></i>投稿ページを開く</a>
@@ -123,6 +121,15 @@
         overflow: hidden;
         text-overflow: ellipsis;
     }
+    .truncate-2-lines {
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        line-height: 1.4; /* 1行の高さを指定 */
+        height: 2.8em;    /* 2行分の高さを確保 (line-height * 2) */
+    }
     tbody tr {
         cursor: pointer;
     }
@@ -137,15 +144,86 @@
     }
     /* スマートフォンなどの小さい画面向けのスタイル */
     @media (max-width: 767.98px) {
-        /* 縦長画面ではヘッダーを非表示 */
-        @media (orientation: portrait) {
-            thead {
-                display: none;
-            }
-            /* 各列の幅を調整 */
-            td:nth-child(2) { width: 15%; } /* サムネイル */
-            td:nth-child(3) { width: 10%; } /* ID */
-            td:nth-child(4) { width: 75%; } /* 商品情報 */
+        thead {
+            display: none; /* ヘッダーを非表示 */
+        }
+        tr {
+            display: grid;
+            grid-template-columns: 50px 1fr; /* サムネイル | 情報 */
+            grid-template-areas:
+                "thumb info";
+            gap: 0.5rem;
+            border: 1px solid #dee2e6;
+            border-top: none; /* 上の境界線を消す */
+            border-radius: .25rem;
+            margin-bottom: 0; /* 下のマージンをなくす */
+            padding: 0.75rem;
+            position: relative;
+        }
+        td {
+            display: block;
+            text-align: left !important; /* 全てのセルを左寄せに */
+            width: 100% !important; /* 幅を100%に */
+            border: none;
+            padding: 0;
+        }
+        /* 各セルにラベルを追加 */
+        td:before {
+            content: attr(data-label);
+            font-weight: bold;
+            display: block;
+            color: #6c757d;
+        }
+        /* grid-areaで配置 */
+        td[data-label="サムネイル"] { grid-area: thumb; }
+        td[data-label="商品情報"] {
+            grid-area: info; 
+            display: flex; /* Flexboxに変更 */
+            justify-content: space-between; /* 両端揃え */
+            align-items: center; /* 中央揃え */
+            gap: 0.5rem; /* 要素間の隙間 */
+            min-width: 0; /* flexアイテムの縮小を許可 */
+        }
+
+        /* スマホでは非表示にする列 */
+        td[data-label="各種タイムスタンプ"],
+        td[data-label="ステータス"] {
+            display: none;
+        }
+        td[data-label="ID"] {
+            position: absolute;
+            top: 0.25rem;
+            left: 0.25rem;
+            background-color: transparent;
+            color: #000;
+            padding: 0.1rem 0.4rem;
+            border-radius: .25rem;
+            font-size: 0.7rem;
+            line-height: 1.2;
+            z-index: 10;
+        }
+
+        /* ラベルが不要なセル */
+        td[data-label="サムネイル"]:before,
+        td[data-label="商品情報"]:before,
+        td[data-label="ID"]:before {
+            content: "";
+            display: none;
+        }
+        /* 最初の行だけ上の境界線を表示 */
+        tr:first-child {
+            border-top: 1px solid #dee2e6;
+        }
+
+        /* PC表示を非表示に */
+        .desktop-only {
+            display: none;
+        }
+    }
+    /* PC幅ではモバイル表示を非表示に */
+    @media (min-width: 767.99px) {
+        .mobile-only {
+            display: none;
         }
     }
     /* チェックボックス列を常に非表示にする */
@@ -188,7 +266,41 @@
         // data-product属性からJSON文字列を取得し、パースする
         const product = JSON.parse(element.dataset.product);
 
-        // 全データを整形してアコーディオン内に表示
+        // エラーメッセージを専用エリアに表示
+        const errorMessageElem = document.getElementById('modal-error-message');
+        errorMessageElem.textContent = product.error_message || 'エラーメッセージはありません。';
+
+        // タイムスタンプ表示エリアをクリアし、再描画
+        const timestampsList = document.getElementById('modal-timestamps');
+        timestampsList.innerHTML = '';
+
+        const formatModalTimestamp = (ts) => {
+            if (!ts) return '<span class="text-muted">---</span>';
+            return new Date(ts).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' });
+        };
+
+        const urlDataIcon = product.post_url ? `✔️` : `❌`;
+        const captionDataIcon = product.ai_caption ? `✔️` : `❌`;
+
+        const timestampItems = {
+            '作成日時': product.created_at,
+            '投稿URL取得日時': { ts: product.post_url_updated_at, icon: urlDataIcon },
+            'AI文章作成日時': { ts: product.ai_caption_created_at, icon: captionDataIcon },
+            '投稿完了日時': product.posted_at
+        };
+
+        for (const [label, value] of Object.entries(timestampItems)) {
+            const listItem = document.createElement('li');
+            listItem.className = 'list-group-item d-flex justify-content-between align-items-center';
+            if (typeof value === 'object' && value !== null && 'ts' in value) {
+                listItem.innerHTML = `${label}<span class="badge bg-light text-dark">${formatModalTimestamp(value.ts)} <span class="ms-1">${value.icon}</span></span>`;
+            } else {
+                listItem.innerHTML = `${label}<span class="badge bg-light text-dark">${formatModalTimestamp(value)}</span>`;
+            }
+            timestampsList.appendChild(listItem);
+        }
+
+        // 全データを整形して表示（エラーメッセージが長い場合があるので、JSONからは除外しても良い）
         document.getElementById('modal-full-data').textContent = JSON.stringify(product, null, 2);
 
         const postLink = document.getElementById('modal-post-link');
@@ -284,30 +396,96 @@
                 }
                 data.forEach(product => {
                     // HTML属性に埋め込むためにJSON文字列をエスケープする
+                    const formatTimestamp = (ts) => {
+                        if (!ts) return '<span class="text-muted">---</span>';
+                        return new Date(ts).toLocaleString('sv-SE', {
+                            year: 'numeric', month: '2-digit', day: '2-digit',
+                            hour: '2-digit', minute: '2-digit'
+                        }).replace(' ', '&nbsp;');
+                    };
+
+                    const getStatusIcon = (product) => {
+                        const hasCreationTs = !!product.created_at;
+                        const hasUrlTs = !!product.post_url_updated_at;
+                        const hasCaptionTs = !!product.ai_caption_created_at;
+                        const hasUrlData = !!product.post_url;
+                        const hasCaptionData = !!product.ai_caption;
+
+                        // データとタイムスタンプの不整合チェック
+                        if (hasUrlTs !== hasUrlData) {
+                            return `<span class="fs-5" title="データ不整合: 投稿URLの有無と日時の状態が一致しません">☔</span>`;
+                        }
+                        if (hasCaptionTs !== hasCaptionData) {
+                            return `<span class="fs-5" title="データ不整合: AI文章の有無と日時の状態が一致しません">☔</span>`;
+                        }
+                        // タイムスタンプの順序が不正なケース
+                        if (hasCaptionTs && !hasUrlTs) {
+                            return '<span class="fs-5" title="タイムスタンプ順序不正: URL取得より先にAI文章が作成されています">☔</span>';
+                        }
+
+                        // 正常系の進捗を判定
+                        if (hasCreationTs && hasUrlTs && hasCaptionTs) {
+                            return '<span class="fs-5" title="全工程のタイムスタンプがあります">☀️</span>'; // 晴れ
+                        } else if (hasCreationTs && hasUrlTs) {
+                            return '<span class="fs-5" title="URL取得まで完了しています">⛅️</span>'; // 曇り晴れ
+                        } else if (hasCreationTs) {
+                            return '<span class="fs-5" title="作成のみ完了しています">☁️</span>'; // 曇り
+                        }
+                        return '<span class="fs-5" title="タイムスタンプが不足しています">☔</span>'; // 雨
+                    };
+
                     const escapedProductJson = JSON.stringify(product).replace(/'/g, '&apos;').replace(/"/g, '&quot;');
+                    const urlDataIcon = product.post_url ? `<span title="post_urlデータ有り">✔️</span>` : `<span title="post_urlデータ無し">❌</span>`;
+                    const captionDataIcon = product.ai_caption ? `<span title="ai_captionデータ有り">✔️</span>` : `<span title="ai_captionデータ無し">❌</span>`;
+                    
+                    const productName = product.name || '';
+                    const fullErrorMessage = product.error_message || '';
+                    // エラーメッセージを改行なしの50文字に丸める
+                    const shortProductName = productName.length > 15 ? productName.substring(0, 15) + '...' : productName;
+                    const processedErrorMessage = fullErrorMessage.replace(/\n/g, ' ');
+                    const truncatedErrorMessage = processedErrorMessage.length > 50 ? processedErrorMessage.substring(0, 50) + '...' : processedErrorMessage;
+
                     const row = `
                         <tr id="product-row-${product.id}">
-                            <td class="text-center">
+                            <td class="text-center" data-label="選択">
                                 <input class="form-check-input product-checkbox" type="checkbox" value="${product.id}">
                             </td>
-                            <td>
+                            <td data-label="サムネイル" class="align-top">
                                 <a href="${product.url}" target="_blank" rel="noopener noreferrer">
                                     <img src="${product.image_url || 'https://via.placeholder.com/80'}" alt="${product.name}" class="img-thumbnail" style="width: 100%; height: auto; aspect-ratio: 1 / 1; object-fit: cover;">
                                 </a>
                             </td>
-                            <td class="text-center">
+                            <td data-label="ID">
                                 ${product.id}
                             </td>
-                            <td class="text-start">
-                                <div class="fw-bold truncate-cell" title="${product.name || ''}">${product.name || ''}</div>
-                                <div class="text-danger small truncate-cell" title="${product.error_message || ''}">${product.error_message || ''}</div>
+                            <td class="text-start" data-label="商品情報" style="min-width: 0;">
+                                <div style="min-width: 0;"> <!-- テキスト部分のコンテナ -->
+                                    <div class="desktop-only"> <!-- PC用テキスト -->
+                                        <div class="fw-bold truncate-cell" title="${productName}">${productName}</div>
+                                        <div class="text-danger small truncate-cell" title="${truncatedErrorMessage}">${truncatedErrorMessage}</div>
+                                    </div>
+                                    <div class="mobile-only"> <!-- スマホ用テキスト -->
+                                        <div class="fw-bold truncate-cell" title="${productName}">${shortProductName}</div>
+                                        <div class="text-danger small truncate-cell" title="${truncatedErrorMessage}">${truncatedErrorMessage}</div>
+                                    </div>
+                                </div>
+                                <div class="mobile-only text-nowrap"> <!-- スマホでのみ表示されるアイコンエリア -->
+                                    <button type="button" class="btn btn-link p-0" onclick="showInfoModal(this)" data-product='${escapedProductJson}' title="詳細情報を表示"><i class="bi bi-info-circle fs-5"></i></button>
+                                    ${getStatusIcon(product)}
+                                </div>
                             </td>
-                            <td class="text-center">
+                            <td class="small text-muted" style="font-size: 0.75rem; line-height: 1.4;" data-label="各種タイムスタンプ">
+                                <div><span class="badge bg-light text-dark me-1" style="width: 3.5rem;">作成</span> ${formatTimestamp(product.created_at)}</div>
+                                <div><span class="badge bg-light text-dark me-1" style="width: 3.5rem;">URL取得</span> ${formatTimestamp(product.post_url_updated_at)} ${urlDataIcon}</div>
+                                <div><span class="badge bg-light text-dark me-1" style="width: 3.5rem;">AI文章</span> ${formatTimestamp(product.ai_caption_created_at)} ${captionDataIcon}</div>
+                            </td>
+                            <td class="text-center" data-label="ステータス">
                                 <button type="button" class="btn btn-link p-0" 
                                     onclick="showInfoModal(this)" data-product='${escapedProductJson}'
-                                    title="エラー詳細を表示">
-                                    <span class="fs-5">🚨</span>
+                                    title="詳細情報を表示">
+                                    <i class="bi bi-info-circle fs-5"></i>
                                 </button>
+                                ${getStatusIcon(product)}
                             </td>
                         </tr>
                     `;
