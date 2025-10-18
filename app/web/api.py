@@ -649,6 +649,7 @@ def _run_task_internal(tag: str, is_part_of_flow: bool, **kwargs):
         logging.debug(f"--- 新フロー実行: 「{definition['name_ja']}」を開始します。 ---")
 
         def run_flow():
+            import inspect
             # flow_definitionが文字列かリストか判定
             if isinstance(flow_definition, str):
                 tasks_in_flow = [(task.strip(), {}) for task in flow_definition.split('|')]
@@ -666,9 +667,17 @@ def _run_task_internal(tag: str, is_part_of_flow: bool, **kwargs):
                     for key, value in sub_task_args.items():
                         if value == "flow_count":
                             final_kwargs[key] = flow_kwargs.get('count')
+                    # フロー全体に渡された引数で、個別のタスクの引数を上書きする
+                    final_kwargs.update(flow_kwargs)
                     
                     try:
-                        task_result = sub_task_func(**final_kwargs)
+                        # タスク関数が実際に受け取れる引数のみを渡す
+                        sig = inspect.signature(sub_task_func)
+                        valid_args = {
+                            k: v for k, v in final_kwargs.items() 
+                            if k in sig.parameters
+                        }
+                        task_result = sub_task_func(**valid_args)
                         if task_result is False: # 明示的にFalseの場合のみ失敗とみなす
                             logging.error(f"フロー内のタスク「{sub_task_def['name_ja']}」が失敗しました。フローを中断します。")
                             break
