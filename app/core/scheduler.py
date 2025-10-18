@@ -28,7 +28,7 @@ def _save_schedules_to_file(schedules_to_save):
     try:
         with open(SCHEDULE_FILE, "w") as f:
             json.dump(schedules_to_save, f, indent=4, sort_keys=True)
-        logging.info(f"スケジュールを {SCHEDULE_FILE} に保存しました。")
+        logging.debug(f"スケジュールを {SCHEDULE_FILE} に保存しました。")
     except IOError as e:
         logging.error(f"スケジュールファイルの保存に失敗しました: {e}")
 

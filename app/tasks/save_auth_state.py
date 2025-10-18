@@ -24,6 +24,9 @@ class SaveAuthStateTask:
         if os.path.exists(lockfile_path):
             logging.warning(f"古いロックファイル {lockfile_path} が見つかったため、削除します。")
             os.remove(lockfile_path)
+        
+        # プロファイルディレクトリが存在しない場合は作成する
+        os.makedirs(PROFILE_DIR, exist_ok=True)
 
         try:
             with sync_playwright() as p:

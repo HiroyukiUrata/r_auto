@@ -700,8 +700,8 @@ def _run_task_internal(tag: str, is_part_of_flow: bool, **kwargs):
         return result
 
     # 結果を待って返すタイプのタスク
-    if tag in ["check-login-status", "save-auth-state", "test-check-login-status", "test-save-auth-state"]:
-        # save-auth-stateは手動操作のため、タイムアウトを長めに設定(5分+α)
+    if tag in ["check-login-status", "save-auth-state", "restore-auth-state"]:
+        # save-auth-stateは手動操作のため、タイムアウトを長めに設定
         timeout = 310 if "save-auth-state" in tag else 60
 
         # task_wrapperは後続タスクを呼び出す可能性があるため、直接タスク関数を呼び出す
@@ -713,10 +713,12 @@ def _run_task_internal(tag: str, is_part_of_flow: bool, **kwargs):
         
         result = result_container.get('result')
         logging.debug(f"スレッドから受け取った結果 (タスク: {tag}): {result} (型: {type(result)})")
-        if "check-login-status" in tag or "test-check-login-status" in tag:
+        if "check-login-status" in tag:
             message = "成功: ログイン状態が維持されています。" if result else "失敗: ログイン状態が確認できませんでした。"
         elif "save-auth-state" in tag:
             message = "成功: 認証状態を保存しました。" if result else "失敗: 認証状態の保存に失敗しました。詳細はログを確認してください。"
+        elif "restore-auth-state" in tag:
+            message = "成功: 認証プロファイルを復元しました。" if result else "失敗: 認証プロファイルの復元に失敗しました。詳細はログを確認してください。"
         else:
             message = "タスクが完了しました。" # フォールバックメッセージ
         

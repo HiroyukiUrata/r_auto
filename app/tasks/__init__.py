@@ -5,3 +5,4 @@ from app.tasks.like import run_like_action
 from app.tasks.posting import run_posting
 from app.tasks.save_auth_state import run_save_auth_state
 from app.tasks.backup_db import run_backup_database
+from app.tasks.restore_auth_state import run_restore_auth_state

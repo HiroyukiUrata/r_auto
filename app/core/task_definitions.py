@@ -7,6 +7,7 @@ from app.tasks import (
     run_like_action,
     run_save_auth_state,
     run_backup_database,
+    run_restore_auth_state,
 )
 from app.tasks.rakuten_search_procure import search_and_procure_from_rakuten
 from app.tasks.rakuten_api_procure import procure_from_rakuten_api
@@ -116,15 +117,22 @@ TASK_DEFINITIONS = {
         "name_ja": "認証状態の保存",
         "function": run_save_auth_state,
         "is_debug": True,
-        "description": "VNC経由で手動ログインし、認証情報（Cookieなど）をファイルに保存してログイン状態を維持します。",
+        "description": "VNC経由で手動ログインし、認証情報を永続化・バックアップします。他のブラウザタスクが実行中でないことを確認してください。",
         "order": 40,
+    },
+    "restore-auth-state": {
+        "name_ja": "認証プロファイルの復元",
+        "function": run_restore_auth_state,
+        "is_debug": True,
+        "description": "バックアップから認証プロファイルを復元します。ログインが切れた際に使用します。他のブラウザタスクが実行中でないことを確認してください。",
+        "order": 41,
     },
     "check-login-status": {
         "name_ja": "ログイン状態チェック",
         "function": run_check_login_status,
         "is_debug": True,
         "description": "保存された認証情報を使って、現在ログイン状態が維持されているかを確認します。",
-        "order": 30,
+        "order": 42,
     },
 
     "rakuten-api-procure": {

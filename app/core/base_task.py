@@ -31,7 +31,7 @@ class BaseTask(ABC):
         if self.use_auth_profile:
             logging.debug(f"認証プロファイル ({PROFILE_DIR}) を使用してブラウザを起動します。")
             if not os.path.exists(PROFILE_DIR):
-                raise FileNotFoundError(f"認証プロファイル {PROFILE_DIR} が見つかりません。")
+                raise FileNotFoundError(f"認証プロファイル {PROFILE_DIR} が見つかりません。「認証状態の保存」または「認証プロファイルの復元」タスクを実行してください。")
 
             lockfile_path = os.path.join(PROFILE_DIR, "SingletonLock")
             if os.path.exists(lockfile_path):
