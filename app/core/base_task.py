@@ -83,7 +83,9 @@ class BaseTask(ABC):
                 except FileNotFoundError as e:
                     logging.error(f"ファイルが見つかりません: {e}")
                 except Exception as e:
-                    logging.error(f"「{self.action_name}」アクション中に予期せぬエラーが発生しました: {e}", exc_info=True)
+                    # 本番環境(simple)ではトレースバックを抑制し、開発環境(detailed)では表示する
+                    is_detailed_log = os.getenv('LOG_FORMAT', 'detailed').lower() == 'detailed'
+                    logging.error(f"「{self.action_name}」アクション中に予期せぬエラーが発生しました: {e}", exc_info=is_detailed_log)
                     self._take_screenshot_on_error()
                     success = False # 例外発生時は明確に False とする
                 finally:
@@ -93,7 +95,9 @@ class BaseTask(ABC):
             try:
                 success = self._execute_main_logic()
             except Exception as e:
-                logging.error(f"「{self.action_name}」アクション中にエラーが発生しました: {e}", exc_info=True)
+                # 本番環境(simple)ではトレースバックを抑制し、開発環境(detailed)では表示する
+                is_detailed_log = os.getenv('LOG_FORMAT', 'detailed').lower() == 'detailed'
+                logging.error(f"「{self.action_name}」アクション中にエラーが発生しました: {e}", exc_info=is_detailed_log)
                 success = False
 
         logging.debug(f"「{self.action_name}」アクションを終了します。")

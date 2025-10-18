@@ -160,7 +160,7 @@ class CreateCaptionTask(BaseTask):
 
             except Exception as e:
                 # 本番環境(simple)ではトレースバックを抑制し、開発環境(detailed)では表示する
-                is_detailed_log = os.getenv('LOG_FORMAT', 'detailed').lower() == 'detailed'
+                is_detailed_log = os.getenv('LOG_FORMAT', 'detailed').lower() == 'detailed' # この行は既に修正済みですが、念のため記載
                 logging.error(f"プロンプトの生成またはコピー中にエラーが発生しました: {e}", exc_info=is_detailed_log)
                 self._save_debug_info(full_prompt, "general_error")
                 for product in products: update_product_status(product['id'], 'エラー')
