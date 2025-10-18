@@ -103,15 +103,15 @@ def save_and_reload_schedules(schedules_to_save):
 
 def start_scheduler():
     """スケジューラを起動し、定義されたジョブを実行する"""
-    logging.info("スケジューラを起動します。")
+    logging.debug("スケジューラを起動します。")
 
     # ファイルからスケジュールを読み込む。失敗した場合はデフォルト設定を使用。
     if not load_schedules_from_file():
-        logging.info("デフォルトのスケジュールは設定されていません。UIから設定してください。")
+        logging.warning("デフォルトのスケジュールは設定されていません。UIから設定してください。")
 
     #logging.info(f"スケジュールが設定されました: {schedule.get_jobs()}")
 
-    logging.info(f"スケジュールが設定されました。")
+    logging.debug(f"スケジュールが設定されました。")
 
     while True:
         schedule.run_pending()

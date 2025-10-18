@@ -17,8 +17,8 @@ class SaveAuthStateTask:
 
     def run(self):
         logging.info(f"「{self.action_name}」タスクを開始します。")
-        logging.info("VNCクライアントで localhost:5900 に接続してください。")
-        logging.info("ログインが完了すると、このタスクは自動で終了します。")
+        logging.debug("VNCクライアントで localhost:5900 に接続してください。")
+        logging.debug("ログインが完了すると、このタスクは自動で終了します。")
 
         lockfile_path = os.path.join(PROFILE_DIR, "SingletonLock")
         if os.path.exists(lockfile_path):
@@ -37,11 +37,11 @@ class SaveAuthStateTask:
                     page = context.pages[0] if context.pages else context.new_page()
                     page.goto("https://room.rakuten.co.jp/items", wait_until="domcontentloaded", timeout=60000)
                     
-                    logging.info("ブラウザを起動しました。ログイン操作を行い、完了したらブラウザを閉じてください。")
-                    logging.info("ブラウザが閉じられるのを待機しています...")
+                    logging.debug("ブラウザを起動しました。ログイン操作を行い、完了したらブラウザを閉じてください。")
+                    logging.debug("ブラウザが閉じられるのを待機しています...")
                     # ユーザーがブラウザを閉じるまで無期限に待機する
                     context.wait_for_event("close", timeout=0)
-                    logging.info("ブラウザが閉じられたため、処理を続行します。")
+                    logging.debug("ブラウザが閉じられたため、処理を続行します。")
 
                     try:
                         logging.debug("認証プロファイルのバックアップを作成します...")
@@ -53,7 +53,7 @@ class SaveAuthStateTask:
                     except Exception as e:
                         logging.error(f"プロファイルのバックアップ作成中にエラーが発生しました: {e}")
                     
-                    logging.debug("認証状態の保存タスク成功。Trueを返します。")
+                    logging.info("認証状態の保存タスク成功。")
                     return True
         except Exception as e:
             logging.error(f"認証状態の保存中にエラーが発生しました: {e}")

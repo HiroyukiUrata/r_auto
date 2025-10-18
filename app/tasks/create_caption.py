@@ -115,7 +115,7 @@ class CreateCaptionTask(BaseTask):
                 page.evaluate("text => navigator.clipboard.writeText(text)", full_prompt)
                 prompt_input.press("Control+V")
                 prompt_input.press("Enter")
-                logging.info("プロンプトを送信しました。")
+                logging.debug("プロンプトを送信しました。")
                 
                 try:
                     page.get_by_label("生成を停止").wait_for(state="hidden", timeout=120000)
@@ -159,7 +159,9 @@ class CreateCaptionTask(BaseTask):
                     logging.info(f"バッチ {batch_num}: {updated_count}件の投稿文をデータベースに保存しました。")
 
             except Exception as e:
-                logging.error(f"プロンプトの生成またはコピー中にエラーが発生しました: {e}", exc_info=True)
+                # 本番環境(simple)ではトレースバックを抑制し、開発環境(detailed)では表示する
+                is_detailed_log = os.getenv('LOG_FORMAT', 'detailed').lower() == 'detailed'
+                logging.error(f"プロンプトの生成またはコピー中にエラーが発生しました: {e}", exc_info=is_detailed_log)
                 self._save_debug_info(full_prompt, "general_error")
                 for product in products: update_product_status(product['id'], 'エラー')
                 # BaseTaskのエラーハンドリングに任せるため、例外を再送出

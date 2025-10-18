@@ -16,7 +16,7 @@ class CheckLoginStatusTask(BaseTask): # Class name is already correct
         page.goto("https://room.rakuten.co.jp/items", wait_until="domcontentloaded")
 
         try:
-            logging.info("「my ROOM」リンクをクリックします。")
+            logging.debug("「my ROOM」リンクをクリックします。")
             my_room_link_locator = page.locator('a:has-text("my ROOM")')
             my_room_link_locator.wait_for(state='visible', timeout=10000)
             my_room_link_locator.click()
