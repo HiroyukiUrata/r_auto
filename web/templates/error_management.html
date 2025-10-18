@@ -53,26 +53,26 @@
 <hr class="my-4">
 
 <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-    <h1 class="h2">📸 Playwrightタスク エラー画面確認</h1>
+    <h1 class="h2">📸エラースクリーンショット </h1>
 </div>
 <p>Playwrightタスクの実行中にエラーが発生した際に自動で保存されたスクリーンショットです。新しいものが一番上に表示されます。</p>
 
 {% if files %}
     <div class="list-group">
     {% for file in files %}
-        <div class="list-group-item d-flex justify-content-between align-items-center" id="screenshot-{{ loop.index }}">
-            <a href="/api/screenshots/{{ file }}" class="text-decoration-none text-dark flex-grow-1" target="_blank">
-                <div>
-                    <i class="bi bi-image me-2"></i>
-                    <strong>{{ file_details[file].action_name }}</strong>
-                    <br>
-                    <small class="text-muted">エラー発生日時: {{ file_details[file].error_timestamp }}</small>
-                </div>
-            </a>
-            <div class="d-flex align-items-center">
-                <span class="badge bg-secondary rounded-pill me-3">{{ file }}</span>
-                <button class="btn btn-sm btn-outline-danger" onclick="deleteScreenshot(this, '{{ file }}')" title="このスクリーンショットを削除">
-                    <i class="bi bi-trash"></i>
+        <div class="list-group-item" id="screenshot-{{ loop.index }}">
+            <div class="d-flex justify-content-between align-items-center">
+                <a href="/api/screenshots/{{ file }}" class="text-decoration-none text-dark flex-grow-1" target="_blank">
+                    <div>
+                        <i class="bi bi-image me-2"></i>
+                        <strong>{{ file_details[file].action_name }}</strong>
+                        <span class="badge bg-secondary rounded-pill ms-2 d-none d-md-inline-block">{{ file }}</span>
+                        <br>
+                        <small class="text-muted">エラー発生日時: {{ file_details[file].error_timestamp }}</small>
+                    </div>
+                </a>
+                <button class="btn btn-sm btn-outline-danger ms-3" onclick="deleteScreenshot(this, '{{ file }}')" title="このスクリーンショットを削除">
+                    <i class="bi bi-trash"></i> <span class="d-none d-md-inline">削除</span>
                 </button>
             </div>
         </div>
