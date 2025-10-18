@@ -45,7 +45,8 @@ def setup_logging():
     if log_format_type == 'simple':
         # 本番環境向けのシンプルなフォーマット
         log_formatter = logging.Formatter(
-            '%(asctime)s - %(levelname)s - %(message)s'
+            '%(asctime)s [%(levelname).1s] %(message)s',
+            datefmt='%m-%d %H:%M:%S'
         )
     else: # 'detailed' またはその他の場合
         # 開発環境向けの詳細なフォーマット
@@ -71,4 +72,4 @@ def setup_logging():
     uvicorn_access_logger = logging.getLogger("uvicorn.access")
     uvicorn_access_logger.addFilter(EndpointFilter(path="/api/logs"))
 
-    logging.info(f"ロギング設定が完了しました。ログレベル: {log_level_str}, フォーマット: {log_format_type}")
+    logging.debug(f"ロギング設定が完了しました。ログレベル: {log_level_str}, フォーマット: {log_format_type}")

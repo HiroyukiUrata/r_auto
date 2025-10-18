@@ -1,5 +1,6 @@
 import logging
 import traceback
+import os
 from playwright.sync_api import TimeoutError
 from app.core.base_task import BaseTask
 from app.core.database import get_products_for_post_url_acquisition, update_post_url, update_product_status
@@ -46,8 +47,9 @@ class GetPostUrlTask(BaseTask):
                     error_count += 1
 
             except Exception as e:
-                logging.error(f"  -> 商品ID: {product['id']} の処理中に予期せぬ例外が発生しました。")
-                logging.error(traceback.format_exc())
+                # 本番環境(simple)ではトレースバックを抑制し、開発環境(detailed)では表示する
+                is_detailed_log = os.getenv('LOG_FORMAT', 'detailed').lower() == 'detailed'
+                logging.error(f"  -> 商品ID: {product['id']} の処理中に予期せぬ例外が発生しました: {e}", exc_info=is_detailed_log)
                 update_product_status(product['id'], 'エラー')
                 error_count += 1
             finally:

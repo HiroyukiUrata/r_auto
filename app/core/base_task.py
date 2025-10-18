@@ -26,10 +26,10 @@ class BaseTask(ABC):
     def _setup_browser(self):
         """ブラウザコンテキストをセットアップする"""
         headless_mode = is_headless()
-        logging.info(f"Playwright ヘッドレスモード: {headless_mode}")
+        logging.debug(f"Playwright ヘッドレスモード: {headless_mode}")
 
         if self.use_auth_profile:
-            logging.info(f"認証プロファイル ({PROFILE_DIR}) を使用してブラウザを起動します。")
+            logging.debug(f"認証プロファイル ({PROFILE_DIR}) を使用してブラウザを起動します。")
             if not os.path.exists(PROFILE_DIR):
                 raise FileNotFoundError(f"認証プロファイル {PROFILE_DIR} が見つかりません。")
 
@@ -46,7 +46,7 @@ class BaseTask(ABC):
                 args=["--disable-blink-features=AutomationControlled"] # 自動化検知を回避する引数を追加
             )
         else:
-            logging.info("新しいブラウザセッション（認証プロファイルなし）で起動します。")
+            logging.debug("新しいブラウザセッション（認証プロファイルなし）で起動します。")
             browser = self.playwright.chromium.launch(
                 headless=headless_mode,
                 slow_mo=500 if not headless_mode else 0,
@@ -60,18 +60,18 @@ class BaseTask(ABC):
     def _teardown_browser(self):
         """ブラウザコンテキストを閉じる"""
         if self.context:
-            logging.info("処理が完了しました。5秒後にブラウザを閉じます...")
+            logging.debug("処理が完了しました。5秒後にブラウザを閉じます...")
             time.sleep(5)
             self.context.close()
-            logging.info("ブラウザコンテキストを閉じました。")
+            logging.debug("ブラウザコンテキストを閉じました。")
 
     def run(self):
         """タスクの実行フローを管理する"""
         success = False
         if self.target_count is not None:
-            logging.info(f"「{self.action_name}」アクションを開始します。目標件数: {self.target_count}")
+            logging.debug(f"「{self.action_name}」アクションを開始します。目標件数: {self.target_count}")
         else:
-            logging.info(f"「{self.action_name}」アクションを開始します。")
+            logging.debug(f"「{self.action_name}」アクションを開始します。")
 
         if self.needs_browser:
             with sync_playwright() as p:
@@ -96,7 +96,7 @@ class BaseTask(ABC):
                 logging.error(f"「{self.action_name}」アクション中にエラーが発生しました: {e}", exc_info=True)
                 success = False
 
-        logging.info(f"「{self.action_name}」アクションを終了します。")
+        logging.debug(f"「{self.action_name}」アクションを終了します。")
         return success
 
     def _take_screenshot_on_error(self, prefix: str = "error"):
@@ -108,7 +108,8 @@ class BaseTask(ABC):
                 safe_action_name = "".join(c for c in self.action_name if c.isalnum() or c in (' ', '_')).rstrip()
                 screenshot_path = os.path.join(SCREENSHOT_DIR, f"{prefix}_{safe_action_name}_{timestamp}.png")
                 self.page.screenshot(path=screenshot_path)
-                logging.info(f"エラー発生時のスクリーンショットを {screenshot_path} に保存しました。")
+                logging.info(f"エラー発生時のスクリーンショットを保存しました。")
+                #logging.info(f"エラー発生時のスクリーンショットを {screenshot_path} に保存しました。")
             except Exception as ss_e:
                 logging.error(f"スクリーンショットの保存に失敗しました: {ss_e}")
 

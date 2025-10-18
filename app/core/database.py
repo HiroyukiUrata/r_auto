@@ -208,7 +208,10 @@ def update_product_status(product_id, status, error_message=None):
             # エラーから復帰させる場合などはエラーメッセージをクリアする
             conn.execute("UPDATE products SET status = ?, error_message = NULL WHERE id = ?", (status, product_id))
         conn.commit()
-        logging.info(f"商品ID: {product_id} のステータスを「{status}」に更新しました。")
+        if status == 'エラー':
+            logging.info(f"商品ID: {product_id} のステータスを「{status}」に更新しました。")
+        else:
+            logging.debug(f"商品ID: {product_id} のステータスを「{status}」に更新しました。")
     except sqlite3.Error as e:
         logging.error(f"商品ID: {product_id} のステータス更新中にエラーが発生しました: {e}")
     finally:

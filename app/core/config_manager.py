@@ -32,7 +32,7 @@ def save_config(config_data):
     try:
         with open(CONFIG_FILE, "w") as f:
             json.dump(config_data, f, indent=4)
-        logging.info(f"設定を {CONFIG_FILE} に保存しました。")
+        logging.debug(f"設定を {CONFIG_FILE} に保存しました。")
     except IOError as e:
         logging.error(f"設定ファイル {CONFIG_FILE} の保存に失敗しました: {e}")
 

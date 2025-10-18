@@ -23,7 +23,7 @@ class PostingTask(BaseTask):
             product = get_product_by_id(self.product_id)
             if product and product['status'] == '投稿準備完了':
                 products = [product]
-                logging.info(f"指定された商品ID: {self.product_id} を投稿します。")
+                logging.debug(f"指定された商品ID: {self.product_id} を投稿します。")
             else:
                 logging.error(f"指定された商品ID: {self.product_id} は存在しないか、投稿準備完了ではありません。")
                 return
@@ -37,7 +37,7 @@ class PostingTask(BaseTask):
         for product in products:
             page = None
             try:
-                logging.info(f"--- {posted_count + 1}/{len(products)} 件目の処理を開始 ---")
+                logging.debug(f"--- {posted_count + 1}/{len(products)} 件目の処理を開始 ---")
                 post_url = product['post_url']
                 if not post_url:
                     logging.warning(f"商品ID {product['id']} の投稿URLがありません。スキップします。")
@@ -47,7 +47,7 @@ class PostingTask(BaseTask):
 
                 product_name = product['name']
                 display_name = (product_name[:97] + '...') if len(product_name) > 100 else product_name
-                logging.info(f"商品「{display_name}」を投稿します。")
+                logging.debug(f"商品「{display_name}」を投稿します。")
                 page = self.context.new_page()
                 page.context.tracing.start(screenshots=True, snapshots=True, sources=True)
 

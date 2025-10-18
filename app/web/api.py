@@ -136,7 +136,7 @@ async def read_error_management(request: Request):
                     try:
                         from datetime import datetime
                         dt_obj = datetime.strptime(raw_timestamp, '%Y%m%d-%H%M%S')
-                        error_timestamp_display = dt_obj.strftime('%Y-%m-%d %H:%M:%S')
+                        error_timestamp_display = dt_obj.strftime('%Y-%m-%d %H:%M')
                     except ValueError:
                         error_timestamp_display = f"不正な日時 ({raw_timestamp})"
                 
@@ -646,7 +646,7 @@ def _run_task_internal(tag: str, is_part_of_flow: bool, **kwargs):
         # 2. スケジュール実行などから渡された引数で上書き
         flow_kwargs.update(flow_run_kwargs)
 
-        logging.info(f"--- 新フロー実行: 「{definition['name_ja']}」を開始します。 ---")
+        logging.debug(f"--- 新フロー実行: 「{definition['name_ja']}」を開始します。 ---")
 
         def run_flow():
             # flow_definitionが文字列かリストか判定
@@ -658,7 +658,7 @@ def _run_task_internal(tag: str, is_part_of_flow: bool, **kwargs):
             for i, (sub_task_id, sub_task_args) in enumerate(tasks_in_flow):
                 if sub_task_id in TASK_DEFINITIONS:
                     sub_task_def = TASK_DEFINITIONS[sub_task_id]
-                    logging.info(f"  フロー実行中 ({i+1}/{len(tasks_in_flow)}): 「{sub_task_def['name_ja']}」")
+                    logging.debug(f"  フロー実行中 ({i+1}/{len(tasks_in_flow)}): 「{sub_task_def['name_ja']}」")
                     sub_task_func = sub_task_def["function"]
                     
                     # 引数を解決
@@ -673,14 +673,16 @@ def _run_task_internal(tag: str, is_part_of_flow: bool, **kwargs):
                             logging.error(f"フロー内のタスク「{sub_task_def['name_ja']}」が失敗しました。フローを中断します。")
                             break
                     except Exception as e:
-                        logging.error(f"フロー内のタスク「{sub_task_def['name_ja']}」実行中に予期せぬエラーが発生しました: {e}", exc_info=True)
+                        # 本番環境(simple)ではトレースバックを抑制し、開発環境(detailed)では表示する
+                        is_detailed_log = os.getenv('LOG_FORMAT', 'detailed').lower() == 'detailed'
+                        logging.error(f"フロー内のタスク「{sub_task_def['name_ja']}」実行中に予期せぬエラーが発生しました: {e}", exc_info=is_detailed_log)
                         logging.error("フローの実行を中断します。")
                         break
                 else:
                     logging.error(f"フロー内のタスク「{sub_task_id}」が見つかりません。フローを中断します。")
                     break
             else: # ループが正常に完了した場合
-                logging.info(f"--- 新フロー実行: 「{definition['name_ja']}」が正常に完了しました。 ---")
+                logging.debug(f"--- 新フロー実行: 「{definition['name_ja']}」が正常に完了しました。 ---")
         
         run_threaded(run_flow)
         return {"status": "success", "message": f"タスクフロー「{definition['name_ja']}」(件数: {flow_kwargs.get('count')})の実行を開始しました。"}
@@ -693,7 +695,7 @@ def _run_task_internal(tag: str, is_part_of_flow: bool, **kwargs):
         # 従来の "on_success" フロー (resultがTrueの場合のみ実行)
         if not is_part_of_flow and "on_success" in definition and result is True:
             next_task_tag = definition["on_success"]
-            logging.info(f"--- 従来フロー実行: 「{definition['name_ja']}」が完了。次のタスク「{TASK_DEFINITIONS[next_task_tag]['name_ja']}」を実行します。 ---")
+            logging.debug(f"--- 従来フロー実行: 「{definition['name_ja']}」が完了。次のタスク「{TASK_DEFINITIONS[next_task_tag]['name_ja']}」を実行します。 ---")
             _run_task_internal(next_task_tag, is_part_of_flow=True, **kwargs) # 引数を引き継ぐ
         return result
 
@@ -710,7 +712,7 @@ def _run_task_internal(tag: str, is_part_of_flow: bool, **kwargs):
             return JSONResponse(status_code=500, content={"status": "error", "message": "タスクがタイムアウトしました。"})
         
         result = result_container.get('result')
-        logging.info(f"スレッドから受け取った結果 (タスク: {tag}): {result} (型: {type(result)})")
+        logging.debug(f"スレッドから受け取った結果 (タスク: {tag}): {result} (型: {type(result)})")
         if "check-login-status" in tag or "test-check-login-status" in tag:
             message = "成功: ログイン状態が維持されています。" if result else "失敗: ログイン状態が確認できませんでした。"
         elif "save-auth-state" in tag:
@@ -718,7 +720,7 @@ def _run_task_internal(tag: str, is_part_of_flow: bool, **kwargs):
         else:
             message = "タスクが完了しました。" # フォールバックメッセージ
         
-        logging.info(f"APIレスポンス (タスク: {tag}): {message}")
+        logging.debug(f"APIレスポンス (タスク: {tag}): {message}")
 
         return JSONResponse(content={"status": "success" if result else "error", "message": message})
 
@@ -729,5 +731,5 @@ def _run_task_internal(tag: str, is_part_of_flow: bool, **kwargs):
     job_thread, result_container = run_threaded(task_wrapper, **final_kwargs) 
 
     message = f"タスク「{definition['name_ja']}」の実行を開始しました。"
-    logging.info(f"APIレスポンス (タスク: {tag}): {message}")
+    logging.debug(f"APIレスポンス (タスク: {tag}): {message}")
     return {"status": "success", "message": message}
