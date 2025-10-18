@@ -131,7 +131,10 @@ def get_error_products_in_last_24h():
 
 def get_all_ready_to_post_products(limit=None):
     """ステータスが「投稿準備完了」の商品をすべて、または指定された件数だけ取得する"""
-    query = "SELECT * FROM products WHERE status = '投稿準備完了' ORDER BY priority DESC, created_at"
+    # 投稿に必要な情報が確実に存在するもののみを対象とする
+    query = """
+        SELECT * FROM products WHERE status = '投稿準備完了' AND post_url IS NOT NULL AND ai_caption IS NOT NULL ORDER BY priority DESC, created_at
+    """
     if limit:
         query += f" LIMIT {int(limit)}"
     conn = get_db_connection()
@@ -149,7 +152,10 @@ def get_product_by_id(product_id):
 
 def get_all_inventory_products():
     """在庫確認ページ用に、「投稿済」「エラー」以外の商品をすべて取得する"""
-    query = "SELECT * FROM products WHERE status NOT IN ('投稿済', 'エラー') ORDER BY priority DESC, created_at ASC"
+    # 投稿準備が完了していない商品も在庫として表示するため、以前の絞り込みを解除
+    query = """
+        SELECT * FROM products WHERE status NOT IN ('投稿済', 'エラー') ORDER BY priority DESC, created_at ASC
+    """
     conn = get_db_connection()
     products = conn.execute(query).fetchall()
     conn.close()

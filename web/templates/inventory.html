@@ -394,19 +394,27 @@
             .then(response => response.json())
             .then(data => {
                 const tableBody = document.getElementById('inventory-table-body');
+                let inconsistentCount = 0;
                 tableBody.innerHTML = ''; // 既存の内容をクリア
                 if (data.length === 0) {
                     tableBody.innerHTML = '<tr><td colspan="5" class="text-center">在庫商品はありません。</td></tr>';
                     return;
                 }
                 data.forEach(product => {
-                    const statusInfo = statusMap[product.status] || { emoji: '❓', color: 'light' };
+                    let statusInfo = statusMap[product.status] || { emoji: '❓', color: 'light' };
+                    let statusTitle = product.status;
                     
-                    let statusHtml;
-                    if (product.status === '投稿準備完了') {
-                        statusHtml = `<span title="${product.status}" class="fs-5">${statusInfo.emoji}</span>`;
+                    // データ不整合チェック: 投稿準備完了なのにURLかキャプションがない
+                    const isDataInconsistent = product.status === '投稿準備完了' && (!product.post_url || !product.ai_caption);
+
+                    let statusHtml = `<span title="${statusTitle}" class="fs-5">${statusInfo.emoji}</span>`;
+
+                    if (isDataInconsistent) {
+                        statusTitle = 'データ不整合: 投稿準備完了ですが、URLまたは投稿文がありません。';
+                        statusHtml = `<span title="${statusTitle}" class="fs-5 text-warning">☔</span>`;
+                        inconsistentCount++;
                     } else {
-                        statusHtml = `<span title="${product.status}">${statusInfo.emoji}</span>`;
+                        statusHtml = `<span title="${statusTitle}" class="fs-5">${statusInfo.emoji}</span>`;
                     }
 
                     const createdAt = product.created_at ? new Date(product.created_at).toLocaleDateString('ja-JP') : 'N/A';
@@ -435,6 +443,21 @@
                     `;
                     tableBody.innerHTML += row;
                 });
+
+                // データ不整合件数をサマリーに追加
+                if (inconsistentCount > 0) {
+                    const summaryContainer = document.getElementById('status-summary');
+                    const inconsistentCardHtml = `
+                        <div class="col" title="データ不整合" style="cursor: default;">
+                            <div class="card card-body text-center h-100 border-warning">
+                                <div class="d-flex justify-content-center align-items-center h-100 gap-2">
+                                    <span class="fs-4">☔</span><span class="fs-4 fw-bold">${inconsistentCount}</span>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    summaryContainer.innerHTML += inconsistentCardHtml;
+                }
 
                 // SortableJSの初期化
                 new Sortable(tableBody, {
