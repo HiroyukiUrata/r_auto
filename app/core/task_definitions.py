@@ -80,28 +80,59 @@ TASK_DEFINITIONS = {
         ],
         "order": 10,
     },
-    "post-article": {
-        "name_ja": "記事投稿",
+    "_internal-post-article": {
+        "name_ja": "（内部処理）記事投稿実行",
         "function": run_posting,
         "default_kwargs": {"count": 3},
         "is_debug": False,
-        "order": 50,
+        "show_in_schedule": False, # UIには表示しない
+        "description": "DBから商品を取得して記事を投稿します。",
+        "order": 9999, # 表示されない
     },
-    "run-like-action": {
-        "name_ja": "いいね活動",
+    "post-article": { # UIに表示されるフロー
+        "name_ja": "記事投稿",
+        "function": None, # フローなので直接の関数はなし
+        "is_debug": False,
+        "default_kwargs": {"count": 3}, # フロー全体に渡す引数
+        "description": "ログイン状態を確認後、DBから商品を取得して記事を投稿します。",
+        "order": 50,
+        "flow": "check-login-status | _internal-post-article"
+    },
+    "_internal-like-action": {
+        "name_ja": "（内部処理）いいね実行",
         "function": run_like_action,
         "is_debug": False,
+        "show_in_schedule": False, # UIには表示しない
         "default_kwargs": {"count": 15, "max_duration_seconds": 1800},
         "description": "設定されたキーワードに基づいて「いいね」アクションを実行します。",
-        "order": 60,
+        "order": 9999, # 表示されない
     },
-    "run-follow-action": {
-        "name_ja": "フォロー活動",
+    "run-like-action": { # UIに表示されるフロー
+        "name_ja": "いいね活動",
+        "function": None, # フローなので直接の関数はなし
+        "is_debug": False,
+        "default_kwargs": {"count": 15, "max_duration_seconds": 1800}, # フロー全体に渡す引数
+        "description": "ログイン状態を確認後、設定されたキーワードに基づいて「いいね」アクションを実行します。",
+        "order": 60,
+        "flow": "check-login-status | _internal-like-action"
+    },
+    "_internal-follow-action": {
+        "name_ja": "（内部処理）フォロー実行",
         "function": run_follow_action,
         "is_debug": False,
+        "show_in_schedule": False, # UIには表示しない
         "default_kwargs": {"count": 10},
         "description": "設定されたキーワードに基づいて「フォロー」アクションを実行します。",
+        "order": 9999, # 表示されない
+    },
+    "run-follow-action": { # UIに表示されるフロー
+        "name_ja": "フォロー活動",
+        "function": None, # フローなので直接の関数はなし
+        "is_debug": False,
+        "default_kwargs": {"count": 10}, # フロー全体に渡す引数
+        "description": "ログイン状態を確認後、設定されたキーワードに基づいて「フォロー」アクションを実行します。",
         "order": 70,
+        "flow": "check-login-status | _internal-follow-action"
     },
     "json-import-flow": {
         "name_ja": "JSONインポート後フロー",
