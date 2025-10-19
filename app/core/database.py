@@ -288,7 +288,7 @@ def update_post_url(product_id, post_url):
         now_jst_iso = datetime.now(jst).isoformat()
         conn.execute("UPDATE products SET post_url = ?, post_url_updated_at = ?, status = 'URL取得済' WHERE id = ?", (post_url, now_jst_iso, product_id))
         conn.commit()
-        logging.d(f"商品ID: {product_id} の投稿URLを更新し、ステータスを「URL取得済」に変更しました。")
+        logging.debug(f"商品ID: {product_id} の投稿URLを更新し、ステータスを「URL取得済」に変更しました。")
     finally:
         conn.close()
 
