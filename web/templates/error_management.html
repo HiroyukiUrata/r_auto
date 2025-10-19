@@ -22,12 +22,42 @@
                 <li><a class="dropdown-item" href="#" onclick="event.preventDefault(); bulkUpdateStatus('投稿済')">🚀 「投稿済」にする</a></li>
                 <li><a class="dropdown-item" href="#" onclick="event.preventDefault(); bulkUpdateStatus('対象外')">☔ 「対象外」にする</a></li>
             </ul>
+            <button type="button" class="btn btn-sm btn-outline-info" id="export-json-btn" onclick="exportToJson()" disabled title="選択した商品の全データをJSON形式でダウンロードします">
+                <i class="bi bi-file-earmark-code me-1"></i>JSONエクスポート
+            </button>
             <button type="button" class="btn btn-sm btn-outline-secondary" id="select-all-toggle-btn" onclick="toggleSelectAll()">
                 <i class="bi bi-check-square me-1"></i>すべて選択
             </button>
             <button type="button" class="btn btn-sm btn-outline-danger" id="bulk-delete-btn" onclick="bulkDelete()" disabled>
                 <i class="bi bi-trash-fill me-1"></i>選択した項目を削除
             </button>
+        </div>
+    </div>
+</div>
+
+<div class="accordion mb-4" id="importAccordion">
+    <div class="accordion-item">
+        <h2 class="accordion-header" id="headingOne">
+            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseOne" aria-expanded="false" aria-controls="collapseOne">
+                <i class="bi bi-file-earmark-arrow-down-fill me-2"></i>JSONから商品を一括更新（クリックして展開）
+            </button>
+        </h2>
+        <div id="collapseOne" class="accordion-collapse collapse" aria-labelledby="headingOne" data-bs-parent="#importAccordion">
+            <div class="accordion-body">
+                <p class="text-muted small">エクスポートしたJSONを編集し、ここに貼り付けて更新を実行します。`post_url`と`ai_caption`の有無に応じて、ステータスとタイムスタンプが自動で更新されます。</p>
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <label for="json-import-textarea" class="form-label mb-0">ここにJSONデータを貼り付けてください</label>
+                        <a href="https://gemini.google.com/u/1/gem/d22f71530f97" class="btn btn-sm btn-outline-secondary" target="_blank" rel="noopener noreferrer">
+                        <i class="bi bi-robot me-1"></i>投稿文ジェネレータ＋
+                        </a>
+                    </div>
+                    <textarea class="form-control" id="json-import-textarea" rows="5" placeholder="[&#10;  {&#10;    &quot;id&quot;: 123,&#10;    &quot;post_url&quot;: &quot;https://...&quot;,&#10;    &quot;ai_caption&quot;: &quot;...&quot;&#10;  },&#10;  ...&#10;]"></textarea>
+                </div>
+                <button class="btn btn-primary" onclick="importFromJson()">
+                    <i class="bi bi-upload me-1"></i>インポートしてDBを更新
+                </button>
+            </div>
         </div>
     </div>
 </div>
@@ -237,6 +267,7 @@
 {% block scripts %}
 <script>
     async function deleteScreenshot(buttonElement, filename) {
+        // ユーザーに確認を求める
         if (!confirm(`本当にスクリーンショット「${filename}」を削除しますか？\nこの操作は元に戻せません。`)) {
             return;
         }
@@ -259,6 +290,7 @@
     }
 
     let infoModalInstance = null;
+    let allProductsData = []; // 全商品データを保持する配列
 
     function showInfoModal(element) {
         event.stopPropagation();
@@ -325,6 +357,7 @@
         document.querySelectorAll('#bulk-action-group button').forEach(button => {
             button.disabled = disabled;
         });
+        document.getElementById('export-json-btn').disabled = disabled; // JSONエクスポートボタンも更新
         document.getElementById('bulk-delete-btn').disabled = disabled; // 削除ボタンも更新
     }
 
@@ -382,12 +415,69 @@
         }
     }
 
+    function exportToJson() {
+        const selectedIds = getSelectedProductIds();
+        if (selectedIds.length === 0) {
+            alert('エクスポートする商品を選択してください。');
+            return;
+        }
+
+        // allProductsData から選択された商品データを抽出
+        const selectedProducts = allProductsData.filter(product => selectedIds.includes(String(product.id)));
+
+        if (selectedProducts.length === 0) {
+            alert('選択された商品データが見つかりませんでした。ページを再読み込みしてお試しください。');
+            return;
+        }
+
+        const jsonString = JSON.stringify(selectedProducts, null, 2);
+        const blob = new Blob([jsonString], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+
+        const a = document.createElement('a');
+        a.href = url;
+        // ファイル名にタイムスタンプを追加 (例: error_products_20231027T103000.json)
+        const timestamp = new Date().toISOString().replace(/[:.-]/g, '').slice(0, 15);
+        a.download = `error_products_${timestamp}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+
+    async function importFromJson() {
+        const textarea = document.getElementById('json-import-textarea');
+        const jsonText = textarea.value;
+        if (!jsonText.trim()) {
+            alert('JSONデータを入力してください。');
+            return;
+        }
+
+        try {
+            const products = JSON.parse(jsonText);
+            const response = await fetch('/api/products/bulk-update-from-json', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ products: products })
+            });
+            const result = await response.json();
+            if (!response.ok) {
+                throw new Error(result.message || 'インポートに失敗しました。');
+            }
+            alert(result.message);
+            location.reload(); // ページをリロードしてリストを更新
+        } catch (error) {
+            alert(`エラー: ${error.message}\n\n入力されたJSONの形式が正しいか確認してください。`);
+        }
+    }
+
     document.addEventListener('DOMContentLoaded', function () {
         infoModalInstance = new bootstrap.Modal(document.getElementById('infoModal'));
 
         fetch('/api/errors')
             .then(response => response.json())
             .then(data => {
+                allProductsData = data; // 取得したデータをグローバル変数に保存
                 const tableBody = document.getElementById('error-table-body');
                 tableBody.innerHTML = '';
                 if (data.length === 0) {

@@ -427,3 +427,57 @@ def update_product_order(product_ids: list[int]):
         logging.debug(f"{len(product_ids)}件の商品の順序を更新しました。")
     finally:
         conn.close()
+
+def bulk_update_products_from_data(products_data: list[dict]):
+    """
+    辞書のリストから複数の商品を一括で更新する。
+    ステータスとタイムスタンプも条件に応じて更新する。
+    """
+    if not products_data:
+        return 0, 0
+
+    conn = get_db_connection()
+    updated_count = 0
+    failed_count = 0
+    jst = timezone(timedelta(hours=9))
+
+    try:
+        with conn:  # トランザクションを開始
+            for product_data in products_data:
+                product_id = product_data.get('id')
+                if not product_id:
+                    failed_count += 1
+                    continue
+
+                # 更新対象のフィールドを抽出
+                post_url = product_data.get('post_url')
+                ai_caption = product_data.get('ai_caption')
+
+                # ステータスとタイムスタンプのロジック
+                now_jst_iso = datetime.now(jst).isoformat()
+                status_update_sql = ""
+                params = []
+
+                if post_url and ai_caption:
+                    status_update_sql = ", status = '投稿準備完了', post_url_updated_at = COALESCE(post_url_updated_at, ?), ai_caption_created_at = COALESCE(ai_caption_created_at, ?)"
+                    params.extend([now_jst_iso, now_jst_iso])
+                elif post_url:
+                    status_update_sql = ", status = 'URL取得済', post_url_updated_at = COALESCE(post_url_updated_at, ?)"
+                    params.append(now_jst_iso)
+
+                # 基本のUPDATE文
+                query = f"UPDATE products SET post_url = ?, ai_caption = ?, error_message = NULL {status_update_sql} WHERE id = ?"
+                final_params = [post_url, ai_caption] + params + [product_id]
+
+                cursor = conn.cursor()
+                cursor.execute(query, final_params)
+                if cursor.rowcount > 0:
+                    updated_count += 1
+
+    except sqlite3.Error as e:
+        logging.error(f"商品の一括データ更新中にエラーが発生しました: {e}")
+        raise  # エラーを呼び出し元に伝播させる
+    finally:
+        conn.close()
+
+    return updated_count, failed_count

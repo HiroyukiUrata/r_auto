@@ -11,7 +11,7 @@ from pathlib import Path
 
 # タスク定義を一元的にインポート
 from app.core.task_definitions import TASK_DEFINITIONS
-from app.core.database import get_all_inventory_products, update_product_status, delete_all_products, init_db, delete_product, update_status_for_multiple_products, delete_multiple_products, get_product_count_by_status, get_error_products_in_last_24h, update_product_priority, update_product_order
+from app.core.database import get_all_inventory_products, update_product_status, delete_all_products, init_db, delete_product, update_status_for_multiple_products, delete_multiple_products, get_product_count_by_status, get_error_products_in_last_24h, update_product_priority, update_product_order, bulk_update_products_from_data
 from app.tasks.posting import run_posting
 from app.tasks.get_post_url import run_get_post_url
 from app.tasks.import_products import process_and_import_products
@@ -485,6 +485,23 @@ async def bulk_status_update_products(request: BulkStatusUpdateRequest):
     except Exception as e:
         logging.error(f"商品の一括ステータス更新中にエラーが発生しました: {e}")
         return JSONResponse(status_code=500, content={"status": "error", "message": "一括更新に失敗しました。"})
+
+@router.post("/api/products/bulk-update-from-json")
+async def bulk_update_from_json(request: JsonImportRequest):
+    """
+    JSONデータに基づいて複数の商品を一括で更新する。
+    主にエラー管理画面からのデータ復旧に使用する。
+    """
+    try:
+        products_to_update = request.products
+        if not products_to_update:
+            raise HTTPException(status_code=400, detail="更新する商品データがありません。")
+        
+        updated_count, failed_count = bulk_update_products_from_data(products_to_update)
+        return JSONResponse(content={"status": "success", "message": f"{updated_count}件の商品情報を更新しました。(ID不明などで失敗: {failed_count}件)"})
+    except Exception as e:
+        logging.error(f"JSONからの商品一括更新中にエラーが発生しました: {e}")
+        return JSONResponse(status_code=500, content={"status": "error", "message": "サーバーエラーにより更新に失敗しました。"})
 
 @router.get("/api/keywords")
 async def get_keywords():

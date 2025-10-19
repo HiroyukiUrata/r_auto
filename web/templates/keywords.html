@@ -103,22 +103,28 @@
         }
     }
 
-    async function saveKeywords() {
+    async function saveKeywords(showMessages = true) {
         const keywords_a = getKeywordsFromDOM('a');
         const keywords_b = getKeywordsFromDOM('b');
 
         try {
-            if (!confirm('現在のキーワード設定を保存しますか？')) return;
+            if (showMessages) {
+                if (!confirm('現在のキーワード設定を保存しますか？')) return false;
+            }
             const response = await fetch('/api/keywords', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ keywords_a, keywords_b })
             });
             const result = await response.json();
-            if (!response.ok) throw new Error(result.message);
-            alert(result.message);
+            if (!response.ok) throw new Error(result.message || 'キーワードの保存に失敗しました。');
+            if (showMessages) {
+                alert(result.message);
+            }
+            return true; // 成功したことを示す
         } catch (error) {
-            alert(`エラー: ${error.message}`);
+            if (showMessages) alert(`エラー: ${error.message}`);
+            return false; // 失敗したことを示す
         }
     }
 
@@ -174,11 +180,14 @@
             alert('プロファイル名を入力してください。');
             return;
         }
-        // プロファイル保存の前に、現在のUI上のキーワードを`keywords.json`に保存する
-        // これにより、UIの変更が確実にプロファイルに反映される
-        await saveKeywords();
+        
+        if (!confirm(`現在のキーワード設定を「${profileName}」として保存しますか？`)) {
+            return;
+        }
 
-        if (!confirm(`現在のキーワード設定を「${profileName}」として保存しますか？`)) return;
+        // 1. まずUI上のキーワードをメッセージなしで保存
+        const keywordsSaved = await saveKeywords(false);
+        if (!keywordsSaved) return; // キーワード保存に失敗したら中断
 
         try {
             const response = await fetch('/api/keyword-profiles', {
@@ -188,7 +197,7 @@
             });
             const result = await response.json();
             if (!response.ok) throw new Error(result.message);
-            alert(result.message);
+            alert(`キーワードを保存し、プロファイル「${profileName}」を作成しました。`);
             input.value = '';
             await fetchProfiles(); // プロファイル一覧を更新
         } catch (error) {

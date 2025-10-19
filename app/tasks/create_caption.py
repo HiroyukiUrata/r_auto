@@ -126,7 +126,7 @@ class CreateCaptionTask(BaseTask):
                     continue
 
                 try:
-                    dynamic_timeout = (60 + len(products) * 120) * 1000 #なかなか読み込まないときは*Nを長く
+                    dynamic_timeout = (60 + len(products) * 60) * 1000 #なかなか読み込まないときは*Nを長く
                     page.wait_for_function("() => document.querySelectorAll('.response-container-content .code-container').length > 0 && document.querySelectorAll('.response-container-content .code-container')[document.querySelectorAll('.response-container-content .code-container').length - 1].innerText.trim().endsWith(']')", timeout=dynamic_timeout)
                 except TimeoutError:
                     logging.warning("応答JSONの表示待機がタイムアウトしました。不完全な状態でもコピーを試みます。")

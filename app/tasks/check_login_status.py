@@ -30,13 +30,19 @@ class CheckLoginStatusTask(BaseTask): # Class name is already correct
                 #logging.info(f"成功: my ROOMページに遷移しました。ログイン状態は正常です。 (URL: {current_url})")
                 return True
             elif "https://login.account.rakuten.com/" in current_url:
+                # 失敗パターン1: ログインページへのリダイレクト
                 logging.error(f"失敗: ログインページにリダイレクトされました。 (URL: {current_url})")
+                self._take_screenshot_on_error(prefix="login_check_redirect")
                 return False
             else:
+                # 失敗パターン2: 予期しないページへの遷移
                 logging.error(f"失敗: 予期しないページに遷移しました。 (URL: {current_url})")
+                self._take_screenshot_on_error(prefix="login_check_unexpected_page")
                 return False
         except TimeoutError:
+            # 失敗パターン3: 「my ROOM」リンクが見つからない
             logging.error("失敗: 「my ROOM」リンクが見つかりませんでした。ログインしていない可能性があります。")
+            self._take_screenshot_on_error(prefix="login_check_link_not_found")
             return False
 
 def run_check_login_status(): # Function name is already correct
