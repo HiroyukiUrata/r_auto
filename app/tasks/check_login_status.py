@@ -26,7 +26,8 @@ class CheckLoginStatusTask(BaseTask): # Class name is already correct
             current_url = page.url
 
             if "https://room.rakuten.co.jp/" in current_url and "https://login.account.rakuten.com/" not in current_url:
-                logging.info(f"成功: my ROOMページに遷移しました。ログイン状態は正常です。 (URL: {current_url})")
+                logging.info(f"ログイン状態は正常です。")
+                #logging.info(f"成功: my ROOMページに遷移しました。ログイン状態は正常です。 (URL: {current_url})")
                 return True
             elif "https://login.account.rakuten.com/" in current_url:
                 logging.error(f"失敗: ログインページにリダイレクトされました。 (URL: {current_url})")
