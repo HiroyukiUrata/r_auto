@@ -65,7 +65,7 @@ class CreateCaptionTask(BaseTask):
 
     def _execute_main_logic(self):
         # 一度にGeminiに送信する最大件数
-        MAX_PRODUCTS_PER_BATCH = 15
+        MAX_PRODUCTS_PER_BATCH = 5
 
         if not os.path.exists(PROMPT_FILE):
             logging.error(f"プロンプトファイルが見つかりません: {PROMPT_FILE}")
@@ -126,7 +126,7 @@ class CreateCaptionTask(BaseTask):
                     continue
 
                 try:
-                    dynamic_timeout = (60 + len(products) * 15) * 1000
+                    dynamic_timeout = (60 + len(products) * 120) * 1000 #なかなか読み込まないときは*Nを長く
                     page.wait_for_function("() => document.querySelectorAll('.response-container-content .code-container').length > 0 && document.querySelectorAll('.response-container-content .code-container')[document.querySelectorAll('.response-container-content .code-container').length - 1].innerText.trim().endsWith(']')", timeout=dynamic_timeout)
                 except TimeoutError:
                     logging.warning("応答JSONの表示待機がタイムアウトしました。不完全な状態でもコピーを試みます。")
