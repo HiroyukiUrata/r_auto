@@ -7,6 +7,29 @@ from app.core.base_task import BaseTask
 from app.tasks.import_products import process_and_import_products
 
 KEYWORDS_FILE = "db/keywords.json"
+RECENT_KEYWORDS_FILE = "db/recent_keywords.json"
+MAX_RECENT_KEYWORDS = 10
+
+def save_recent_keyword(keyword):
+    """最近使ったキーワードをJSONファイルに保存する"""
+    try:
+        recent_keywords = []
+        if os.path.exists(RECENT_KEYWORDS_FILE):
+            with open(RECENT_KEYWORDS_FILE, "r", encoding="utf-8") as f:
+                recent_keywords = json.load(f)
+        
+        # 既存のリストからキーワードを削除（順序を先頭にするため）
+        if keyword in recent_keywords:
+            recent_keywords.remove(keyword)
+        
+        # 先頭にキーワードを追加
+        recent_keywords.insert(0, keyword)
+        
+        # 最大件数を超えたら古いものを削除
+        with open(RECENT_KEYWORDS_FILE, "w", encoding="utf-8") as f:
+            json.dump(recent_keywords[:MAX_RECENT_KEYWORDS], f, ensure_ascii=False, indent=4)
+    except Exception as e:
+        logging.error(f"最近使ったキーワードの保存に失敗しました: {e}")
 
 def get_keywords_from_file():
     """キーワードファイルを読み込んで、AとBのリストを返す"""
@@ -64,6 +87,7 @@ class RakutenSearchProcureTask(BaseTask):
                 page_num = 1
                 MAX_PAGES_PER_KEYWORD = 5
                 logging.info(f"キーワード「{keyword}」での商品検索を開始します。")
+                save_recent_keyword(keyword) # 最近使ったキーワードとして保存
 
                 while page_num <= MAX_PAGES_PER_KEYWORD:
                     if len(items) >= self.target_count:
