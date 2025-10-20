@@ -387,12 +387,58 @@ async def get_inventory_summary():
 @router.get("/api/dashboard/summary")
 async def get_dashboard_summary(request: Request):
     """ダッシュボード用のサマリーデータを返す"""
+    logging.debug("[DASHBOARD_API] /api/dashboard/summary の処理を開始します。")
     try:
         period = request.query_params.get('period', '24h') # クエリパラメータから期間を取得
-        summary = get_log_summary(period=period)
+        log_summary = get_log_summary(period=period)
+
+        # 次のスケジュール情報を取得
+        next_job = None
+        all_jobs = schedule.get_jobs()
+        logging.debug(f"[DASHBOARD_API_DEBUG] 全スケジュールジョブ ({len(all_jobs)}件): {all_jobs}")
+        for job in all_jobs:
+            if job.next_run and (not next_job or job.next_run < next_job.next_run):
+                next_job = job
+        
+        next_schedule_info = None
+        if next_job:
+            logging.debug(f"[DASHBOARD_API_DEBUG] 次のジョブが見つかりました: {next_job}")
+            if not next_job.tags:
+                logging.warning(f"[DASHBOARD_API_DEBUG] 次のジョブにタグが設定されていません: {next_job}")
+                # タグがない場合はここで処理を終了
+                summary = {**log_summary, "next_schedule": None}
+                return JSONResponse(content=summary)
+
+            tag = list(next_job.tags)[0]
+            definition = TASK_DEFINITIONS.get(tag, {})
+            
+            job_kwargs = {}
+            logging.debug(f"[DASHBOARD_API_DEBUG] ジョブ関数: {next_job.job_func}")
+            # scheduleライブラリが引数を保持する複数のパターンに対応する
+            # 1. functools.partialでラップされている場合 (do(partial(func, ...)))
+            if hasattr(next_job.job_func, 'keywords'):
+                job_kwargs = next_job.job_func.keywords
+                logging.debug(f"[DASHBOARD_API_DEBUG] job.job_func.keywords から引数を取得しました: {job_kwargs}")
+            # 2. do(func, kwarg1=...) のようにキーワード引数で渡された場合
+            elif hasattr(next_job, 'kwargs') and next_job.kwargs:
+                job_kwargs = next_job.kwargs
+                logging.debug(f"[DASHBOARD_API_DEBUG] job.kwargs から引数を取得しました: {job_kwargs}")
+            else:
+                logging.warning("[DASHBOARD_API_DEBUG] ジョブからキーワード引数を特定できませんでした。")
+                
+            next_schedule_info = {
+                "name": definition.get("name_ja", "不明なタスク"),
+                "time": next_job.next_run.strftime('%H:%M'),
+                "count": job_kwargs.get('count', 0) # countがないタスクは0として扱う
+            }
+            logging.debug(f"[DASHBOARD_API_DEBUG] 生成された次のスケジュール情報: {next_schedule_info}")
+
+        summary = {**log_summary, "next_schedule": next_schedule_info}
+        logging.debug(f"[DASHBOARD_API] 処理成功。フロントエンドに返すデータ: {summary}")
         return JSONResponse(content=summary)
     except Exception as e:
-        logging.error(f"ダッシュボードサマリーの取得中にエラー: {e}")
+        # エラー発生時に詳細なトレースバックをログに出力
+        logging.error(f"ダッシュボードサマリーの取得中に予期せぬエラーが発生しました。", exc_info=True)
         return JSONResponse(status_code=500, content={"status": "error", "message": "サマリーデータの取得に失敗しました。"})
 
 @router.get("/api/dashboard/recent-keywords")
