@@ -23,6 +23,7 @@ from datetime import date, timedelta
 
 KEYWORDS_FILE = "db/keywords.json"
 SCHEDULE_FILE = "db/schedules.json"
+RECENT_KEYWORDS_FILE = "db/recent_keywords.json"
 SCHEDULE_PROFILES_DIR = "db/schedule_profiles"
 KEYWORD_PROFILES_DIR = "db/keyword_profiles"
 
@@ -393,6 +394,18 @@ async def get_dashboard_summary(request: Request):
     except Exception as e:
         logging.error(f"ダッシュボードサマリーの取得中にエラー: {e}")
         return JSONResponse(status_code=500, content={"status": "error", "message": "サマリーデータの取得に失敗しました。"})
+
+@router.get("/api/dashboard/recent-keywords")
+async def get_recent_keywords():
+    """最近使ったキーワードを返す"""
+    try:
+        if os.path.exists(RECENT_KEYWORDS_FILE):
+            with open(RECENT_KEYWORDS_FILE, "r", encoding="utf-8") as f:
+                keywords = json.load(f)
+            return JSONResponse(content=keywords)
+        return JSONResponse(content=[])
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"status": "error", "message": f"キーワードの読み込みに失敗しました: {e}"})
 
 @router.post("/api/inventory/{product_id}/complete")
 async def complete_inventory_item(product_id: int):

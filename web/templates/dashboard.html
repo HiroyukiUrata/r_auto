@@ -54,6 +54,12 @@
     <!-- Cards will be inserted here by JavaScript -->
 </div>
 
+<h4 id="recent-keywords-title">最近使ったキーワード</h4>
+<div class="mb-4" id="recent-keywords-container">
+    <!-- Recent keywords will be inserted here by JavaScript -->
+</div>
+
+
 <h4 id="inventory-title">現在の在庫状況</h4>
 <div class="row row-cols-1 row-cols-md-2 row-cols-lg-4 g-4" id="inventory-summary">
     <!-- Inventory cards will be inserted here -->
@@ -64,6 +70,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const activityTitle = document.getElementById('activity-title');
     const activityContainer = document.getElementById('activity-summary');
     const inventoryContainer = document.getElementById('inventory-summary');
+    const keywordsContainer = document.getElementById('recent-keywords-container');
     const lastUpdatedEl = document.getElementById('last-updated');
 
     const actionMapping = {
@@ -121,9 +128,10 @@ document.addEventListener('DOMContentLoaded', function () {
                 activityTitle.textContent = '直近24時間のアクティビティ';
             }
 
-            const [activityRes, inventoryRes] = await Promise.all([
+            const [activityRes, inventoryRes, keywordsRes] = await Promise.all([
                 fetch(`/api/dashboard/summary?period=${currentPeriod}`),
-                fetch('/api/inventory/summary')
+                fetch('/api/inventory/summary'),
+                fetch('/api/dashboard/recent-keywords')
             ]);
             
             const summaryData = await activityRes.json();
@@ -149,6 +157,17 @@ document.addEventListener('DOMContentLoaded', function () {
             // 定義外のステータスがあれば末尾に追加
             for (const [status, count] of Object.entries(inventoryData)) {
                 inventoryContainer.innerHTML += createCard(status, count, 0);
+            }
+
+            // 最近使ったキーワードを表示
+            const keywordsData = await keywordsRes.json();
+            keywordsContainer.innerHTML = '';
+            if (keywordsData && keywordsData.length > 0) {
+                keywordsData.forEach(keyword => {
+                    keywordsContainer.innerHTML += `<a href="https://search.rakuten.co.jp/search/mall/${encodeURIComponent(keyword)}/" target="_blank" class="btn btn-outline-secondary btn-sm me-2 mb-2">${keyword}</a>`;
+                });
+            } else {
+                keywordsContainer.innerHTML = '<p class="text-muted">最近使用したキーワードはありません。</p>';
             }
 
             lastUpdatedEl.textContent = `最終更新: ${new Date().toLocaleTimeString()}`;
