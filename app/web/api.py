@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Request, HTTPException
-from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, FileResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, FileResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 import schedule
 import re
@@ -17,7 +17,7 @@ from app.tasks.get_post_url import run_get_post_url
 from app.tasks.import_products import process_and_import_products
 from app.core.logging_config import LOG_FILE # ログファイルのパスをインポート
 from app.core.config_manager import get_config, save_config, SCREENSHOT_DIR
-from app.core.scheduler_utils import run_threaded, run_task_with_random_delay
+from app.core.scheduler_utils import run_threaded, run_task_with_random_delay, get_log_summary
 from datetime import date, timedelta
 
 
@@ -66,12 +66,17 @@ class KeywordsUpdateRequest(BaseModel):
 # --- HTML Routes ---
 router = APIRouter()
 
-@router.get("/", response_class=HTMLResponse)
-async def read_root(request: Request):
+@router.get("/", response_class=RedirectResponse)
+async def redirect_to_dashboard():
+    """ルートURLからダッシュボードへリダイレクトする"""
+    return RedirectResponse(url="/dashboard")
+
+@router.get("/schedules", response_class=HTMLResponse)
+async def read_schedules_page(request: Request):
     """
-    トップページを表示し、現在のスケジュール一覧を渡す
+    スケジュール設定ページを表示し、現在のスケジュール一覧を渡す
     """
-    return request.app.state.templates.TemplateResponse("index.html", {"request": request})
+    return request.app.state.templates.TemplateResponse("schedules.html", {"request": request})
 
 @router.get("/logs", response_class=HTMLResponse)
 async def read_logs(request: Request):
@@ -97,6 +102,11 @@ async def read_inventory(request: Request):
 async def read_keywords_page(request: Request):
     """キーワード管理ページを表示する"""
     return request.app.state.templates.TemplateResponse("keywords.html", {"request": request})
+
+@router.get("/dashboard", response_class=HTMLResponse)
+async def read_dashboard(request: Request):
+    """ダッシュボードページを表示する"""
+    return request.app.state.templates.TemplateResponse("dashboard.html", {"request": request})
 
 @router.get("/error-management", response_class=HTMLResponse)
 async def read_error_management(request: Request):
@@ -372,6 +382,17 @@ async def get_inventory_summary():
     except Exception as e:
         logging.error(f"在庫サマリーの取得中にエラーが発生しました: {e}")
         return JSONResponse(status_code=500, content={"status": "error", "message": "サマリーの取得に失敗しました。"})
+
+@router.get("/api/dashboard/summary")
+async def get_dashboard_summary(request: Request):
+    """ダッシュボード用のサマリーデータを返す"""
+    try:
+        period = request.query_params.get('period', '24h') # クエリパラメータから期間を取得
+        summary = get_log_summary(period=period)
+        return JSONResponse(content=summary)
+    except Exception as e:
+        logging.error(f"ダッシュボードサマリーの取得中にエラー: {e}")
+        return JSONResponse(status_code=500, content={"status": "error", "message": "サマリーデータの取得に失敗しました。"})
 
 @router.post("/api/inventory/{product_id}/complete")
 async def complete_inventory_item(product_id: int):

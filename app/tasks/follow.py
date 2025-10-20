@@ -299,7 +299,8 @@ class FollowTask(BaseTask):
             
             #time.sleep(random.uniform(2, 3)) # フォロー間隔
 
-        logging.info(f"合計{followed_count}件のフォローを実行しました。")
+        # logging.info(f"合計{followed_count}件のフォローを実行しました。")
+        logging.info(f"[Action Summary] name=フォロー, count={followed_count}")
 
         # ★★★ 処理完了後の60秒待機 ★★★
         # logging.info("タスクの全フォロー処理が完了しました。ユーザーの要望に基づき、60秒間待機します。")

@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+
+{% block title %}ダッシュボード{% endblock %}
+
+{% block head %}
+<style>
+    .card-title {
+        font-size: 1.1rem;
+        font-weight: 600;
+    }
+    .stat-value {
+        font-size: 2rem;
+        font-weight: 700;
+    }
+    .stat-label {
+        font-size: 0.9rem;
+        color: #6c757d;
+    }
+    .error-count {
+        color: #dc3545;
+        font-weight: 600;
+    }
+    .last-updated {
+        font-size: 0.8rem;
+        color: #6c757d;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">ダッシュボード</h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <span class="last-updated me-3" id="last-updated"></span>
+        <button type="button" class="btn btn-sm btn-outline-secondary" id="refresh-btn">
+            <i class="bi bi-arrow-clockwise"></i> 更新
+        </button>
+    </div>
+</div>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 id="activity-title">直近24時間のアクティビティ</h4>
+    <div class="dropdown">
+        <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" id="period-selector" data-bs-toggle="dropdown" aria-expanded="false">
+            <i class="bi bi-calendar3-range"></i> 期間選択
+        </button>
+        <ul class="dropdown-menu" aria-labelledby="period-selector">
+            <li><a class="dropdown-item" href="#" data-period="24h">直近24時間</a></li>
+            <li><a class="dropdown-item" href="#" data-period="today">今日 (00:00〜)</a></li>
+        </ul>
+    </div>
+</div>
+<div class="row row-cols-1 row-cols-md-2 row-cols-lg-4 g-4 mb-4" id="activity-summary">
+    <!-- Cards will be inserted here by JavaScript -->
+</div>
+
+<h4 id="inventory-title">現在の在庫状況</h4>
+<div class="row row-cols-1 row-cols-md-2 row-cols-lg-4 g-4" id="inventory-summary">
+    <!-- Inventory cards will be inserted here -->
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const activityTitle = document.getElementById('activity-title');
+    const activityContainer = document.getElementById('activity-summary');
+    const inventoryContainer = document.getElementById('inventory-summary');
+    const lastUpdatedEl = document.getElementById('last-updated');
+
+    const actionMapping = {
+        '商品調達': { icon: 'bi-cart-plus', color: 'primary' },
+        '投稿': { icon: 'bi-send', color: 'success' },
+        'いいね': { icon: 'bi-heart', color: 'danger' },
+        'フォロー': { icon: 'bi-person-plus', color: 'info' }
+    };
+
+    function createCard(title, value, errors) {
+        const mapping = actionMapping[title] || { icon: 'bi-question-circle', color: 'secondary' };
+        return `
+        <div class="col">
+            <div class="card h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <h5 class="card-title text-${mapping.color}">${title}</h5>
+                            <span class="stat-value">${value}</span><span class="stat-label"> 件</span>
+                        </div>
+                        <i class="${mapping.icon} fs-2 text-muted"></i>
+                    </div>
+                    <div class="mt-2">
+                        <span class="error-count">エラー: ${errors}件</span>
+                    </div>
+                </div>
+            </div>
+        </div>`;
+    }
+
+    let currentPeriod = '24h'; // デフォルトの期間
+
+    async function fetchData() {
+        try {
+            // タイトルを更新
+            if (currentPeriod === 'today') {
+                activityTitle.textContent = '今日のアクティビティ';
+            } else {
+                activityTitle.textContent = '直近24時間のアクティビティ';
+            }
+
+            const [activityRes, inventoryRes] = await Promise.all([
+                fetch(`/api/dashboard/summary?period=${currentPeriod}`),
+                fetch('/api/inventory/summary')
+            ]);
+            
+            const activityData = await activityRes.json();
+            const inventoryData = await inventoryRes.json();
+
+            activityContainer.innerHTML = '';
+            for (const [action, data] of Object.entries(activityData.actions)) {
+                activityContainer.innerHTML += createCard(action, data.count, data.errors);
+            }
+
+            inventoryContainer.innerHTML = '';
+            for (const [status, count] of Object.entries(inventoryData)) {
+                inventoryContainer.innerHTML += createCard(status, count, 0);
+            }
+
+            lastUpdatedEl.textContent = `最終更新: ${new Date().toLocaleTimeString()}`;
+        } catch (error) {
+            console.error('データの取得に失敗しました:', error);
+            activityContainer.innerHTML = '<div class="alert alert-danger">データの読み込みに失敗しました。</div>';
+        }
+    }
+
+    // 期間選択ドロップダウンのイベントリスナー
+    document.querySelectorAll('#period-selector + .dropdown-menu a').forEach(item => {
+        item.addEventListener('click', function(e) {
+            e.preventDefault();
+            currentPeriod = this.dataset.period;
+            fetchData(); // 期間を変更してデータを再取得
+        });
+    });
+
+    document.getElementById('refresh-btn').addEventListener('click', fetchData);
+    fetchData();
+    setInterval(fetchData, 60000); // 1分ごとに自動更新
+});
+</script>
+{% endblock %}

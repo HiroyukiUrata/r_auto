@@ -108,6 +108,7 @@ class RakutenSearchProcureTask(BaseTask):
             logging.debug(f"収集した {len(items)} 件の商品をデータベースに登録します。")
             added_count, skipped_count = process_and_import_products(items)
             logging.info(f"商品登録処理が完了しました。新規追加: {added_count}件, スキップ: {skipped_count}件")
+            logging.info(f"[Action Summary] name=商品調達, count={added_count}")
         else:
             logging.info("楽天市場から調達できる商品がありませんでした。")
 
