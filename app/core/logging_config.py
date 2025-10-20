@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 
 class EndpointFilter(logging.Filter):
     """特定のパスへのアクセスログをフィルタリングするクラス"""
@@ -11,6 +12,18 @@ class EndpointFilter(logging.Filter):
         # uvicornのアクセスログは 'uvicorn.access' という名前で記録される
         # ログメッセージに指定されたパスが含まれていない場合にTrueを返す
         return self._path not in record.getMessage()
+
+class PlaywrightLogFilter(logging.Filter):
+    """Playwrightの冗長な 'Call log:' をログメッセージから削除するフィルタ"""
+    def filter(self, record: logging.LogRecord) -> bool:
+        # record.getMessage() はフォーマット前の生のログメッセージを返す
+        original_message = record.getMessage()
+        # "Call log:" が含まれていたら、それ以降を削除する
+        call_log_pattern = re.compile(r"\s*Call log:.*", re.DOTALL)
+        if "Call log:" in original_message:
+            # re.sub を使ってパターンに一致する部分を空文字列に置換
+            record.msg = call_log_pattern.sub("", original_message)
+        return True # 常にログを通過させる
 
 # ログファイルのパスをモジュールレベルで定義
 LOG_DIR = "db/logs"
@@ -71,5 +84,12 @@ def setup_logging():
     # uvicornのアクセスログにフィルタを追加して、/api/logsへのログを非表示にする
     uvicorn_access_logger = logging.getLogger("uvicorn.access")
     uvicorn_access_logger.addFilter(EndpointFilter(path="/api/logs"))
+
+    # 本番環境(simple)の場合、Playwrightの冗長なログを抑制する
+    if log_format_type == 'simple':
+        playwright_logger = logging.getLogger("playwright")
+        playwright_logger.setLevel(logging.WARNING)
+        # ルートロガーにフィルタを追加して、すべてのログに適用
+        logging.getLogger().addFilter(PlaywrightLogFilter())
 
     logging.debug(f"ロギング設定が完了しました。ログレベル: {log_level_str}, フォーマット: {log_format_type}")

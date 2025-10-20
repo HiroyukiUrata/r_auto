@@ -93,6 +93,22 @@ document.addEventListener('DOMContentLoaded', function () {
             </div>
         </div>`;
     }
+    const inventoryMapping = {
+        'エラー': { icon: 'bi-exclamation-triangle-fill', color: 'danger' },
+        '投稿準備完了': { icon: 'bi-check2-circle', color: 'primary' },
+        'URL取得済': { icon: 'bi-link-45deg', color: 'info' },
+        '生情報取得': { icon: 'bi-cloud-arrow-down', color: 'secondary' }
+    };
+
+    function createCard(title, value, errors) {
+        // actionMapping と inventoryMapping を結合して使う
+        const combinedMapping = {...actionMapping, ...inventoryMapping};
+        const mapping = combinedMapping[title] || { icon: 'bi-question-circle', color: 'secondary' };
+        const errorHtml = errors > 0 ? `<div class="mt-2"><span class="error-count">エラー: ${errors}件</span></div>` : '';
+        const valueHtml = value !== null ? `<span class="stat-value">${value}</span><span class="stat-label"> 件</span>` : '';
+
+        return `<div class="col"><div class="card h-100"><div class="card-body"><div class="d-flex justify-content-between align-items-start"><div><h5 class="card-title text-${mapping.color}">${title}</h5>${valueHtml}</div><i class="${mapping.icon} fs-2 text-muted"></i></div>${errorHtml}</div></div></div>`;
+    }
 
     let currentPeriod = '24h'; // デフォルトの期間
 
@@ -110,15 +126,27 @@ document.addEventListener('DOMContentLoaded', function () {
                 fetch('/api/inventory/summary')
             ]);
             
-            const activityData = await activityRes.json();
+            const summaryData = await activityRes.json();
             const inventoryData = await inventoryRes.json();
 
             activityContainer.innerHTML = '';
-            for (const [action, data] of Object.entries(activityData.actions)) {
+            // アクティビティサマリーカードを追加
+            for (const [action, data] of Object.entries(summaryData.actions)) {
                 activityContainer.innerHTML += createCard(action, data.count, data.errors);
             }
 
             inventoryContainer.innerHTML = '';
+            // 在庫状況の表示順を定義
+            const desiredStatusOrder = ['エラー', '投稿準備完了', 'URL取得済', '生情報取得'];
+
+            // 定義した順序でカードを生成
+            desiredStatusOrder.forEach(status => {
+                if (inventoryData.hasOwnProperty(status)) {
+                    inventoryContainer.innerHTML += createCard(status, inventoryData[status], 0);
+                    delete inventoryData[status]; // 処理済みのステータスを削除
+                }
+            });
+            // 定義外のステータスがあれば末尾に追加
             for (const [status, count] of Object.entries(inventoryData)) {
                 inventoryContainer.innerHTML += createCard(status, count, 0);
             }

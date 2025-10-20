@@ -48,7 +48,7 @@ class GetPostUrlTask(BaseTask):
 
             except Exception as e:
                 # 本番環境(simple)ではトレースバックを抑制し、開発環境(detailed)では表示する
-                is_detailed_log = os.getenv('LOG_FORMAT', 'detailed').lower() == 'detailed' # この行は既に修正済みですが、念のため記載
+                is_detailed_log = os.getenv('LOG_FORMAT', 'detailed').lower() == 'detailed'
                 logging.error(f"  -> 商品ID: {product['id']} の処理中に予期せぬ例外が発生しました: {e}", exc_info=is_detailed_log)
                 update_product_status(product['id'], 'エラー')
                 error_count += 1
