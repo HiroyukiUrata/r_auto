@@ -103,7 +103,7 @@ class LikeTask(BaseTask):
                         else: logger.debug(log_message)
 
                     last_liked_user = user_name # 最後に「いいね」したユーザー名を更新
-                    time.sleep(random.uniform(1, 2)) # 人間らしい間隔
+                    time.sleep(random.uniform(3, 4)) # 人間らしい間隔
 
                     # 新しい投稿を読み込むために少しスクロールする
                     page.evaluate("window.scrollBy(0, 300)") # 300ピクセル下にスクロール
