@@ -77,7 +77,7 @@ TASK_DEFINITIONS = {
         "flow": [
             ("search-and-procure-from-rakuten", {"count": "flow_count"}),
             ("get-post-url", {}),
-            ("create-caption-prompt", {})
+            ("create-caption-flow", {})
         ],
         "order": 10,
     },
@@ -141,7 +141,7 @@ TASK_DEFINITIONS = {
         "is_debug": False,
         "show_in_schedule": False, # UIには表示しない
         "description": "JSONインポート後に、URL取得と投稿文作成を連続実行します。",
-        "flow": "get-post-url | create-caption-prompt",
+        "flow": "get-post-url | create-caption-flow",
         "order": 9999,
     },
 
@@ -188,14 +188,30 @@ TASK_DEFINITIONS = {
         "description": "ステータスが「生情報取得」の商品について、ROOMの投稿用URLを取得します。",
         "order": 30,
     },
-    "create-caption-prompt": {
-        "name_ja": "投稿文作成",
+    "create-caption-browser": {
+        "name_ja": "投稿文作成 (ブラウザ)",
         "function": create_caption.create_caption_prompt,
-        "is_debug": True,
-        "description": "ステータスが「URL取得済」の商品について、Geminiで投稿文を作成します。",
+        "is_debug": False,
+        "show_in_schedule": False,
+        "description": "【旧方式】ブラウザを操作してGeminiで投稿文を作成します。",
         "order": 40,
     },
-
+    "create-caption-gemini": {
+        "name_ja": "投稿文作成 (Gemini API)",
+        "function": run_gemini_test_task,
+        "is_debug": False,
+        "show_in_schedule": False,
+        "default_kwargs": {"count": 5},
+        "description": "【新方式】Gemini APIを直接呼び出して投稿文を作成します。",
+        "order": 41,
+    },
+    "create-caption-flow": {
+        "name_ja": "投稿文作成",
+        "function": None,
+        "is_debug": True,
+        "description": "設定画面で選択された方法（ブラウザ or API）で投稿文を作成します。",
+        "order": 35,
+    },
     "backup-database": {
         "name_ja": "データベースバックアップ",
         "function": run_backup_database,

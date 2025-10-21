@@ -16,7 +16,7 @@ from app.tasks.posting import run_posting
 from app.tasks.get_post_url import run_get_post_url
 from app.tasks.import_products import process_and_import_products
 from app.core.logging_config import LOG_FILE # ログファイルのパスをインポート
-from app.core.config_manager import get_config, save_config, SCREENSHOT_DIR
+from app.core.config_manager import get_config, save_config, SCREENSHOT_DIR, clear_config_cache
 from app.core.scheduler_utils import run_threaded, run_task_with_random_delay, get_log_summary
 from datetime import date, timedelta
 
@@ -48,6 +48,7 @@ class ConfigUpdateRequest(BaseModel):
     max_delay_minutes: int | None = None
     playwright_headless: bool | None = None
     procurement_method: str | None = None
+    caption_creation_method: str | None = None
 
 class JsonImportRequest(BaseModel):
     products: list[dict]
@@ -643,11 +644,14 @@ async def delete_all_products_endpoint():
 @router.post("/api/config")
 async def update_config(config_request: ConfigUpdateRequest):
     """設定を更新する"""
+    logging.debug(f"設定更新リクエストを受け取りました: {config_request.dict()}")
     current_config = get_config()
     # リクエストで送信された値（Noneでないもの）だけを更新する
     update_data = config_request.dict(exclude_unset=True)
     current_config.update(update_data)
     save_config(current_config)
+    clear_config_cache() # 設定保存後にキャッシュをクリア
+    logging.info("設定が更新され、キャッシュがクリアされました。")
     return {"status": "success", "message": "設定を更新しました。"}
 
 
@@ -733,6 +737,29 @@ def _run_task_internal(tag: str, is_part_of_flow: bool, **kwargs):
     logging.debug(f"[_run_task_internal] tag={tag}, is_part_of_flow={is_part_of_flow}, kwargs={flow_run_kwargs}")
 
     definition = TASK_DEFINITIONS.get(tag)
+
+    # --- 商品調達フローの動的切り替え ---
+    if tag == "procure-products-flow":
+        config = get_config()
+        method = config.get("procurement_method", "rakuten_search") # デフォルトは楽天検索
+        if method == "rakuten_api":
+            actual_tag = "rakuten-api-procure"
+        else: # rakuten_search
+            actual_tag = "search-and-procure-from-rakuten"
+        logging.info(f"商品調達メソッド: {method} を使用します。実行タスク: {actual_tag}")
+        definition = TASK_DEFINITIONS.get(actual_tag)
+
+    # --- 投稿文作成フローの動的切り替え ---
+    if tag == "create-caption-flow":
+        config = get_config()
+        method = config.get("caption_creation_method", "api") # デフォルトはAPI方式
+        if method == "browser":
+            actual_tag = "create-caption-browser"
+        else: # api
+            actual_tag = "create-caption-gemini"
+        logging.info(f"投稿文作成メソッド: {method} を使用します。実行タスク: {actual_tag}")
+        definition = TASK_DEFINITIONS.get(actual_tag)
+
     if not definition:
         return JSONResponse(status_code=404, content={"status": "error", "message": f"Task '{tag}' not found."})
 
@@ -756,6 +783,28 @@ def _run_task_internal(tag: str, is_part_of_flow: bool, **kwargs):
 
             for i, (sub_task_id, sub_task_args) in enumerate(tasks_in_flow):
                 if sub_task_id in TASK_DEFINITIONS:
+                    # --- 商品調達フローの動的切り替え（フロー内実行時） ---
+                    if sub_task_id == "procure-products-flow":
+                        config = get_config()
+                        method = config.get("procurement_method", "rakuten_search")
+                        if method == "rakuten_api":
+                            sub_task_id = "rakuten-api-procure"
+                        else: # rakuten_search
+                            sub_task_id = "search-and-procure-from-rakuten"
+                        logging.info(f"フロー内タスクを動的に解決: {sub_task_id}")
+                    # --- ここまで ---
+
+                    # --- 投稿文作成フローの動的切り替え（フロー内実行時） ---
+                    if sub_task_id == "create-caption-flow":
+                        config = get_config()
+                        method = config.get("caption_creation_method", "api")
+                        if method == "browser":
+                            sub_task_id = "create-caption-browser"
+                        else: # api
+                            sub_task_id = "create-caption-gemini"
+                        logging.info(f"フロー内タスクを動的に解決: {sub_task_id}")
+                    # --- ここまで ---
+
                     sub_task_def = TASK_DEFINITIONS[sub_task_id]
                     logging.debug(f"  フロー実行中 ({i+1}/{len(tasks_in_flow)}): 「{sub_task_def['name_ja']}」")
                     sub_task_func = sub_task_def["function"]

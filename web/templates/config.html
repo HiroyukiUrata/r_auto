@@ -24,6 +24,29 @@
                     <label class="form-check-label" for="headless-switch">Playwright ヘッドレスモード</label>
                     <small class="form-text text-muted d-block">ONにするとブラウザを非表示で実行します（本番用）。OFFにするとブラウザが表示され、VNCで動作を確認できます（デバッグ用）。</small>
                 </div>
+                <div class="mb-3">
+                    <label for="procurement-method" class="form-label">
+                        <i class="bi bi-tools me-1"></i>商品調達方法
+                        <i class="bi bi-info-circle" data-bs-toggle="tooltip" data-bs-placement="top" title="商品を調達する方法を選択します。楽天APIは未実装です。"></i>
+                    </label>
+                    <select class="form-select" id="procurement-method">
+                        <option value="rakuten_search">楽天市場の検索 (ブラウザ)</option>
+                        <option value="rakuten_api" disabled>楽天API (未実装)</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label for="caption-creation-method" class="form-label">
+                        <i class="bi bi-robot me-1"></i>投稿文の生成方法
+                        <i class="bi bi-info-circle" data-bs-toggle="tooltip" data-bs-placement="top" title="投稿文を生成する方法を選択します。API方式が推奨されます。"></i>
+                    </label>
+                    <select class="form-select" id="caption-creation-method">
+                        <option value="api">Gemini API (推奨)</option>
+                        <option value="browser">ブラウザ操作 (旧方式)</option>
+                    </select>
+                    <div class="form-text">
+                        API方式は高速で安定していますが、APIキーの設定が必要です。ブラウザ操作は設定不要ですが、動作が不安定になることがあります。
+                    </div>
+                </div>
 
                 <button class="btn btn-primary" onclick="saveGlobalConfig()">
                     <i class="bi bi-save me-1"></i> 設定を保存
@@ -101,8 +124,11 @@
             const response = await fetch('/api/config');
             const config = await response.json();
             document.getElementById('headless-switch').checked = config.playwright_headless;
+            document.getElementById('procurement-method').value = config.procurement_method || 'rakuten_search';
+            document.getElementById('caption-creation-method').value = config.caption_creation_method || 'api';
         } catch (error) {
             console.error('Failed to fetch global config:', error);
+            // alert(error.message);
         }
     }
 
@@ -111,6 +137,8 @@
 
         const payload = {
             playwright_headless: isHeadless,
+            procurement_method: document.getElementById('procurement-method').value,
+            caption_creation_method: document.getElementById('caption-creation-method').value,
         };
 
         try {
@@ -143,7 +171,8 @@
                 'search-and-procure-from-rakuten',
                 'rakuten-api-procure',
                 'get-post-url',
-                'create-caption-prompt'
+                'create-caption-flow', // 統合されたタスク
+                'gemini-api-test' // テスト用
             ];
 
             tasks.forEach(task => {

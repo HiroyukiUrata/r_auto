@@ -2,6 +2,8 @@ import logging
 import os
 import json
 from app.core.base_task import BaseTask
+import re
+from app.core.database import get_products_for_caption_creation, update_ai_caption
 from google import genai
 
 PROMPT_FILE = "app/prompts/caption_prompt.txt"
@@ -9,9 +11,10 @@ class GeminiTestTask(BaseTask):
     """
     Gemini APIの動作をテストするためのタスク。
     """
-    def __init__(self):
+    def __init__(self, count: int = 5):
         super().__init__()
-        self.action_name = "Gemini APIテスト"
+        self.action_name = "投稿文作成 (Gemini API)"
+        self.target_count = count
         self.needs_browser = False
 
     def _execute_main_logic(self):
@@ -32,21 +35,22 @@ class GeminiTestTask(BaseTask):
 
         try:
             client = genai.Client(api_key=api_key)
+            
+            products = get_products_for_caption_creation(limit=self.target_count)
+            if not products:
+                logging.info("投稿文作成対象の商品はありません。")
+                return True
 
-            # テスト用のサンプルJSONデータ
-            sample_products = [
-                {"page_url": "https://example.com/product/1", "item_description": "高性能なワイヤレスイヤホン。ノイズキャンセリング機能付き。", "image_url": "https://example.com/image1.jpg", "ai_caption": ""},
-                {"page_url": "https://example.com/product/2", "item_description": "オーガニックコットン100%のふわふわタオル。", "image_url": "https://example.com/image2.jpg", "ai_caption": ""}
-            ]
-            json_string = json.dumps(sample_products, indent=2, ensure_ascii=False)
+            items_data = [{"id": p["id"], "page_url": p["url"], "item_description": p["name"], "image_url": p["image_url"], "ai_caption": ""} for p in products]
+            json_string = json.dumps(items_data, indent=2, ensure_ascii=False)
 
             # プロンプトファイルを読み込み、JSONデータと結合
             with open(PROMPT_FILE, "r", encoding="utf-8") as f:
                 prompt_template = f.read()
             
-            full_prompt = f"{prompt_template}\n\n以下のJSON配列の各要素について、`ai_caption`を生成してください。\n\n```json\n{json_string}\n```"
+            full_prompt = f"{prompt_template}\n\n以下のJSON配列の各要素について、`ai_caption`を生成してください。`id`をキーとして、元のJSON配列の形式を維持して返してください。\n\n```json\n{json_string}\n```"
 
-            logging.info(f"--- Gemini APIテストを開始します ---")
+            logging.info(f"--- Gemini APIで投稿文作成を開始します。対象: {len(products)}件 ---")
             logging.debug(f"送信するプロンプト:\n{full_prompt}")
 
             response = client.models.generate_content(
@@ -54,15 +58,37 @@ class GeminiTestTask(BaseTask):
                 contents=full_prompt,
             )
             
-            logging.info("--- 応答結果 ---")
-            logging.info(response.text)
-            return True
+            logging.debug("--- 応答結果 ---")
+            logging.debug(response.text)
+
+            # 応答からJSONを抽出してパース
+            try:
+                # AIの応答からJSON部分を抽出
+                json_match = re.search(r"```json\s*([\s\S]*?)\s*```", response.text)
+                if not json_match:
+                    logging.error("応答からJSONブロックが見つかりませんでした。")
+                    return False
+                
+                generated_items = json.loads(json_match.group(1))
+
+                id_to_caption = {item['id']: item.get('ai_caption') for item in generated_items}
+                updated_count = 0
+                for product in products:
+                    caption = id_to_caption.get(product['id'])
+                    if caption:
+                        update_ai_caption(product['id'], caption)
+                        updated_count += 1
+                logging.info(f"{updated_count}件の投稿文をデータベースに保存しました。")
+                return True
+            except (json.JSONDecodeError, KeyError) as e:
+                logging.error(f"応答JSONの解析に失敗しました: {e}")
+                return False
 
         except Exception as e:
             logging.error(f"Gemini APIの呼び出し中にエラーが発生しました: {e}", exc_info=True)
             return False
 
-def run_gemini_test_task():
+def run_gemini_test_task(count: int = 5):
     """ラッパー関数"""
-    task = GeminiTestTask()
+    task = GeminiTestTask(count=count)
     return task.run()
