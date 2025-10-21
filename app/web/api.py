@@ -739,7 +739,7 @@ def _run_task_internal(tag: str, is_part_of_flow: bool, **kwargs):
     definition = TASK_DEFINITIONS.get(tag)
 
     # --- 商品調達フローの動的切り替え ---
-    if tag == "procure-products-flow":
+    if tag == "_procure-wrapper": # ラッパータスクが呼び出されたら差し替え
         config = get_config()
         method = config.get("procurement_method", "rakuten_search") # デフォルトは楽天検索
         if method == "rakuten_api":
@@ -783,8 +783,8 @@ def _run_task_internal(tag: str, is_part_of_flow: bool, **kwargs):
 
             for i, (sub_task_id, sub_task_args) in enumerate(tasks_in_flow):
                 if sub_task_id in TASK_DEFINITIONS:
-                    # --- 商品調達フローの動的切り替え（フロー内実行時） ---
-                    if sub_task_id == "procure-products-flow":
+                    # --- フロー内の動的切り替えロジック ---
+                    if sub_task_id == "_procure-wrapper":
                         config = get_config()
                         method = config.get("procurement_method", "rakuten_search")
                         if method == "rakuten_api":
@@ -792,9 +792,7 @@ def _run_task_internal(tag: str, is_part_of_flow: bool, **kwargs):
                         else: # rakuten_search
                             sub_task_id = "search-and-procure-from-rakuten"
                         logging.info(f"フロー内タスクを動的に解決: {sub_task_id}")
-                    # --- ここまで ---
-
-                    # --- 投稿文作成フローの動的切り替え（フロー内実行時） ---
+                    
                     if sub_task_id == "create-caption-flow":
                         config = get_config()
                         method = config.get("caption_creation_method", "api")
@@ -803,7 +801,6 @@ def _run_task_internal(tag: str, is_part_of_flow: bool, **kwargs):
                         else: # api
                             sub_task_id = "create-caption-gemini"
                         logging.info(f"フロー内タスクを動的に解決: {sub_task_id}")
-                    # --- ここまで ---
 
                     sub_task_def = TASK_DEFINITIONS[sub_task_id]
                     logging.debug(f"  フロー実行中 ({i+1}/{len(tasks_in_flow)}): 「{sub_task_def['name_ja']}」")

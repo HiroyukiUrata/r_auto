@@ -69,18 +69,23 @@ from app.tasks.rakuten_api_procure import procure_from_rakuten_api
 TASK_DEFINITIONS = {
     "procure-products-flow": {
         "name_ja": "商品調達フロー",
-        "function": None, # フローなので関数なし
+        "function": None, # フローなので関数はなし
         "is_debug": True, # UIから手動実行できるようにする
         "default_kwargs": {"count": 3}, # フロー全体のデフォルト件数を設定
         "show_in_schedule": True,
         "description": "設定された方法で商品を調達し、後続タスク（URL取得→投稿文作成）を自動実行します。",
         "flow": [
-            # この部分はapi.pyで動的に解決されるため、どちらか一方をプレースホルダーとして記述
-            ("procure-products-flow", {"count": "flow_count"}),
+            ("_procure-wrapper", {"count": "flow_count"}), # 動的解決用のラッパーを呼び出す
             ("get-post-url", {}),
             ("create-caption-flow", {})
         ],
         "order": 10,
+    },
+    "_procure-wrapper": {
+        "name_ja": "（内部処理）商品調達ラッパー",
+        "function": None, # 何も実行しないプレースホルダー
+        "is_debug": False,
+        "show_in_schedule": False,
     },
     "_internal-post-article": {
         "name_ja": "（内部処理）記事投稿実行",
