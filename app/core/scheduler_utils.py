@@ -34,6 +34,7 @@ def run_task_with_random_delay(task_to_run, **kwargs):
     """
     from app.core.config_manager import get_config
     config = get_config()
+    logging.debug(f"遅延実行のための設定を読み込みました: {config}")
     max_delay_minutes = config.get('max_delay_minutes', 0)
     
     if max_delay_minutes > 0:
