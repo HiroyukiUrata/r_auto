@@ -70,7 +70,7 @@ TASK_DEFINITIONS = {
     "procure-products-flow": {
         "name_ja": "商品調達フロー",
         "function": None, # フローなので関数はなし
-        "is_debug": True, # UIから手動実行できるようにする
+        "is_debug": False, # スケジュール専用なのでUIには表示しない
         "default_kwargs": {"count": 3}, # フロー全体のデフォルト件数を設定
         "show_in_schedule": True,
         "description": "設定された方法で商品を調達し、後続タスク（URL取得→投稿文作成）を自動実行します。",
@@ -80,6 +80,14 @@ TASK_DEFINITIONS = {
             ("create-caption-flow", {})
         ],
         "order": 10,
+    },
+    "procure-products-single": {
+        "name_ja": "商品調達",
+        "function": None, # ラッパーを呼び出す
+        "is_debug": True, # UIに表示する
+        "description": "設定画面で選択された方法（ブラウザ or API）で商品を調達します。",
+        "flow": [("_procure-wrapper", {"count": "flow_count"})],
+        "order": 15,
     },
     "_procure-wrapper": {
         "name_ja": "（内部処理）商品調達ラッパー",
@@ -217,21 +225,5 @@ TASK_DEFINITIONS = {
         "is_debug": True,
         "description": "設定画面で選択された方法（ブラウザ or API）で投稿文を作成します。",
         "order": 35,
-    },
-    "backup-database": {
-        "name_ja": "データベースバックアップ",
-        "function": run_backup_database,
-        "is_debug": True, # システムコンフィグ画面に表示
-        "show_in_schedule": True, # スケジュール画面にも表示
-        "description": "データベース(products.db)のバックアップをdb/backupディレクトリに作成します。",
-        "order": 50,
-    },
-
-    "gemini-api-test": {
-        "name_ja": "Gemini API接続テスト",
-        "function": run_gemini_test_task,
-        "is_debug": True,
-        "description": "固定のプロンプトを送信し、Gemini APIが正常に呼び出せるかを確認します。",
-        "order": 1,
     },
 }
