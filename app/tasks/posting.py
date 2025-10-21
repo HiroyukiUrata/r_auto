@@ -68,7 +68,7 @@ class PostingTask(BaseTask):
             except Exception as e:
                 logging.error(f"商品ID {product['id']} の投稿処理中にエラーが発生しました: {e}")
                 if page and not page.is_closed():
-                    page.context.tracing.stop(path=os.path.join(TRACE_DIR, f"error_trace_{product['id']}.zip"))
+                    page.context.tracing.stop() # トレースは停止するが、zipファイルは保存しない
                     page.screenshot(path=os.path.join(TRACE_DIR, f"error_screenshot_{product['id']}.png"))
                 update_product_status(product['id'], 'エラー', error_message=str(e)) # エラーメッセージも記録
             finally:
