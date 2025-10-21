@@ -185,6 +185,7 @@ TASK_DEFINITIONS = {
         "name_ja": "楽天APIから商品を調達",
         "function": procure_from_rakuten_api,
         "is_debug": False, # ラッパーフローに統合されたため非表示
+        "show_in_schedule": False,
         "description": "【ダミー】楽天APIを利用して商品を調達し、DBに登録します。",
         "order": 10,
     },
@@ -192,6 +193,7 @@ TASK_DEFINITIONS = {
         "name_ja": "楽天市場から商品を検索・調達",
         "function": search_and_procure_from_rakuten,
         "is_debug": False, # ラッパーフローに統合されたため非表示
+        "show_in_schedule": False,
         "description": "キーワードを元に楽天市場を検索して商品を調達し、DBに登録します。",
         "order": 20,
     },
