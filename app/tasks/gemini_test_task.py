@@ -3,7 +3,7 @@ import os
 import json
 from app.core.base_task import BaseTask
 import re
-from app.core.database import get_products_for_caption_creation, update_ai_caption
+from app.core.database import get_products_for_caption_creation, update_ai_caption,get_products_count_for_caption_creation
 from google import genai
 
 PROMPT_FILE = "app/prompts/caption_prompt.txt"
@@ -36,7 +36,7 @@ class GeminiTestTask(BaseTask):
         try:
             client = genai.Client(api_key=api_key)
             
-            products = get_products_for_caption_creation(limit=self.target_count)
+            products = get_products_for_caption_creation()
             if not products:
                 logging.info("投稿文作成対象の商品はありません。")
                 return True

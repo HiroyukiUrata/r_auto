@@ -86,6 +86,7 @@ TASK_DEFINITIONS = {
         "function": None, # ラッパーを呼び出す
         "is_debug": True, # UIに表示する
         "description": "設定画面で選択された方法（ブラウザ or API）で商品を調達します。",
+        "default_kwargs": {"count": 5},
         "flow": [("_procure-wrapper", {"count": "flow_count"})],
         "order": 15,
     },
@@ -217,7 +218,6 @@ TASK_DEFINITIONS = {
         "function": run_gemini_test_task,
         "is_debug": False,
         "show_in_schedule": False,
-        "default_kwargs": {"count": 5},
         "description": "【新方式】Gemini APIを直接呼び出して投稿文を作成します。",
         "order": 41,
     },
