@@ -58,13 +58,17 @@
                     <button class="btn btn-sm btn-info" onclick="runTaskNow('check-login-status', 'ログイン状態チェック', event)">
                         <i class="bi bi-person-check-fill"></i> ログイン状態チェック
                     </button>
-                    <button class="btn btn-sm btn-warning" onclick="runTaskNow('save-auth-state', '認証状態の保存', event)">
+                    <button class="btn btn-sm btn-secondary" onclick="runTaskNow('save-auth-state', '認証状態の保存', event)">
                         <i class="bi bi-shield-lock-fill"></i> 認証状態の保存
+                    </button>
+                    <button class="btn btn-sm btn-warning" onclick="runTaskNow('restore-auth-state', '認証プロファイルの復元', event)">
+                        <i class="bi bi-shield-exclamation"></i> 認証プロファイルの復元
                     </button>
                 </div>
                 <small class="form-text text-muted d-block mt-2">
                     「認証状態の保存」はVNC経由で手動ログインが必要です。<br>
-                    「ログイン状態チェック」で現在の認証が有効か確認できます。
+                    「ログイン状態チェック」で現在の認証が有効か確認できます。<br>
+                    「認証プロファイルの復元」は、ログインが切れた際にバックアップから認証情報を復元します。
                 </small>
             </div>
         </div>
@@ -175,7 +179,7 @@
 
             tasks.forEach(task => {
                 // ログインチェックと認証保存は一般設定に移動したので除外
-                if (task.tag === 'check-login-status' || task.tag === 'save-auth-state') return;
+                if (task.tag === 'check-login-status' || task.tag === 'save-auth-state' || task.tag === 'restore-auth-state') return;
 
                 const taskItem = document.createElement('div');
                 taskItem.className = 'list-group-item d-flex justify-content-between align-items-center';
