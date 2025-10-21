@@ -9,6 +9,7 @@ from app.tasks import (
     run_backup_database,
     run_restore_auth_state,
 )
+from app.tasks.gemini_test_task import run_gemini_test_task
 from app.tasks.rakuten_search_procure import search_and_procure_from_rakuten
 from app.tasks.rakuten_api_procure import procure_from_rakuten_api
 
@@ -204,4 +205,11 @@ TASK_DEFINITIONS = {
         "order": 50,
     },
 
+    "gemini-api-test": {
+        "name_ja": "Gemini API接続テスト",
+        "function": run_gemini_test_task,
+        "is_debug": True,
+        "description": "固定のプロンプトを送信し、Gemini APIが正常に呼び出せるかを確認します。",
+        "order": 1,
+    },
 }
