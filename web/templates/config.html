@@ -31,7 +31,7 @@
                     </label>
                     <select class="form-select" id="procurement-method">
                         <option value="rakuten_search">楽天市場の検索 (ブラウザ)</option>
-                        <option value="rakuten_api" disabled>楽天API (未実装)</option>
+                        <option value="rakuten_api">楽天API (ダミー)</option>
                     </select>
                 </div>
                 <div class="mb-3">
@@ -168,8 +168,7 @@
             debugTaskContainer.innerHTML = '';
 
             const singleTaskIds = [
-                'search-and-procure-from-rakuten',
-                'rakuten-api-procure',
+                'procure-products-flow', // 統合されたタスク
                 'get-post-url',
                 'create-caption-flow', // 統合されたタスク
                 'gemini-api-test' // テスト用
