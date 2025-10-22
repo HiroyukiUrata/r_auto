@@ -18,11 +18,11 @@ class PlaywrightLogFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         # record.getMessage() はフォーマット前の生のログメッセージを返す
         original_message = record.getMessage()
-        # "Call log:" が含まれていたら、それ以降を削除する
-        call_log_pattern = re.compile(r"\s*Call log:.*", re.DOTALL)
-        if "Call log:" in original_message:
-            # re.sub を使ってパターンに一致する部分を空文字列に置換
-            record.msg = call_log_pattern.sub("", original_message)
+        # メッセージに "Call log:" が含まれているか確認
+        call_log_pos = original_message.find("Call log:")
+        if call_log_pos != -1:
+            # "Call log:" より前の部分だけをメッセージとして採用し、末尾の空白を削除
+            record.msg = original_message[:call_log_pos].strip()
         return True # 常にログを通過させる
 
 # ログファイルのパスをモジュールレベルで定義

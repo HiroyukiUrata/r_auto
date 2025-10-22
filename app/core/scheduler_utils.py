@@ -144,8 +144,9 @@ def get_log_summary(period='24h'):
     # [I] または INFO の両方に対応
     summary_pattern = re.compile(r"(?:\[I\]|INFO).*\[Action Summary\]\s*name=(?P<name>[^,]+),\s*count=(?P<count>\d+)")
     # [E] または ERROR の両方に対応
-    std_error_pattern = re.compile(r"(?:\[E\]|ERROR).*「(?P<name>[^」]+)」アクション中に予期せぬエラーが発生しました")
-    post_error_pattern = re.compile(r"(?:\[E\]|ERROR).*商品ID \d+ の投稿処理中にエラーが発生しました")
+    # TimeoutErrorを含む、より広範なエラーパターンを追加
+    generic_error_pattern = re.compile(r"(?:\[E\]|ERROR|\[W\]|WARNING).*「(?P<name>[^」]+)」(?:アクション中に|クリック中に|実行中に|が失敗しました).*")
+
     # タイムスタンプをキャプチャするためのより一般的な正規表現
     # 詳細形式: YYYY-MM-DD HH:MM:SS,ms
     # 簡易形式: MM-DD HH:MM:SS
@@ -200,32 +201,24 @@ def get_log_summary(period='24h'):
                     continue
 
                 # エラーの集計
-                std_error_match = std_error_pattern.search(line)
-                post_error_match = post_error_pattern.search(line)
-
-                if std_error_match:
-                    action_name = std_error_match.group('name').strip()
+                error_match = generic_error_pattern.search(line)
+                if error_match:
+                    action_name_from_log = error_match.group('name').strip()
                     # "投稿文作成 (Gemini)" のような詳細名を "投稿文作成" に丸める
-                    simple_action_name = action_name.split('(')[0].strip()
+                    simple_action_name = action_name_from_log.split('(')[0].strip()
                     
-                    if simple_action_name in actions:
+                    # マッピングを元にUI表示名を取得
+                    ui_name = log_name_to_ui_name.get(simple_action_name)
+                    if ui_name and ui_name in actions:
+                        actions[ui_name]["errors"] += 1
+                    elif simple_action_name in actions: # マッピングにないが直接一致する場合
                         actions[simple_action_name]["errors"] += 1
-                        continue # この行の処理は完了
-
-                    # エラー名が内部タスク名の場合、親フローを探して加算
-                    for flow_def in TASK_DEFINITIONS.values():
-                        flow_content = flow_def.get("flow")
-                        if not flow_content: continue
-                        
-                        flow_tasks = [t.strip() for t in flow_content.split('|')] if isinstance(flow_content, str) else [t[0] for t in flow_content]
-                        if any(TASK_DEFINITIONS.get(t, {}).get("name_ja") == simple_action_name for t in flow_tasks):
-                            parent_flow_name = flow_def.get("name_ja")
-                            if parent_flow_name and parent_flow_name in actions:
-                                actions[parent_flow_name]["errors"] += 1
-                                break
-                elif post_error_match:
-                    if "記事投稿" in actions:
-                        actions["記事投稿"]["errors"] += 1
+                # 「投稿処理中にエラー」は「記事投稿」のエラーとしてカウント
+                elif "投稿処理中にエラー" in line and "記事投稿" in actions:
+                    actions["記事投稿"]["errors"] += 1
+                # 「投稿URL取得」中のエラーは「商品調達」のエラーとしてカウント
+                elif "の処理中に予期せぬ例外が発生しました" in line and "商品調達" in actions:
+                    actions["商品調達"]["errors"] += 1
 
     except FileNotFoundError:
         logger.warning(f"ログファイルが見つかりません: {LOG_FILE}")
