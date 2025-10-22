@@ -14,7 +14,7 @@
 <!-- フローティングコントロール -->
 <div id="floating-controls" class="p-2 bg-light border rounded-pill shadow-sm">
     <div class="form-check form-switch d-inline-block me-2 align-middle">
-        <input class="form-check-input" type="checkbox" role="switch" id="auto-scroll-switch" checked>
+        <input class="form-check-input" type="checkbox" role="switch" id="auto-scroll-switch">
         <label class="form-check-label" for="auto-scroll-switch">自動スクロール</label>
     </div>
     <button type="button" class="btn btn-sm btn-outline-secondary rounded-circle" id="refresh-btn" title="手動で更新" style="width: 32px; height: 32px; line-height: 1;">
@@ -58,7 +58,7 @@
         const refreshBtn = document.getElementById('refresh-btn');
         const scrollToTopBtn = document.getElementById('scroll-to-top-btn');
         const autoScrollSwitch = document.getElementById('auto-scroll-switch');
-        let intervalId = null;
+        let refreshIntervalId = null;
 
         async function fetchLogs() {
             try {
@@ -86,13 +86,39 @@
             }
         }
 
+        function startAutoRefresh() {
+            if (refreshIntervalId === null) {
+                refreshIntervalId = setInterval(fetchLogs, 5000); // 5秒ごとに更新
+                console.log("自動更新を開始しました。");
+            }
+        }
+
+        function stopAutoRefresh() {
+            if (refreshIntervalId !== null) {
+                clearInterval(refreshIntervalId);
+                refreshIntervalId = null;
+                console.log("自動更新を停止しました。");
+            }
+        }
+
         // 更新ボタンのクリックイベント
         refreshBtn.addEventListener('click', fetchLogs);
+
+        // 自動スクロールスイッチのイベント
+        autoScrollSwitch.addEventListener('change', function() {
+            if (this.checked) {
+                logContainer.scrollTop = logContainer.scrollHeight; // ONにしたらまず一番下へ
+                startAutoRefresh(); // 自動更新を開始
+            } else {
+                stopAutoRefresh(); // 自動更新を停止
+            }
+        });
 
         // 一番上に戻るボタンのクリックイベント
         scrollToTopBtn.addEventListener('click', function() {
             logContainer.scrollTop = 0; // 一番上にスクロール
             autoScrollSwitch.checked = false; // 自動スクロールをオフにする
+            stopAutoRefresh(); // 自動更新も停止
         });
 
         // ログコンテナのスクロールイベント
@@ -102,16 +128,21 @@
             } else {
                 scrollToTopBtn.style.display = 'none';
             }
+
+            // ユーザーが手動で上にスクロールしたら自動スクロールをオフにする
+            // (一番下から少しでもスクロールアップされたら)
+            const isScrolledToBottom = logContainer.scrollHeight - logContainer.clientHeight <= logContainer.scrollTop + 1;
+            if (!isScrolledToBottom && autoScrollSwitch.checked) {
+                autoScrollSwitch.click(); // changeイベントを発火させて停止処理を呼び出す
+            }
         });
 
-        // 5秒ごとにログを自動更新
-        function startAutoRefresh() {
-            fetchLogs(); // まず一度実行
-            intervalId = setInterval(fetchLogs, 5000);
-        }
-
-        // ページ読み込み時に自動更新を開始
-        startAutoRefresh();
+        // ページ読み込み時に一度だけログを取得し、一番下にスクロールする
+        (async () => {
+            await fetchLogs();
+            // 初回読み込み時のみ、一番下までスクロール
+            logContainer.scrollTop = logContainer.scrollHeight;
+        })();
     });
 </script>
 {% endblock %}
