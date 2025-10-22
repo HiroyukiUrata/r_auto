@@ -106,12 +106,38 @@ document.addEventListener('DOMContentLoaded', function () {
         return `<div class="col"><div class="card h-100"><div class="card-body"><div class="d-flex justify-content-between align-items-start"><div><h5 class="card-title text-${mapping.color}">${title}</h5>${valueHtml}</div><i class="${mapping.icon} fs-2 text-muted"></i></div>${errorHtml}</div></div></div>`;
     }
 
-    function createNextScheduleCard(schedule) {
-        if (!schedule) {
-            return createCard('次の予定', 'なし', 0);
-        }
+    function createNextSchedulesSummaryCard(schedules) {
         const mapping = actionMapping['次の予定'];
-        const countText = schedule.count > 0 ? `(${schedule.count}件)` : '';
+
+        if (!schedules || schedules.length === 0) {
+            // 予定がない場合は、特別なカードを返す
+            return `
+            <div class="col">
+                <div class="card h-100 border-warning">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <h5 class="card-title text-${mapping.color}">次の予定</h5>
+                                <span class="stat-value">なし</span>
+                            </div>
+                            <i class="${mapping.icon} fs-2 text-muted"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+        }
+
+        let scheduleItemsHtml = '';
+        schedules.forEach(schedule => {
+            const datePrefix = schedule.date_prefix ? `(${schedule.date_prefix}) ` : '';
+            const countText = schedule.count > 0 ? ` (${schedule.count}件)` : '';
+            scheduleItemsHtml += `
+                <li class="list-group-item d-flex justify-content-between align-items-center px-0 py-1">
+                    <span class="text-muted small">${datePrefix}${schedule.time}</span>
+                    <span class="fw-bold small">${schedule.name}${countText}</span>
+                </li>`;
+        });
+
         return `
         <div class="col">
             <div class="card h-100 border-warning">
@@ -119,10 +145,12 @@ document.addEventListener('DOMContentLoaded', function () {
                     <div class="d-flex justify-content-between align-items-start">
                         <div>
                             <h5 class="card-title text-${mapping.color}">次の予定</h5>
-                            <span class="stat-value">${schedule.time}</span> <span class="stat-label">${schedule.name} ${countText}</span>
                         </div>
                         <i class="${mapping.icon} fs-2 text-muted"></i>
                     </div>
+                    <ul class="list-group list-group-flush mt-2">
+                        ${scheduleItemsHtml}
+                    </ul>
                 </div>
             </div>
         </div>`;
@@ -174,13 +202,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
             console.log("[DASHBOARD_JS] APIから受け取ったサマリーデータ:", summaryData);
             activityContainer.innerHTML = '';
-            // アクティビティサマリーカードを追加
-            if (summaryData.next_schedule) {
-                activityContainer.innerHTML += createNextScheduleCard(summaryData.next_schedule);
-            } else {
-                // スケジュールがない場合は何も表示しないか、メッセージを表示
-                activityContainer.innerHTML += createCard('次の予定', 'なし', 0);
-            }
+            // 次の予定を1つのカードにまとめて追加
+            activityContainer.innerHTML += createNextSchedulesSummaryCard(summaryData.next_schedules);
 
             for (const [action, data] of Object.entries(summaryData.actions)) {
                 activityContainer.innerHTML += createCard(action, data.count, data.errors);
