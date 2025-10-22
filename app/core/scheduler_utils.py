@@ -3,11 +3,13 @@ import logging
 import time
 import random
 import re
+import os
 from datetime import datetime, timedelta, timezone
 from app.core.logging_config import LOG_FILE
 from app.core.task_definitions import TASK_DEFINITIONS
 
 logger = logging.getLogger(__name__)
+
 
 def run_threaded(job_func, *args, **kwargs):
     """
@@ -43,6 +45,79 @@ def run_task_with_random_delay(task_to_run, **kwargs):
         time.sleep(delay_seconds)
     
     task_to_run(**kwargs)
+
+def get_last_activity_from_log(max_lines=500):
+    """
+    ログファイルを末尾から読み込み、直近の「成功」または「エラー」アクティビティを返す。
+    """
+    try:
+        if not os.path.exists(LOG_FILE):
+            return None
+
+        # ログ名とUI表示名をマッピング
+        log_name_to_ui_name = {
+            "投稿": "記事投稿",
+            "いいね": "いいね活動",
+            "フォロー": "フォロー活動",
+            "商品調達": "商品調達",
+        }
+
+        # 正規表現パターン
+        summary_pattern = re.compile(r"\[Action Summary\]\s*name=(?P<name>[^,]+),\s*count=(?P<count>\d+)")
+        error_pattern = re.compile(r"「(?P<name>[^」]+)」(?:アクション中に|実行中に|が失敗しました)")
+        timestamp_pattern = re.compile(r"^(?P<ts>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}|\d{2}-\d{2} \d{2}:\d{2}:\d{2})")
+
+        with open(LOG_FILE, "r", encoding="utf-8") as f:
+            # ファイルの末尾から効率的に読み込む（ただし、ここでは可読性のため単純な方法を採る）
+            lines = f.readlines()
+            
+            for line in reversed(lines[-max_lines:]):
+                ts_match = timestamp_pattern.match(line)
+                if not ts_match:
+                    continue
+                
+                timestamp_str = ts_match.group('ts')
+                try:
+                    # タイムスタンプの形式に応じてパース
+                    if ',' in timestamp_str:
+                        dt_obj = datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S,%f')
+                    else:
+                        dt_obj = datetime.strptime(timestamp_str, '%m-%d %H:%M:%S').replace(year=datetime.now().year)
+                    timestamp_iso = dt_obj.isoformat()
+                except ValueError:
+                    continue
+
+                # 成功ログのチェック
+                summary_match = summary_pattern.search(line)
+                if summary_match:
+                    data = summary_match.groupdict()
+                    log_name = data['name'].strip()
+                    ui_name = log_name_to_ui_name.get(log_name, log_name)
+                    count = int(data['count'])
+                    return {
+                        "name": ui_name,
+                        "timestamp": timestamp_iso,
+                        "status": "success",
+                        "message": f"{count}件の処理が完了しました。"
+                    }
+
+                # エラーログのチェック
+                if "ERROR" in line:
+                    error_match = error_pattern.search(line)
+                    if error_match:
+                        action_name = error_match.group('name').strip()
+                        # "投稿文作成 (Gemini)" -> "投稿文作成"
+                        simple_action_name = action_name.split('(')[0].strip()
+                        return {
+                            "name": simple_action_name,
+                            "timestamp": timestamp_iso,
+                            "status": "error",
+                            "message": f"処理中にエラーが発生しました。"
+                        }
+        return None # 該当ログが見つからなかった場合
+    except Exception as e:
+        logger.error(f"直近のアクティビティログ解析中にエラー: {e}", exc_info=True)
+        return None
 
 def get_log_summary(period='24h'):
     """

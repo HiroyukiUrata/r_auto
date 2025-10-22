@@ -110,7 +110,6 @@ def init_db():
         logging.info("データベースが正常に初期化されました。")
     except sqlite3.Error as e:
         logging.error(f"データベース初期化エラー: {e}")
-
 def get_error_products_in_last_24h():
     """過去24時間以内に作成され、かつステータスが「エラー」の商品を取得する"""
     conn = get_db_connection()
@@ -160,6 +159,7 @@ def get_all_inventory_products():
     products = conn.execute(query).fetchall()
     conn.close()
     return products
+
 
 def get_products_for_post_url_acquisition(limit=None):
     """投稿URL取得対象（ステータスが「生情報取得」）の商品を取得する"""

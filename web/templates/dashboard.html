@@ -38,6 +38,11 @@
     </div>
 </div>
 
+<h4 id="last-activity-title">直前のアクティビティ</h4>
+<div class="mb-4" id="last-activity-container">
+    <!-- Last activity will be inserted here by JavaScript -->
+</div>
+
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h4 id="activity-title">直近24時間のアクティビティ</h4>
     <div class="dropdown">
@@ -71,6 +76,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const activityContainer = document.getElementById('activity-summary');
     const inventoryContainer = document.getElementById('inventory-summary');
     const keywordsContainer = document.getElementById('recent-keywords-container');
+    const lastActivityContainer = document.getElementById('last-activity-container');
     const lastUpdatedEl = document.getElementById('last-updated');
 
     const actionMapping = {
@@ -119,7 +125,7 @@ document.addEventListener('DOMContentLoaded', function () {
         </div>`;
     }
 
-    let currentPeriod = '24h'; // デフォルトの期間
+    let currentPeriod = 'today'; // デフォルトの期間を「今日」に変更
 
     async function fetchData() {
         try {
@@ -130,14 +136,36 @@ document.addEventListener('DOMContentLoaded', function () {
                 activityTitle.textContent = '直近24時間のアクティビティ';
             }
 
-            const [activityRes, inventoryRes, keywordsRes] = await Promise.all([
+            const [activityRes, inventoryRes, keywordsRes, lastActivityRes] = await Promise.all([
                 fetch(`/api/dashboard/summary?period=${currentPeriod}`),
                 fetch('/api/inventory/summary'),
-                fetch('/api/dashboard/recent-keywords')
+                fetch('/api/dashboard/recent-keywords'),
+                fetch('/api/dashboard/last-activity')
             ]);
             
             const summaryData = await activityRes.json();
             const inventoryData = await inventoryRes.json();
+            const keywordsData = await keywordsRes.json();
+            const lastActivityData = await lastActivityRes.json();
+
+            // 直前のアクティビティを表示
+            console.log("[DASHBOARD_JS] APIから受け取った直前のアクティビティデータ:", lastActivityData);
+            lastActivityContainer.innerHTML = '';
+            if (lastActivityData && lastActivityData.name) {
+                const statusClass = lastActivityData.status === 'error' ? 'text-danger' : 'text-success';
+                const statusIcon = lastActivityData.status === 'error' ? 'bi-x-circle-fill' : 'bi-check-circle-fill';
+                const formattedTime = new Date(lastActivityData.timestamp).toLocaleString();
+
+                lastActivityContainer.innerHTML = `
+                    <div class="card">
+                        <div class="card-body d-flex justify-content-between align-items-center">
+                            <div><i class="${statusIcon} ${statusClass} me-2"></i><strong>${lastActivityData.name}</strong>: ${lastActivityData.message}</div>
+                            <div class="text-muted small text-nowrap">${formattedTime}</div>
+                        </div>
+                    </div>`;
+            } else {
+                lastActivityContainer.innerHTML = '<p class="text-muted">実行されたアクティビティはありません。</p>';
+            }
 
             console.log("[DASHBOARD_JS] APIから受け取ったサマリーデータ:", summaryData);
             activityContainer.innerHTML = '';
@@ -171,11 +199,10 @@ document.addEventListener('DOMContentLoaded', function () {
             }
 
             // 最近使ったキーワードを表示
-            const keywordsData = await keywordsRes.json();
             console.log("[DASHBOARD_JS] APIから受け取ったキーワードデータ:", keywordsData);
             keywordsContainer.innerHTML = '';
             if (keywordsData && keywordsData.length > 0) {
-                keywordsData.forEach(keyword => {
+                keywordsData.slice(0, 3).forEach(keyword => {
                     keywordsContainer.innerHTML += `<a href="https://search.rakuten.co.jp/search/mall/${encodeURIComponent(keyword)}/" target="_blank" class="btn btn-outline-secondary btn-sm me-2 mb-2">${keyword}</a>`;
                 });
             } else {
@@ -187,6 +214,7 @@ document.addEventListener('DOMContentLoaded', function () {
             // JavaScript側でエラーが発生した場合、コンソールに詳細を出力
             console.error('[DASHBOARD_JS] データの取得または画面描画中にエラーが発生しました:', error);
             activityContainer.innerHTML = '<div class="alert alert-danger">データの読み込みに失敗しました。</div>';
+            lastActivityContainer.innerHTML = ''; // エラー時はこちらもクリア
         }
     }
 

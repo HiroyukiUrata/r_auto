@@ -11,7 +11,9 @@ from pathlib import Path
 
 # タスク定義を一元的にインポート
 from app.core.task_definitions import TASK_DEFINITIONS
-from app.core.database import get_all_inventory_products, update_product_status, delete_all_products, init_db, delete_product, update_status_for_multiple_products, delete_multiple_products, get_product_count_by_status, get_error_products_in_last_24h, update_product_priority, update_product_order, bulk_update_products_from_data
+from app.core.database import (get_all_inventory_products, update_product_status, delete_all_products, init_db, 
+                               delete_product, update_status_for_multiple_products, delete_multiple_products, get_product_count_by_status, 
+                               get_error_products_in_last_24h, update_product_priority, update_product_order, bulk_update_products_from_data)
 from app.tasks.posting import run_posting
 from app.tasks.get_post_url import run_get_post_url
 from app.tasks.import_products import process_and_import_products
@@ -454,6 +456,24 @@ async def get_recent_keywords():
         return JSONResponse(content=[])
     except Exception as e:
         return JSONResponse(status_code=500, content={"status": "error", "message": f"キーワードの読み込みに失敗しました: {e}"})
+
+@router.get("/api/dashboard/last-activity")
+async def get_last_activity():
+    """直前に実行されたアクティビティを1件取得する"""
+    try:
+        # ログファイルを解析して直近のアクティビティを取得
+        from app.core.scheduler_utils import get_last_activity_from_log
+        last_activity = get_last_activity_from_log()
+
+        if last_activity:
+            # ログが見つかった場合、フロントエンドが期待する形式で返します。
+            return JSONResponse(content=last_activity)
+        else:
+            # ログが1件も存在しない場合は、空のオブジェクトを返します。
+            return JSONResponse(content={})
+    except Exception as e:
+        logging.error(f"直前のアクティビティ取得中にエラー: {e}", exc_info=True)
+        return JSONResponse(status_code=500, content={"status": "error", "message": "直前のアクティビティの取得に失敗しました。"})
 
 @router.post("/api/inventory/{product_id}/complete")
 async def complete_inventory_item(product_id: int):
