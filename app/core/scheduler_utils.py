@@ -46,13 +46,15 @@ def run_task_with_random_delay(task_to_run, **kwargs):
     
     task_to_run(**kwargs)
 
-def get_last_activity_from_log(max_lines=500):
+def get_recent_activities_from_log(limit=5, max_lines=1000):
     """
-    ログファイルを末尾から読み込み、直近の「成功」または「エラー」アクティビティを返す。
+    ログファイルを末尾から読み込み、直近の「成功」または「エラー」アクティビティを指定された件数まで返す。
     """
+    activities = []
+    processed_actions = {} # 重複排除用: {action_name: timestamp}
     try:
         if not os.path.exists(LOG_FILE):
-            return None
+            return []
 
         # ログ名とUI表示名をマッピング
         log_name_to_ui_name = {
@@ -68,17 +70,18 @@ def get_last_activity_from_log(max_lines=500):
         timestamp_pattern = re.compile(r"^(?P<ts>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}|\d{2}-\d{2} \d{2}:\d{2}:\d{2})")
 
         with open(LOG_FILE, "r", encoding="utf-8") as f:
-            # ファイルの末尾から効率的に読み込む（ただし、ここでは可読性のため単純な方法を採る）
             lines = f.readlines()
             
             for line in reversed(lines[-max_lines:]):
+                if len(activities) >= limit:
+                    break
+
                 ts_match = timestamp_pattern.match(line)
                 if not ts_match:
                     continue
                 
                 timestamp_str = ts_match.group('ts')
                 try:
-                    # タイムスタンプの形式に応じてパース
                     if ',' in timestamp_str:
                         dt_obj = datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S,%f')
                     else:
@@ -87,37 +90,35 @@ def get_last_activity_from_log(max_lines=500):
                 except ValueError:
                     continue
 
-                # 成功ログのチェック
                 summary_match = summary_pattern.search(line)
                 if summary_match:
                     data = summary_match.groupdict()
                     log_name = data['name'].strip()
                     ui_name = log_name_to_ui_name.get(log_name, log_name)
-                    count = int(data['count'])
-                    return {
-                        "name": ui_name,
-                        "timestamp": timestamp_iso,
-                        "status": "success",
-                        "message": f"{count}件の処理が完了しました。"
-                    }
 
-                # エラーログのチェック
+                    # 重複チェック: 1分以内に同じアクションが処理済みならスキップ
+                    if ui_name in processed_actions and (processed_actions[ui_name] - dt_obj).total_seconds() < 60:
+                        continue
+
+                    count = int(data['count'])
+                    activities.append({"name": ui_name, "timestamp": timestamp_iso, "status": "success", "message": f"{count}件の処理が完了しました。"})
+                    processed_actions[ui_name] = dt_obj # 処理済みアクションとして記録
+                    continue # この行でアクティビティを見つけたら次の行へ
+
                 if "ERROR" in line:
                     error_match = error_pattern.search(line)
                     if error_match:
                         action_name = error_match.group('name').strip()
-                        # "投稿文作成 (Gemini)" -> "投稿文作成"
+                        # 重複チェック: 1分以内に同じアクションが処理済みならスキップ
+                        if action_name in processed_actions and (processed_actions[action_name] - dt_obj).total_seconds() < 60:
+                            continue
                         simple_action_name = action_name.split('(')[0].strip()
-                        return {
-                            "name": simple_action_name,
-                            "timestamp": timestamp_iso,
-                            "status": "error",
-                            "message": f"処理中にエラーが発生しました。"
-                        }
-        return None # 該当ログが見つからなかった場合
+                        activities.append({"name": simple_action_name, "timestamp": timestamp_iso, "status": "error", "message": f"処理中にエラーが発生しました。"})
+                        processed_actions[action_name] = dt_obj # 処理済みアクションとして記録
+        return activities
     except Exception as e:
         logger.error(f"直近のアクティビティログ解析中にエラー: {e}", exc_info=True)
-        return None
+        return []
 
 def get_log_summary(period='24h'):
     """

@@ -457,20 +457,29 @@ async def get_recent_keywords():
     except Exception as e:
         return JSONResponse(status_code=500, content={"status": "error", "message": f"キーワードの読み込みに失敗しました: {e}"})
 
-@router.get("/api/dashboard/last-activity")
-async def get_last_activity():
-    """直前に実行されたアクティビティを1件取得する"""
+@router.get("/api/dashboard/recent-activities")
+async def get_recent_activities(request: Request):
+    """直前に実行されたアクティビティをn件取得する"""
     try:
-        # ログファイルを解析して直近のアクティビティを取得
-        from app.core.scheduler_utils import get_last_activity_from_log
-        last_activity = get_last_activity_from_log()
+        limit_str = request.query_params.get('limit', '5') # デフォルトは5件
+        try:
+            limit = int(limit_str)
+            if limit <= 0:
+                limit = 5
+        except ValueError:
+            limit = 5
+        
+        # ログファイルを解析して直近のアクティビティを取得する関数を呼び出す
+        from app.core.scheduler_utils import get_recent_activities_from_log
+        activities = get_recent_activities_from_log(limit=limit)
 
-        if last_activity:
-            # ログが見つかった場合、フロントエンドが期待する形式で返します。
-            return JSONResponse(content=last_activity)
+        #logging.debug(f"取得した直近のアクティビティ ({len(activities)}件): {activities}")
+
+        if activities:
+            return JSONResponse(content=activities)
         else:
-            # ログが1件も存在しない場合は、空のオブジェクトを返します。
-            return JSONResponse(content={})
+            # ログが1件も存在しない場合は、空のリストを返します。
+            return JSONResponse(content=[])
     except Exception as e:
         logging.error(f"直前のアクティビティ取得中にエラー: {e}", exc_info=True)
         return JSONResponse(status_code=500, content={"status": "error", "message": "直前のアクティビティの取得に失敗しました。"})
