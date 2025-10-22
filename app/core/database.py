@@ -150,10 +150,10 @@ def get_product_by_id(product_id):
     return dict(product) if product else None
 
 def get_all_inventory_products():
-    """在庫確認ページ用に、「投稿済」「エラー」以外の商品をすべて取得する"""
+    """在庫確認ページ用に、「投稿済」「エラー」「対象外」以外の商品をすべて取得する"""
     # 投稿準備が完了していない商品も在庫として表示するため、以前の絞り込みを解除
     query = """
-        SELECT * FROM products WHERE status NOT IN ('投稿済', 'エラー') ORDER BY priority DESC, created_at ASC
+        SELECT * FROM products WHERE status NOT IN ('投稿済', 'エラー', '対象外') ORDER BY priority DESC, created_at ASC
     """
     conn = get_db_connection()
     products = conn.execute(query).fetchall()
@@ -190,8 +190,8 @@ def get_products_count_for_caption_creation():
     return count
 
 def get_product_count_by_status():
-    """ステータスごとの商品数を取得する"""
-    query = "SELECT status, COUNT(*) as count FROM products GROUP BY status"
+    """ステータスごとの商品数を取得する（「対象外」は除く）"""
+    query = "SELECT status, COUNT(*) as count FROM products WHERE status != '対象外' GROUP BY status"
     conn = get_db_connection()
     counts = conn.execute(query).fetchall()
     conn.close()
