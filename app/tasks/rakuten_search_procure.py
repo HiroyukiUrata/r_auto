@@ -93,7 +93,7 @@ class RakutenSearchProcureTask(BaseTask):
                     if len(items) >= self.target_count:
                         break
 
-                    search_url = f"https://search.rakuten.co.jp/search/mall/{keyword}/?p={page_num}"
+                    search_url = f"https://search.rakuten.co.jp/search/mall/{keyword}/?p={page_num}&s=5"
                     logging.debug(f"検索ページにアクセスします (Page {page_num}): {search_url}")
                     page.goto(search_url, wait_until="domcontentloaded", timeout=60000)
 
