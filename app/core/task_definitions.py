@@ -181,6 +181,14 @@ TASK_DEFINITIONS = {
         "description": "保存された認証情報を使って、現在ログイン状態が維持されているかを確認します。",
         "order": 42,
     },
+    "backup-database": {
+        "name_ja": "データベースのバックアップ",
+        "function": run_backup_database,
+        "is_debug": True,
+        "show_in_schedule": True,
+        "description": "データベースファイル（商品情報など）のバックアップを作成します。",
+        "order": 45,
+    },
 
     "rakuten-api-procure": {
         "name_ja": "楽天APIから商品を調達",
