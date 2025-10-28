@@ -2,6 +2,7 @@ import logging
 import os
 import json
 import re
+import random
 from google import genai
 from app.core.base_task import BaseTask
 from app.core.database import get_users_for_ai_comment_creation, update_user_comment
@@ -9,29 +10,28 @@ from app.core.database import get_users_for_ai_comment_creation, update_user_com
 logger = logging.getLogger(__name__)
 
 PROMPT_FILE = "app/prompts/user_comment_prompt.txt"
-DEFAULT_PROMPT_TEXT = """あなたは、楽天ROOMで他のユーザーと交流するのが得意な、親しみやすいインフルエンサーです。
-以下のユーザー情報（JSON配列）の各要素について、2つのステップで処理を行ってください。
+DEFAULT_PROMPT_TEXT = """あなたは、ユーザー名から自然な呼び名を抽出するのが得意なアシスタントです。
+`name` フィールドから、コメントの冒頭で呼びかけるのに最も自然な名前やニックネームを抽出してください。
 
-ステップ1: `comment_name` の生成
-- `name` フィールドから、コメントの冒頭で呼びかけるのに最も自然な名前やニックネームを抽出してください。
+抽出ルール:
 - 絵文字、記号、説明文（「〜好き」「〜ママ」など）は名前に含めないでください。
-- 明らかに個人名ではない単語（例: 「お得情報」、「黒糖抹茶わらび餅」）の場合は、`comment_name` を空文字列（""）にしてください。
+- どうしてもニックネームや名前らしき部分が見つからない場合は、`comment_name` を空文字列（""）にしてください。
 - 判断例:
   - `nagi` -> `nagi`
   - `myk│妙佳(雅号)` -> `妙佳`
   - `MONOiROHA@色彩とお菓子と猫好き` -> `MONOiROHA`
   - `台湾🇹🇼⇄日本🇯🇵もちこ` -> `もちこ`
   - `あい♡３児ママ` -> `あい`
-  - `黒糖抹茶わらび餅` -> ""
+  - `黒糖抹茶わらび餅` -> `わらび`
+"""
 
-ステップ2: `comment_text` の生成
-- `ai_prompt_message` の状況を考慮し、感謝の気持ちが伝わる自然で親しみやすいコメントを生成してください。
-- `comment_name` が空でなければ、「{comment_name}さん、」でコメントを始めてください。
-- `recent_like_count` などの具体的な数値はコメントに含めず、「たくさん」「いつも」のような言葉で表現してください。
+COMMENT_BODY_PROMPT = """あなたは、楽天ROOMで他のユーザーと交流するのが得意な、親しみやすいインフルエンサーです。
+以下のユーザーの状況を考慮して、感謝の気持ちが伝わる自然で親しみやすいコメントの**本文のみ**を1つだけ生成してください。**名前は含めないでください。**
 
-その他の制約:
-- 150文字以内で、読みやすく記述してください。
+制約:
+- 120文字以内で、読みやすく記述してください。
 - 絵文字や顔文字を自由に使って、親しみやすさを表現してください。
+- `recent_like_count` などの具体的な数値はコメントに含めず、「たくさん」「いつも」のような言葉で表現してください。
 - 感謝の気持ちを伝えることを最優先してください。
 """
 
@@ -51,78 +51,73 @@ class CreateAiCommentTask(BaseTask):
             logger.error("環境変数 'GEMINI_API_KEY' が設定されていません。")
             return False
 
-        # プロンプトファイルの存在チェックと自動生成
-        if not os.path.exists(PROMPT_FILE):
-            logger.warning(f"プロンプトファイルが見つかりません: {PROMPT_FILE}")
-            try:
-                os.makedirs(os.path.dirname(PROMPT_FILE), exist_ok=True)
-                with open(PROMPT_FILE, 'w', encoding='utf-8') as f:
-                    f.write(DEFAULT_PROMPT_TEXT)
-                logger.info("デフォルトのプロンプトファイルを自動生成しました。")
-            except Exception as e:
-                logger.error(f"プロンプトファイルの自動生成に失敗しました: {e}")
-                return False
-
         try:
             client = genai.Client(api_key=api_key)
             
-            # AIコメント生成対象のユーザーを取得
-            users = get_users_for_ai_comment_creation() # limitなしで全件取得
+            users = get_users_for_ai_comment_creation()
             if not users:
                 logger.info("AIコメント作成対象のユーザーはいません。")
                 return True
 
             logger.info(f"--- {len(users)}人のユーザーを対象にAIコメント作成を開始します ---")
 
-            with open(PROMPT_FILE, "r", encoding="utf-8") as f:
-                prompt_template = f.read()
+            # --- ステップ1: 名前の抽出 ---
+            logger.info("--- ステップ1: 名前の抽出を開始します ---")
+            name_extraction_prompt = f"{DEFAULT_PROMPT_TEXT}\n\n以下のJSON配列の各要素について、`comment_name`を生成し、JSON配列全体を完成させてください。\n\n```json\n"
+            users_for_name_extraction = [{"id": u["id"], "name": u["name"], "comment_name": ""} for u in users]
+            name_extraction_prompt += json.dumps(users_for_name_extraction, indent=2, ensure_ascii=False) + "\n```"
+            
+            response_name = client.models.generate_content(model="gemini-2.5-flash", contents=name_extraction_prompt)
+            json_match_name = re.search(r"```json\s*([\s\S]*?)\s*```", response_name.text)
+            if not json_match_name:
+                logger.error("名前抽出の応答からJSONブロックが見つかりませんでした。")
+                return False
+            
+            extracted_names = json.loads(json_match_name.group(1))
+            id_to_comment_name = {item['id']: item.get('comment_name', '') for item in extracted_names}
+            logger.info("名前の抽出が完了しました。")
 
-            # 複数のユーザー情報をJSON形式でまとめる
-            users_info_for_prompt = [
-                {
-                    "id": user['id'],
-                    "name": user['name'],
-                    "category": user['category'],
-                    "ai_prompt_message": user['ai_prompt_message'],
-                    "like_count": user['like_count'],
-                    "recent_like_count": user['recent_like_count'],
-                    "is_following": 'はい' if user['is_following'] else 'いいえ',
-                    "comment_name": "", # ステップ1でAIに生成してもらう
-                    "comment_text": "" # ステップ2でAIに生成してもらう
-                } for user in users
+            # --- ステップ2: コメント本文の生成 ---
+            logger.info("--- ステップ2: コメント本文の生成を開始します ---")
+            
+            users_for_body_generation = [
+                # AIに渡す情報を絞り、本文生成に集中させる
+                {"id": u["id"], "ai_prompt_message": u["ai_prompt_message"], "comment_body": ""}
+                for u in users
             ]
-            json_string = json.dumps(users_info_for_prompt, indent=2, ensure_ascii=False)
+            body_generation_prompt = f"{COMMENT_BODY_PROMPT}\n\n以下のJSON配列の各要素について、`comment_body`を生成し、JSON配列全体を完成させてください。\n\n```json\n"
+            body_generation_prompt += json.dumps(users_for_body_generation, indent=2, ensure_ascii=False) + "\n```"
+            
+            response_body = client.models.generate_content(
+                model="gemini-2.5-flash", contents=body_generation_prompt
+            )
+            json_match_body = re.search(
+                r"```json\s*([\s\S]*?)\s*```", response_body.text
+            )
+            if not json_match_body:
+                logger.error("コメント本文生成の応答からJSONブロックが見つかりませんでした。")
+                return False
 
-            full_prompt = f"{prompt_template}\n\n以下のJSON配列の各要素について、`comment_name`と`comment_text`を生成し、JSON配列全体を完成させてください。`id`をキーとして、元のJSON配列の形式を維持して返してください。\n\n```json\n{json_string}\n```"
-            logger.debug(f"Geminiに送信するプロンプト:\n{full_prompt}")
+            generated_bodies = json.loads(json_match_body.group(1))
+            id_to_comment_body = {
+                item["id"]: item.get("comment_body", "") for item in generated_bodies
+            }
+            logger.info("コメント本文の生成が完了しました。")
 
-            try:
-                response = client.models.generate_content(
-                    model="gemini-2.5-flash",
-                    contents=full_prompt,
-                )
-                
-                logger.debug(f"Geminiからの応答:\n{response.text}")
+            # --- 最終的な組み立てとDB更新 ---
+            logger.info("--- 最終的なコメントを組み立て、DBを更新します ---")
+            updated_count = 0
+            for user in users:
+                comment_name = id_to_comment_name.get(user['id'], '')
+                comment_body = id_to_comment_body.get(user['id'], '')
 
-                # 応答からJSONを抽出してパース
-                json_match = re.search(r"```json\s*([\s\S]*?)\s*```", response.text)
-                if not json_match:
-                    logger.error("応答からJSONブロックが見つかりませんでした。")
-                    return False
-                
-                generated_items = json.loads(json_match.group(1))
+                if comment_body:
+                    greeting = f"{comment_name}さん、" if comment_name else ""
+                    final_comment = f"{greeting}{comment_body}"
 
-                id_to_comment = {item['id']: item.get('comment_text') for item in generated_items}
-                updated_count = 0
-                for user in users:
-                    comment = id_to_comment.get(user['id'])
-                    if comment:
-                        update_user_comment(user['id'], comment)
-                        logger.info(f"  -> '{user['name']}'へのコメント生成成功: 「{comment}」")
-                        updated_count += 1
-            except Exception as e:
-                logger.error(f"Gemini APIとの通信中または応答の解析中にエラーが発生しました: {e}", exc_info=True)
-                # このバッチは失敗したが、タスク全体は続行可能かもしれないのでFalseは返さない
+                    update_user_comment(user['id'], final_comment)
+                    logger.info(f"  -> '{user['name']}'へのコメント生成成功: 「{final_comment}」")
+                    updated_count += 1
 
             logger.info(f"--- AIコメント作成完了。{updated_count}件のコメントを更新しました。 ---")
             return True
