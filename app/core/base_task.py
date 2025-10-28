@@ -56,6 +56,8 @@ class BaseTask(ABC):
             self.context = browser.new_context(locale="ja-JP")
 
         self.page = self.context.new_page()
+        # ビューポートサイズを固定して、ヘッドレスモードと通常モードの挙動の差をなくす
+        self.page.set_viewport_size({"width": 1920, "height": 1080})
 
     def _teardown_browser(self):
         """ブラウザコンテキストを閉じる"""

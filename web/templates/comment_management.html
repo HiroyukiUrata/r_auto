@@ -26,9 +26,8 @@
             <tr>
                 <th scope="col" style="width: 5%;"></th>
                 <th scope="col" style="width: 7%;">アイコン</th>
-                <th scope="col" style="width: 40%;">ユーザー情報</th>
-                <th scope="col" style="width: 15%;">カテゴリ</th>
-                <th scope="col" style="width: 25%;">アクション/フォロー状態</th>
+                <th scope="col" style="width: 50%;">ユーザー情報</th>
+                <th scope="col" style="width: 30%;">アクション/フォロー状態</th>
                 <th scope="col" style="width: 8%;">最終コメント</th>
             </tr>
         </thead>
@@ -151,8 +150,22 @@
         const userIds = getSelectedUserIds();
         if (userIds.length === 0) return;
         if (!confirm(`${userIds.length}件のユーザーへのコメント投稿をスキップしますか？`)) return;
-        alert(`（未実装）${userIds.join(', ')} のユーザーをスキップします。`);
-        // TODO: API呼び出しを実装
+
+        fetch('/api/users/skip', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user_ids: userIds })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                alert(data.message);
+                location.reload(); // 画面をリロードしてリストを更新
+            } else {
+                alert('エラーが発生しました: ' + data.error);
+            }
+        })
+        .catch(error => alert('通信エラーが発生しました: ' + error));
     }
 
     document.addEventListener('DOMContentLoaded', function () {
@@ -203,14 +216,11 @@
                                 </a>
                             </td>
                             <td class="text-start">
-                                <div class="fw-bold truncate-cell" title="${user.name || ''}">${user.name || ''}</div>
-                                <div class="text-muted small truncate-cell" title="${user.comment_text || ''}">${user.comment_text || ''}</div>
-                            </td>
-                            <td>
                                 <div class="d-flex justify-content-between align-items-center">
-                                    <span class="badge bg-primary">${user.category || 'N/A'}</span>
-                                    <button type="button" class="btn btn-link p-0 text-secondary" onclick="showInfoModal(this.closest('tr'))" title="詳細情報を表示"><i class="bi bi-info-circle"></i></button>
+                                    <div class="fw-bold truncate-cell" title="${user.name || ''}">${user.name || ''}</div>
+                                    <button type="button" class="btn btn-link p-0 text-secondary ms-2" onclick="showInfoModal(this.closest('tr'))" title="詳細情報を表示"><i class="bi bi-info-circle"></i></button>
                                 </div>
+                                <div class="text-muted small truncate-cell" title="${user.comment_text || ''}">${user.comment_text || ''}</div>
                             </td>
                             <td class="small text-muted">
                                 <div>❤️ ${likeDisplay}</div>

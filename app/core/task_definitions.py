@@ -9,6 +9,8 @@ from app.tasks import (
     run_backup_database,
     run_restore_auth_state,
 )
+from app.tasks.test_task import run_test_task
+from app.tasks.commit_stale_actions import run_commit_stale_actions
 from app.tasks.rakuten_search_procure import search_and_procure_from_rakuten
 from app.tasks.notification_analyzer import run_notification_analyzer
 from app.tasks.rakuten_api_procure import procure_from_rakuten_api
@@ -241,28 +243,44 @@ TASK_DEFINITIONS = {
     "_internal-notification-analyzer": {
         "name_ja": "（内部処理）通知分析実行",
         "function": run_notification_analyzer,
-        "is_debug": False,
+        "is_debug": True,
         "default_kwargs": {"hours_ago": 12},
         "show_in_schedule": False,
         "description": "楽天ROOMのお知らせページからユーザーのエンゲージメント情報を分析し、DBに保存します。",
         "order": 9999,
     },
     "notification-analyzer": {
-        "name_ja": "通知分析",
+        "name_ja": "返信コメント生成",
         "function": None, # フローなので直接の関数はなし
-        "default_kwargs": {"hours_ago": 5}, # UIからの手動実行時は1時間に設定
+        "default_kwargs": {"hours_ago": 12}, # UIからの手動実行時は12時間に設定
         "is_debug": False, # 通常タスクとして表示
         "show_in_schedule": True,
-        "description": "ログイン状態を確認後、楽天ROOMのお知らせページからユーザーのエンゲージメント情報を分析し、DBに保存します。",
+        "description": "通知を分析してユーザー情報をDBに保存し、その後AIで返信コメントを生成します。",
         "order": 80,
-        "flow": [("check-login-status", {}), ("_internal-notification-analyzer", {"hours_ago": "flow_hours_ago"})]
+        "flow": [("check-login-status", {}), ("_internal-notification-analyzer", {"hours_ago": "flow_hours_ago"}), ("commit-stale-actions", {}), ("create-ai-comment", {})]
     },
     "create-ai-comment": {
         "name_ja": "AIコメント作成",
         "function": run_create_ai_comment,
         "is_debug": False,
-        "show_in_schedule": True,
+        "show_in_schedule": False,
         "description": "分析結果を元に、ユーザーへの返信コメントをAIで生成します。",
         "order": 85,
+    },
+    "commit-stale-actions": {
+        "name_ja": "古いアクションの自動コミット",
+        "function": run_commit_stale_actions,
+        "is_debug": False,
+        "show_in_schedule": False,
+        "description": "24時間以上放置されている未処理のアクションを自動的にスキップ扱いとしてコミットします。",
+        "order": 90,
+    },
+    "test-task": {
+        "name_ja": "【検証用】スクロールテスト",
+        "function": run_test_task,
+        "is_debug": True,
+        "show_in_schedule": False,
+        "description": "通知分析のスクロールロジックを段階的に検証するための軽量タスクです。お知らせページへの遷移とスクロール開始準備までを行います。",
+        "order": 999,
     },
 }

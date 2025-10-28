@@ -13,7 +13,7 @@ from pathlib import Path
 from app.core.task_definitions import TASK_DEFINITIONS
 from app.core.database import (get_all_inventory_products, update_product_status, delete_all_products, init_db, 
                                delete_product, update_status_for_multiple_products, delete_multiple_products, get_product_count_by_status,
-                               get_users_for_commenting,
+                               get_users_for_commenting, commit_user_actions,
                                get_error_products_in_last_24h, update_product_priority, update_product_order, bulk_update_products_from_data)
 from app.tasks.posting import run_posting
 from app.tasks.get_post_url import run_get_post_url
@@ -58,6 +58,9 @@ class JsonImportRequest(BaseModel):
 
 class BulkUpdateRequest(BaseModel):
     product_ids: list[int]
+
+class UserIdsRequest(BaseModel):
+    user_ids: list[str]
 
 class BulkStatusUpdateRequest(BaseModel):
     product_ids: list[int]
@@ -176,14 +179,28 @@ async def get_comment_targets():
     コメント投稿対象のユーザーリストを取得するAPI。
     """
     try:
-        # DBから投稿対象のユーザーを10件取得
-        users = get_users_for_commenting(limit=10)
+        # DBから投稿対象のユーザーを50件取得
+        users = get_users_for_commenting(limit=50)
         return JSONResponse(content=users)
         # sqlite3.Rowオブジェクトを辞書に変換してからJSONで返す
         return JSONResponse(content=[dict(user) for user in users])
     except Exception as e:
         logging.error(f"コメント対象ユーザーの取得中にエラー: {e}", exc_info=True)
         return JSONResponse(status_code=500, content={"error": str(e)})
+
+@router.post("/api/users/skip")
+async def skip_users(request: UserIdsRequest):
+    """
+    指定されたユーザーのアクションをコミット（累計に加算してrecentをリセット）する。
+    コメントは投稿しないため、last_commented_atは更新しない。
+    """
+    try:
+        committed_count = commit_user_actions(request.user_ids, is_comment_posted=False)
+        return JSONResponse(content={"status": "success", "message": f"{committed_count}件のユーザーをスキップしました。"})
+    except Exception as e:
+        logging.error(f"ユーザースキップ処理中にエラー: {e}", exc_info=True)
+        return JSONResponse(status_code=500, content={"error": "サーバーエラーが発生しました。"})
+
 
 # --- API Routes ---
 @router.get("/api/schedules")

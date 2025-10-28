@@ -122,7 +122,6 @@ def init_db():
                 recent_collect_count INTEGER DEFAULT 0, -- 今セッション
                 recent_comment_count INTEGER DEFAULT 0, -- 今セッション
                 recent_action_timestamp TEXT, -- 今セッションの最新アクション日時
-                category TEXT,
                 comment_text TEXT,
                 last_commented_at TEXT,
                 ai_prompt_message TEXT,
@@ -145,6 +144,26 @@ def init_db():
 
         add_column_to_engagement_if_not_exists(cursor, 'ai_prompt_updated_at', 'TEXT')
         add_column_to_engagement_if_not_exists(cursor, 'comment_generated_at', 'TEXT')
+
+        # --- 既存タイムスタンプのフォーマットをISO 8601に統一するマイグレーション処理 ---
+        # この処理は一度実行されると、次回以降は更新対象がなくなる
+        timestamp_columns = ['created_at', 'post_url_updated_at', 'ai_caption_created_at', 'posted_at']
+        for col in timestamp_columns:
+            # 'YYYY-MM-DD HH:MM:SS' 形式のレコードを探す
+            cursor.execute(f"SELECT id, {col} FROM products WHERE {col} LIKE '____-__-__ __:__:__'")
+            records_to_update = cursor.fetchall()
+            if records_to_update:
+                logging.info(f"'{col}' カラムの古いタイムスタンプ形式をISO 8601に変換します... (対象: {len(records_to_update)}件)")
+                updates = []
+                for row in records_to_update:
+                    try:
+                        # 文字列をdatetimeオブジェクトに変換し、ISO形式の文字列に再変換
+                        dt_obj = datetime.strptime(row[col], '%Y-%m-%d %H:%M:%S')
+                        updates.append((dt_obj.isoformat(), row['id']))
+                    except (ValueError, TypeError):
+                        continue # 不正な形式のデータはスキップ
+                if updates:
+                    cursor.executemany(f"UPDATE products SET {col} = ? WHERE id = ?", updates)
 
 
         conn.commit()
@@ -536,7 +555,9 @@ def get_latest_engagement_timestamp() -> datetime:
         cursor.execute("SELECT MAX(latest_action_timestamp) FROM user_engagement")
         result = cursor.fetchone()[0]
         if result:
-            return datetime.strptime(result, '%Y-%m-%d %H:%M:%S')
+            # ISOフォーマットの文字列からdatetimeオブジェクトに変換
+            # マイクロ秒がない場合も考慮
+            return datetime.fromisoformat(result)
     except (sqlite3.Error, TypeError, ValueError) as e:
         logging.warning(f"エンゲージメントの最新タイムスタンプ取得中にエラー: {e}")
     finally:
@@ -565,24 +586,40 @@ def bulk_upsert_user_engagements(users_data: list[dict]):
     """
     if not users_data:
         return 0
-
+    
+    # UPSERT用にデータをタプルのリストに変換
     records_to_upsert = [
         (
             d.get('id'), d.get('name'), d.get('profile_page_url'), d.get('profile_image_url'),
-            d.get('like_count', 0), d.get('collect_count', 0), d.get('comment_count', 0), d.get('follow_count', 0),
-            1 if d.get('is_following') else 0, d.get('latest_action_timestamp'),
+            1 if d.get('is_following') else 0,
             d.get('recent_like_count', 0), d.get('recent_collect_count', 0), d.get('recent_comment_count', 0),
             d.get('recent_action_timestamp'),
-            d.get('category'), d.get('comment_text'), d.get('last_commented_at'), d.get('ai_prompt_message'), d.get('ai_prompt_updated_at'), d.get('comment_generated_at')
+            d.get('ai_prompt_message'), d.get('ai_prompt_updated_at')
         ) for d in users_data
     ]
 
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
+        # 存在しない場合はINSERT、存在する場合は指定したカラムのみをUPDATE
         cursor.executemany("""
-            INSERT OR REPLACE INTO user_engagement (id, name, profile_page_url, profile_image_url, like_count, collect_count, comment_count, follow_count, is_following, latest_action_timestamp, recent_like_count, recent_collect_count, recent_comment_count, recent_action_timestamp, category, comment_text, last_commented_at, ai_prompt_message, ai_prompt_updated_at, comment_generated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO user_engagement (
+                id, name, profile_page_url, profile_image_url, is_following, 
+                recent_like_count, recent_collect_count, recent_comment_count, 
+                recent_action_timestamp, ai_prompt_message, ai_prompt_updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                name = excluded.name,
+                profile_page_url = COALESCE(excluded.profile_page_url, profile_page_url),
+                profile_image_url = excluded.profile_image_url,
+                is_following = excluded.is_following,
+                recent_like_count = recent_like_count + excluded.recent_like_count,
+                recent_collect_count = recent_collect_count + excluded.recent_collect_count,
+                recent_comment_count = recent_comment_count + excluded.recent_comment_count,
+                recent_action_timestamp = excluded.recent_action_timestamp,
+                ai_prompt_message = excluded.ai_prompt_message,
+                ai_prompt_updated_at = excluded.ai_prompt_updated_at
         """, records_to_upsert)
         conn.commit()
         return cursor.rowcount
@@ -594,10 +631,65 @@ def cleanup_old_user_engagements(days: int = 30):
     threshold_date = datetime.now() - timedelta(days=days)
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("DELETE FROM user_engagement WHERE latest_action_timestamp < ?", (threshold_date.strftime('%Y-%m-%d %H:%M:%S'),))
+    cursor.execute("DELETE FROM user_engagement WHERE latest_action_timestamp < ?", (threshold_date.isoformat(),))
     conn.commit()
     logging.info(f"{cursor.rowcount}件の古いエンゲージメントデータを削除しました（{days}日以上経過）。")
     conn.close()
+
+def commit_user_actions(user_ids: list[str], is_comment_posted: bool):
+    """
+    指定されたユーザーのrecentアクションを累計に加算し、recentをリセットする。
+    コメントが投稿された場合はlast_commented_atも更新する。
+    """
+    if not user_ids:
+        return 0
+    
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        placeholders = ','.join('?' for _ in user_ids)
+        
+        update_query = f"""
+            UPDATE user_engagement SET
+                like_count = like_count + recent_like_count,
+                collect_count = collect_count + recent_collect_count,
+                comment_count = comment_count + recent_comment_count,
+                recent_like_count = 0,
+                recent_collect_count = 0,
+                recent_comment_count = 0,
+                last_commented_at = CASE WHEN ? THEN ? ELSE last_commented_at END
+            WHERE id IN ({placeholders})
+        """
+        params = [is_comment_posted, datetime.now().isoformat()] + user_ids
+        cursor.execute(update_query, params)
+        conn.commit()
+        logging.info(f"{cursor.rowcount}件のユーザーアクションをコミットしました。")
+        return cursor.rowcount
+    finally:
+        conn.close()
+
+def get_stale_user_ids_for_commit(hours: int = 24) -> list[str]:
+    """
+    指定された時間以上、アクションがコミットされずに放置されているユーザーのIDを取得する。
+    'stale' の条件:
+    - recent_action_timestamp が指定時間より前
+    - かつ、未コミットのアクション (recent_like_countなど) が存在する
+    """
+    threshold_time = (datetime.now() - timedelta(hours=hours)).isoformat()
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        query = """
+            SELECT id FROM user_engagement
+            WHERE
+                recent_action_timestamp < ?
+                AND (recent_like_count > 0 OR recent_collect_count > 0 OR recent_comment_count > 0)
+        """
+        cursor.execute(query, (threshold_time,))
+        user_ids = [row['id'] for row in cursor.fetchall()]
+        return user_ids
+    finally:
+        conn.close()
 
 def get_users_for_commenting(limit: int = 10) -> list[dict]:
     """
@@ -609,8 +701,8 @@ def get_users_for_commenting(limit: int = 10) -> list[dict]:
     :param limit: 取得するユーザーの最大数
     :return: ユーザーデータの辞書のリスト
     """
-    three_days_ago = (datetime.now() - timedelta(days=3)).strftime('%Y-%m-%d %H:%M:%S')
-    twenty_four_hours_ago = (datetime.now() - timedelta(hours=24)).strftime('%Y-%m-%d %H:%M:%S')
+    three_days_ago = (datetime.now() - timedelta(days=3)).isoformat()
+    twenty_four_hours_ago = (datetime.now() - timedelta(hours=24)).isoformat()
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
@@ -626,14 +718,14 @@ def get_users_for_commenting(limit: int = 10) -> list[dict]:
                     (last_commented_at IS NOT NULL AND last_commented_at < '{three_days_ago}' AND recent_like_count >= 5)
                 )
             ORDER BY
-                CASE category
-                    WHEN '高スコアユーザ（連コメOK）' THEN 1
-                    WHEN '新規フォロー＆いいね感謝' THEN 2
-                    WHEN '新規フォロー' THEN 3
-                    WHEN 'いいね多謝' THEN 4
-                    WHEN 'いいね＆コレ！感謝' THEN 5
-                    WHEN 'いいね感謝' THEN 6
-                    ELSE 7
+                CASE
+                    WHEN recent_like_count >= 5 AND ai_prompt_message LIKE '%過去にも%' THEN 0 -- 最優先: 今回5いいね以上 & 過去にもアクションあり
+                    WHEN ai_prompt_message LIKE '%新規にフォローしてくれました%' AND ai_prompt_message LIKE '%いいね%' THEN 1
+                    WHEN ai_prompt_message LIKE '%新規にフォローしてくれました%' THEN 2
+                    WHEN ai_prompt_message LIKE '%常連の方です%' THEN 3
+                    WHEN ai_prompt_message LIKE '%過去にも「いいね」をしてくれたことがあります%' THEN 4
+                    WHEN ai_prompt_message LIKE '%今回も%' THEN 5
+                    ELSE 6
                 END,
                 like_count DESC
             LIMIT ?
