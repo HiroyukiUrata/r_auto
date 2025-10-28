@@ -9,11 +9,11 @@ from app.tasks import (
     run_backup_database,
     run_restore_auth_state,
 )
-from app.tasks.gemini_test_task import run_gemini_test_task
 from app.tasks.rakuten_search_procure import search_and_procure_from_rakuten
 from app.tasks.notification_analyzer import run_notification_analyzer
 from app.tasks.rakuten_api_procure import procure_from_rakuten_api
 from app.tasks.create_ai_comment import run_create_ai_comment
+from app.tasks.create_caption_api import run_create_caption_api
 
 """
 システム内の全タスクの定義を一元管理する。
@@ -225,7 +225,7 @@ TASK_DEFINITIONS = {
     },
     "create-caption-gemini": {
         "name_ja": "投稿文作成 (Gemini API)",
-        "function": run_gemini_test_task,
+        "function": run_create_caption_api,
         "is_debug": False,
         "show_in_schedule": False,
         "description": "【新方式】Gemini APIを直接呼び出して投稿文を作成します。",
