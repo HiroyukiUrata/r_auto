@@ -105,6 +105,48 @@ def init_db():
         add_column_if_not_exists(cursor, 'priority', 'INTEGER', "UPDATE products SET priority = 0")
         # `proNOWucts` のタイプミスがあった行は削除
 
+        # --- user_engagement テーブルの作成 ---
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS user_engagement (
+                id TEXT PRIMARY KEY,
+                name TEXT,
+                profile_page_url TEXT,
+                profile_image_url TEXT,
+                like_count INTEGER DEFAULT 0, -- 過去累計
+                collect_count INTEGER DEFAULT 0, -- 過去累計
+                comment_count INTEGER DEFAULT 0, -- 過去累計
+                follow_count INTEGER DEFAULT 0, -- 過去累計
+                is_following INTEGER, -- 0:未, 1:フォロー中
+                latest_action_timestamp TEXT, -- 過去最新アクション日時
+                recent_like_count INTEGER DEFAULT 0, -- 今セッション
+                recent_collect_count INTEGER DEFAULT 0, -- 今セッション
+                recent_comment_count INTEGER DEFAULT 0, -- 今セッション
+                recent_action_timestamp TEXT, -- 今セッションの最新アクション日時
+                category TEXT,
+                comment_text TEXT,
+                last_commented_at TEXT,
+                ai_prompt_message TEXT,
+                ai_prompt_updated_at TEXT,
+                comment_generated_at TEXT
+            )
+        ''')
+        logging.info("user_engagementテーブルが正常に初期化されました。")
+
+        # --- user_engagementテーブルのマイグレーション ---
+        def add_column_to_engagement_if_not_exists(cursor, column_name, column_type):
+            cursor.execute("PRAGMA table_info(user_engagement)")
+            columns = [row['name'] for row in cursor.fetchall()]
+            if column_name not in columns:
+                try:
+                    cursor.execute(f"ALTER TABLE user_engagement ADD COLUMN {column_name} {column_type}")
+                    logging.info(f"user_engagementテーブルに '{column_name}' カラムを追加しました。")
+                except sqlite3.Error as e:
+                    logging.error(f"'{column_name}' カラムの追加に失敗しました: {e}")
+
+        add_column_to_engagement_if_not_exists(cursor, 'ai_prompt_updated_at', 'TEXT')
+        add_column_to_engagement_if_not_exists(cursor, 'comment_generated_at', 'TEXT')
+
+
         conn.commit()
         conn.close()
         logging.info("データベースが正常に初期化されました。")
@@ -481,3 +523,163 @@ def bulk_update_products_from_data(products_data: list[dict]):
         conn.close()
 
     return updated_count, failed_count
+
+# --- User Engagement Table Functions ---
+
+def get_latest_engagement_timestamp() -> datetime:
+    """
+    user_engagementテーブルから最も新しいlatest_action_timestampを取得する。
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT MAX(latest_action_timestamp) FROM user_engagement")
+        result = cursor.fetchone()[0]
+        if result:
+            return datetime.strptime(result, '%Y-%m-%d %H:%M:%S')
+    except (sqlite3.Error, TypeError, ValueError) as e:
+        logging.warning(f"エンゲージメントの最新タイムスタンプ取得中にエラー: {e}")
+    finally:
+        conn.close()
+    return datetime.min
+
+def get_all_user_engagements_map() -> dict:
+    """
+    user_engagementテーブルからすべてのユーザーデータを取得し、user_idをキーとする辞書で返す。
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM user_engagement")
+        rows = cursor.fetchall()
+        return {row['id']: dict(row) for row in rows}
+    except sqlite3.Error as e:
+        logging.error(f"すべてのエンゲージメントデータ取得中にエラー: {e}")
+        return {}
+    finally:
+        conn.close()
+
+def bulk_upsert_user_engagements(users_data: list[dict]):
+    """
+    複数のユーザーエンゲージメントデータを一括で挿入または更新する (UPSERT)。
+    """
+    if not users_data:
+        return 0
+
+    records_to_upsert = [
+        (
+            d.get('id'), d.get('name'), d.get('profile_page_url'), d.get('profile_image_url'),
+            d.get('like_count', 0), d.get('collect_count', 0), d.get('comment_count', 0), d.get('follow_count', 0),
+            1 if d.get('is_following') else 0, d.get('latest_action_timestamp'),
+            d.get('recent_like_count', 0), d.get('recent_collect_count', 0), d.get('recent_comment_count', 0),
+            d.get('recent_action_timestamp'),
+            d.get('category'), d.get('comment_text'), d.get('last_commented_at'), d.get('ai_prompt_message'), d.get('ai_prompt_updated_at'), d.get('comment_generated_at')
+        ) for d in users_data
+    ]
+
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.executemany("""
+            INSERT OR REPLACE INTO user_engagement (id, name, profile_page_url, profile_image_url, like_count, collect_count, comment_count, follow_count, is_following, latest_action_timestamp, recent_like_count, recent_collect_count, recent_comment_count, recent_action_timestamp, category, comment_text, last_commented_at, ai_prompt_message, ai_prompt_updated_at, comment_generated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, records_to_upsert)
+        conn.commit()
+        return cursor.rowcount
+    finally:
+        conn.close()
+
+def cleanup_old_user_engagements(days: int = 30):
+    """指定した日数より古いエンゲージメントデータを削除する"""
+    threshold_date = datetime.now() - timedelta(days=days)
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM user_engagement WHERE latest_action_timestamp < ?", (threshold_date.strftime('%Y-%m-%d %H:%M:%S'),))
+    conn.commit()
+    logging.info(f"{cursor.rowcount}件の古いエンゲージメントデータを削除しました（{days}日以上経過）。")
+    conn.close()
+
+def get_users_for_commenting(limit: int = 10) -> list[dict]:
+    """
+    コメント投稿対象のユーザーを優先度順に取得する。
+
+    - 基本: 24時間以内のアクションがあり、未コメントのユーザー
+    - 例外: 最終コメントから3日以上経過し、かつ今セッションで5件以上のいいねがあるユーザー
+
+    :param limit: 取得するユーザーの最大数
+    :return: ユーザーデータの辞書のリスト
+    """
+    three_days_ago = (datetime.now() - timedelta(days=3)).strftime('%Y-%m-%d %H:%M:%S')
+    twenty_four_hours_ago = (datetime.now() - timedelta(hours=24)).strftime('%Y-%m-%d %H:%M:%S')
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        query = f"""
+            SELECT * FROM user_engagement
+            WHERE
+                comment_text IS NOT NULL AND comment_text != '' AND recent_action_timestamp IS NOT NULL
+                AND (
+                    -- 基本条件: 24時間以内のアクションがあり、未コメント
+                    (last_commented_at IS NULL AND recent_action_timestamp >= '{twenty_four_hours_ago}')
+                    OR
+                    -- 例外条件: 3日以上経過し、今セッションでいいね5件以上
+                    (last_commented_at IS NOT NULL AND last_commented_at < '{three_days_ago}' AND recent_like_count >= 5)
+                )
+            ORDER BY
+                CASE category
+                    WHEN '高スコアユーザ（連コメOK）' THEN 1
+                    WHEN '新規フォロー＆いいね感謝' THEN 2
+                    WHEN '新規フォロー' THEN 3
+                    WHEN 'いいね多謝' THEN 4
+                    WHEN 'いいね＆コレ！感謝' THEN 5
+                    WHEN 'いいね感謝' THEN 6
+                    ELSE 7
+                END,
+                like_count DESC
+            LIMIT ?
+        """
+        cursor.execute(query, (limit,))
+        users = [dict(row) for row in cursor.fetchall()]
+        return users
+    finally:
+        conn.close()
+
+def get_users_for_ai_comment_creation() -> list[dict]:
+    """
+    AIによるコメント生成対象のユーザーを取得する。
+    以下のいずれかの条件に合致するユーザーを対象とする。
+    1. 新規生成対象: ai_prompt_message があり、comment_generated_at が NULL
+    2. 再生成対象: ai_prompt_updated_at が comment_generated_at より新しい
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        query = """
+            SELECT * FROM user_engagement
+            WHERE
+                ai_prompt_message IS NOT NULL AND ai_prompt_message != ''
+                AND (
+                    comment_generated_at IS NULL
+                    OR ai_prompt_updated_at > comment_generated_at
+                )
+            ORDER BY latest_action_timestamp DESC
+        """
+        cursor.execute(query)
+
+        users = [dict(row) for row in cursor.fetchall()]
+        return users
+    finally:
+        conn.close()
+
+def update_user_comment(user_id: str, comment_text: str):
+    """
+    指定されたユーザーのcomment_textとcomment_generated_atを更新する。
+    """
+    now_str = datetime.now().isoformat()
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE user_engagement SET comment_text = ?, comment_generated_at = ? WHERE id = ?", (comment_text, now_str, user_id))
+        conn.commit()
+    finally:
+        conn.close()

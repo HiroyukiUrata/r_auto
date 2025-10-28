@@ -1,0 +1,254 @@
+{% extends "base.html" %}
+
+{% block title %}コメント投稿管理 - R-Auto Control Panel{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">💬 コメント投稿管理</h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <div class="btn-group me-2">
+            <button type="button" class="btn btn-sm btn-outline-primary" id="bulk-execute-btn" onclick="bulkExecute()" disabled>
+                <i class="bi bi-send-fill me-1"></i>選択したユーザーに投稿
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="bulk-skip-btn" onclick="bulkSkip()" disabled>
+                <i class="bi bi-skip-forward-fill me-1"></i>選択したユーザーをスキップ
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="select-all-toggle-btn" onclick="toggleSelectAll()">
+                <i class="bi bi-check-square me-1"></i>すべて選択
+            </button>
+        </div>
+    </div>
+</div>
+
+<div class="table-responsive">
+    <table class="table table-striped table-sm align-middle" style="table-layout: fixed; width: 100%;">
+        <thead>
+            <tr>
+                <th scope="col" style="width: 5%;"></th>
+                <th scope="col" style="width: 7%;">アイコン</th>
+                <th scope="col" style="width: 40%;">ユーザー情報</th>
+                <th scope="col" style="width: 15%;">カテゴリ</th>
+                <th scope="col" style="width: 25%;">アクション/フォロー状態</th>
+                <th scope="col" style="width: 8%;">最終コメント</th>
+            </tr>
+        </thead>
+        <tbody id="user-table-body">
+            <!-- データはJavaScriptでここに挿入されます -->
+        </tbody>
+    </table>
+</div>
+
+<!-- ユーザー情報詳細モーダル -->
+<div class="modal fade" id="infoModal" tabindex="-1" aria-labelledby="infoModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="infoModalLabel">ユーザー詳細</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <h6 class="fw-bold">ユーザー名</h6>
+        <p id="modal-user-name"></p>
+        <h6 class="fw-bold mt-3">生成済みコメント</h6>
+        <p id="modal-comment-text" style="white-space: pre-wrap;"></p>
+        <h6 class="fw-bold mt-3">全データ</h6>
+        <pre><code id="modal-full-data" class="bg-light p-2 rounded" style="font-size: 0.8rem; display: block;"></code></pre>
+      </div>
+      <div class="modal-footer">
+        <a href="#" id="modal-profile-link" class="btn btn-primary" target="_blank" rel="noopener noreferrer" style="display: none;"><i class="bi bi-box-arrow-up-right me-1"></i>プロフィールを開く</a>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">閉じる</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block styles %}
+<style>
+    .truncate-cell {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    tbody tr {
+        cursor: pointer;
+    }
+    tr.selected .img-thumbnail {
+        border: 3px solid #0d6efd;
+        padding: 1px;
+    }
+    .user-icon {
+        width: 50px;
+        height: 50px;
+        object-fit: cover;
+        border-radius: 50%;
+    }
+    .table .form-check-input {
+        width: 1.25em;
+        height: 1.25em;
+        vertical-align: middle;
+    }
+    .table th:first-child,
+    .table td:first-child {
+        display: none;
+    }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let infoModalInstance = null;
+
+    function showInfoModal(element) {
+        event.stopPropagation();
+        const user = JSON.parse(element.dataset.user);
+
+        document.getElementById('modal-user-name').textContent = user.name;
+        document.getElementById('modal-comment-text').textContent = user.comment_text;
+        document.getElementById('modal-full-data').textContent = JSON.stringify(user, null, 2);
+
+        const profileLink = document.getElementById('modal-profile-link');
+        if (user.profile_page_url && user.profile_page_url !== '取得失敗') {
+            profileLink.href = user.profile_page_url;
+            profileLink.style.display = 'inline-block';
+        } else {
+            profileLink.style.display = 'none';
+        }
+
+        infoModalInstance.show();
+    }
+
+    function getSelectedUserIds() {
+        return Array.from(document.querySelectorAll('.user-checkbox:checked')).map(cb => cb.value);
+    }
+
+    function updateBulkActionButtons() {
+        const selectedIds = getSelectedUserIds();
+        const disabled = selectedIds.length === 0;
+        document.getElementById('bulk-execute-btn').disabled = disabled;
+        document.getElementById('bulk-skip-btn').disabled = disabled;
+    }
+
+    function toggleSelectAll() {
+        const allCheckboxes = document.querySelectorAll('.user-checkbox');
+        const allSelected = getSelectedUserIds().length === allCheckboxes.length;
+        allCheckboxes.forEach(checkbox => {
+            checkbox.checked = !allSelected;
+            checkbox.closest('tr').classList.toggle('selected', !allSelected);
+        });
+        updateBulkActionButtons();
+    }
+
+    async function bulkExecute() {
+        const userIds = getSelectedUserIds();
+        if (userIds.length === 0) return;
+        if (!confirm(`${userIds.length}件のユーザーにコメントを投稿しますか？`)) return;
+        alert(`（未実装）${userIds.join(', ')} のユーザーにコメントを投稿します。`);
+        // TODO: API呼び出しを実装
+    }
+
+    async function bulkSkip() {
+        const userIds = getSelectedUserIds();
+        if (userIds.length === 0) return;
+        if (!confirm(`${userIds.length}件のユーザーへのコメント投稿をスキップしますか？`)) return;
+        alert(`（未実装）${userIds.join(', ')} のユーザーをスキップします。`);
+        // TODO: API呼び出しを実装
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        infoModalInstance = new bootstrap.Modal(document.getElementById('infoModal'));
+
+        fetch('/api/comment-targets') // TODO: このAPIエンドポイントを実装する必要がある
+            .then(response => {
+                if (!response.ok) {
+                    if (response.status === 404) return []; // 404の場合は空の配列を返す
+                    throw new Error('APIからのデータ取得に失敗しました。');
+                }
+                return response.json();
+            })
+            .then(data => {
+                const tableBody = document.getElementById('user-table-body');
+                tableBody.innerHTML = '';
+                if (data.length === 0) {
+                    tableBody.innerHTML = '<tr><td colspan="6" class="text-center">コメント投稿対象のユーザーはいません。</td></tr>';
+                    return;
+                }
+                data.forEach(user => {
+                    const escapedUserJson = JSON.stringify(user).replace(/'/g, '&apos;').replace(/"/g, '&quot;');
+                    const lastCommented = user.last_commented_at ? new Date(user.last_commented_at).toLocaleDateString('ja-JP') : 'なし';
+                    
+                    // フォロー状態のアイコンを決定
+                    // 自分がフォローしているか (is_following)
+                    const isFollowingIcon = user.is_following ? '<i class="bi bi-person-check-fill text-primary" title="あなたがフォローしています"></i>' : '<i class="bi bi-person-plus text-muted" title="あなたはフォローしていません"></i>';
+                    // 相手がフォローしてくれたか (follow_count)
+                    const followedByIcon = user.follow_count > 0 ? '<i class="bi bi-person-heart text-danger" title="相手からフォローされました"></i>' : '';
+
+                    // アクション数の表示ロジック
+                    const recentLikes = user.recent_like_count || 0;
+                    const totalLikes = user.like_count || 0;
+                    const likeDisplay = recentLikes < totalLikes ? `${recentLikes}+` : recentLikes;
+
+                    const recentCollects = user.recent_collect_count || 0;
+                    const totalCollects = user.collect_count || 0;
+                    const collectDisplay = recentCollects < totalCollects ? `${recentCollects}+` : recentCollects;
+
+                    const row = `
+                        <tr id="user-row-${user.id}" data-user='${escapedUserJson}'>
+                            <td>
+                                <input class="form-check-input user-checkbox" type="checkbox" value="${user.id}">
+                            </td>
+                            <td>
+                                <a href="${user.profile_page_url || '#'}" target="_blank" rel="noopener noreferrer">
+                                    <img src="${user.profile_image_url || 'https://via.placeholder.com/50'}" alt="${user.name}" class="user-icon img-thumbnail">
+                                </a>
+                            </td>
+                            <td class="text-start">
+                                <div class="fw-bold truncate-cell" title="${user.name || ''}">${user.name || ''}</div>
+                                <div class="text-muted small truncate-cell" title="${user.comment_text || ''}">${user.comment_text || ''}</div>
+                            </td>
+                            <td>
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <span class="badge bg-primary">${user.category || 'N/A'}</span>
+                                    <button type="button" class="btn btn-link p-0 text-secondary" onclick="showInfoModal(this.closest('tr'))" title="詳細情報を表示"><i class="bi bi-info-circle"></i></button>
+                                </div>
+                            </td>
+                            <td class="small text-muted">
+                                <div>❤️ ${likeDisplay}</div>
+                                <div>📂 ${collectDisplay}</div>
+                                <div class="mt-1">
+                                    ${isFollowingIcon}
+                                    ${followedByIcon}
+                                </div>
+                            </td>
+                            <td class="small text-muted">
+                                ${lastCommented}
+                            </td>
+                        </tr>
+                    `;
+                    tableBody.innerHTML += row;
+                });
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                const tableBody = document.getElementById('user-table-body');
+                tableBody.innerHTML = `<tr><td colspan="6" class="text-center text-danger">${error.message}</td></tr>`;
+            });
+
+        document.getElementById('user-table-body').addEventListener('change', function (e) {
+            if (e.target.classList.contains('user-checkbox')) {
+                e.target.closest('tr').classList.toggle('selected', e.target.checked);
+                updateBulkActionButtons();
+            }
+        });
+
+        document.getElementById('user-table-body').addEventListener('click', function (e) {
+            if (e.target.closest('a, button, .form-check-input')) return;
+            
+            const row = e.target.closest('tr');
+            // チェックボックスをクリックする動作に変更
+            const checkbox = row.querySelector('.user-checkbox');
+            if (checkbox) checkbox.click();
+        });
+    });
+</script>
+{% endblock %}

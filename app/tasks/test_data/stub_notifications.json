@@ -1,0 +1,146 @@
+[
+  {
+    "id": "user_A",
+    "name": "Aさん（高スコア候補）",
+    "profile_image_url": "/user_A.jpg",
+    "action_text": "あなたの商品にいいねしました",
+    "action_timestamp": "2025-10-26 10:00:00",
+    "is_following": true
+  },
+  {
+    "id": "user_A",
+    "name": "Aさん（高スコア候補）",
+    "profile_image_url": "/user_A.jpg",
+    "action_text": "あなたの商品にいいねしました",
+    "action_timestamp": "2025-10-26 10:01:00",
+    "is_following": true
+  },
+  {
+    "id": "user_A",
+    "name": "Aさん（高スコア候補）",
+    "profile_image_url": "/user_A.jpg",
+    "action_text": "あなたの商品にいいねしました",
+    "action_timestamp": "2025-10-26 10:02:00",
+    "is_following": true
+  },
+  {
+    "id": "user_A",
+    "name": "Aさん（高スコア候補）",
+    "profile_image_url": "/user_A.jpg",
+    "action_text": "あなたの商品をコレ！しました",
+    "action_timestamp": "2025-10-26 10:03:00",
+    "is_following": true
+  },
+  {
+    "id": "user_A",
+    "name": "Aさん（高スコア候補）",
+    "profile_image_url": "/user_A.jpg",
+    "action_text": "あなたをフォローしました",
+    "action_timestamp": "2025-10-26 10:04:00",
+    "is_following": true
+  },
+  {
+    "id": "user_B",
+    "name": "Bさん（いいね多謝）",
+    "profile_image_url": "/user_B.jpg",
+    "action_text": "あなたの商品にいいねしました",
+    "action_timestamp": "2025-10-26 11:00:00",
+    "is_following": true
+  },
+  {
+    "id": "user_B",
+    "name": "Bさん（いいね多謝）",
+    "profile_image_url": "/user_B.jpg",
+    "action_text": "あなたの商品にいいねしました",
+    "action_timestamp": "2025-10-26 11:01:00",
+    "is_following": true
+  },
+  {
+    "id": "user_B",
+    "name": "Bさん（いいね多謝）",
+    "profile_image_url": "/user_B.jpg",
+    "action_text": "あなたの商品にいいねしました",
+    "action_timestamp": "2025-10-26 11:02:00",
+    "is_following": true
+  },
+  {
+    "id": "user_C",
+    "name": "Cさん（新規フォロー＆いいね）",
+    "profile_image_url": "/user_C.jpg",
+    "action_text": "あなたをフォローしました",
+    "action_timestamp": "2025-10-26 12:00:00",
+    "is_following": true
+  },
+  {
+    "id": "user_C",
+    "name": "Cさん（新規フォロー＆いいね）",
+    "profile_image_url": "/user_C.jpg",
+    "action_text": "あなたの商品にいいねしました",
+    "action_timestamp": "2025-10-26 12:01:00",
+    "is_following": true
+  },
+  {
+    "id": "user_D",
+    "name": "Dさん（未フォロー＆いいね）",
+    "profile_image_url": "/user_D.jpg",
+    "action_text": "あなたの商品にいいねしました",
+    "action_timestamp": "2025-10-26 13:00:00",
+    "is_following": false
+  },
+  {
+    "id": "user_E",
+    "name": "Eさん（いいね＆コレ！）",
+    "profile_image_url": "/user_E.jpg",
+    "action_text": "あなたの商品にいいねしました",
+    "action_timestamp": "2025-10-26 14:00:00",
+    "is_following": true
+  },
+  {
+    "id": "user_E",
+    "name": "Eさん（いいね＆コレ！）",
+    "profile_image_url": "/user_E.jpg",
+    "action_text": "あなたの商品をコレ！しました",
+    "action_timestamp": "2025-10-26 14:01:00",
+    "is_following": true
+  },
+  {
+    "id": "user_F",
+    "name": "Fさん（新規フォローのみ）",
+    "profile_image_url": "/user_F.jpg",
+    "action_text": "あなたをフォローしました",
+    "action_timestamp": "2025-10-26 15:00:00",
+    "is_following": true
+  },
+  {
+    "id": "user_G",
+    "name": "Gさん（いいね感謝）",
+    "profile_image_url": "/user_G.jpg",
+    "action_text": "あなたの商品にいいねしました",
+    "action_timestamp": "2025-10-26 16:00:00",
+    "is_following": true
+  },
+  {
+    "id": "user_H",
+    "name": "Hさん（コメントあり）",
+    "profile_image_url": "/user_H.jpg",
+    "action_text": "あなたの商品にコメントしました",
+    "action_timestamp": "2025-10-26 17:00:00",
+    "is_following": true
+  },
+  {
+    "id": "user_I",
+    "name": "Iさん（連コメ防止対象）",
+    "profile_image_url": "/user_I.jpg",
+    "action_text": "あなたの商品にいいねしました",
+    "action_timestamp": "2025-10-26 18:00:00",
+    "is_following": true
+  },
+  {
+    "id": "user_J",
+    "name": "Jさん（その他）",
+    "profile_image_url": "/user_J.jpg",
+    "action_text": "あなたの商品をROOM CLIPしました",
+    "action_timestamp": "2025-10-26 19:00:00",
+    "is_following": true
+  }
+]

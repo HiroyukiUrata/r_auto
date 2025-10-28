@@ -12,7 +12,8 @@ from pathlib import Path
 # タスク定義を一元的にインポート
 from app.core.task_definitions import TASK_DEFINITIONS
 from app.core.database import (get_all_inventory_products, update_product_status, delete_all_products, init_db, 
-                               delete_product, update_status_for_multiple_products, delete_multiple_products, get_product_count_by_status, 
+                               delete_product, update_status_for_multiple_products, delete_multiple_products, get_product_count_by_status,
+                               get_users_for_commenting,
                                get_error_products_in_last_24h, update_product_priority, update_product_order, bulk_update_products_from_data)
 from app.tasks.posting import run_posting
 from app.tasks.get_post_url import run_get_post_url
@@ -117,6 +118,15 @@ async def read_error_management(request: Request):
     """エラー管理ページを表示する"""
     # ファイル名を解析するための正規表現パターン
     # 例: error_いいね_20231027-103045.png
+    return request.app.state.templates.TemplateResponse("error_management.html", {"request": request})
+
+@router.get("/comment-management", response_class=HTMLResponse)
+async def read_comment_management(request: Request):
+    """コメント投稿管理ページを表示する"""
+    return request.app.state.templates.TemplateResponse("comment_management.html", {"request": request})
+
+@router.get("/api/screenshots")
+async def get_screenshots():
     filename_pattern = re.compile(r'^(?P<prefix>[^_]+)_(?P<action_name>.+)_(?P<timestamp>\d{8}-\d{6})\.png$')
     
     files = []
@@ -158,6 +168,22 @@ async def read_error_management(request: Request):
 
     # 既存のエラー商品表示機能はそのままに、スクリーンショットの情報を追加で渡す
     return request.app.state.templates.TemplateResponse("error_management.html", {"request": request, "files": files, "file_details": file_details})
+    return JSONResponse(content={"files": files, "file_details": file_details})
+
+@router.get("/api/comment-targets")
+async def get_comment_targets():
+    """
+    コメント投稿対象のユーザーリストを取得するAPI。
+    """
+    try:
+        # DBから投稿対象のユーザーを10件取得
+        users = get_users_for_commenting(limit=10)
+        return JSONResponse(content=users)
+        # sqlite3.Rowオブジェクトを辞書に変換してからJSONで返す
+        return JSONResponse(content=[dict(user) for user in users])
+    except Exception as e:
+        logging.error(f"コメント対象ユーザーの取得中にエラー: {e}", exc_info=True)
+        return JSONResponse(status_code=500, content={"error": str(e)})
 
 # --- API Routes ---
 @router.get("/api/schedules")

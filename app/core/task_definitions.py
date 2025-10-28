@@ -11,7 +11,9 @@ from app.tasks import (
 )
 from app.tasks.gemini_test_task import run_gemini_test_task
 from app.tasks.rakuten_search_procure import search_and_procure_from_rakuten
+from app.tasks.notification_analyzer import run_notification_analyzer
 from app.tasks.rakuten_api_procure import procure_from_rakuten_api
+from app.tasks.create_ai_comment import run_create_ai_comment
 
 """
 システム内の全タスクの定義を一元管理する。
@@ -235,5 +237,32 @@ TASK_DEFINITIONS = {
         "is_debug": True,
         "description": "設定画面で選択された方法（ブラウザ or API）で投稿文を作成します。",
         "order": 35,
+    },
+    "_internal-notification-analyzer": {
+        "name_ja": "（内部処理）通知分析実行",
+        "function": run_notification_analyzer,
+        "is_debug": False,
+        "default_kwargs": {"hours_ago": 12},
+        "show_in_schedule": False,
+        "description": "楽天ROOMのお知らせページからユーザーのエンゲージメント情報を分析し、DBに保存します。",
+        "order": 9999,
+    },
+    "notification-analyzer": {
+        "name_ja": "通知分析",
+        "function": None, # フローなので直接の関数はなし
+        "default_kwargs": {"hours_ago": 5}, # UIからの手動実行時は1時間に設定
+        "is_debug": False, # 通常タスクとして表示
+        "show_in_schedule": True,
+        "description": "ログイン状態を確認後、楽天ROOMのお知らせページからユーザーのエンゲージメント情報を分析し、DBに保存します。",
+        "order": 80,
+        "flow": [("check-login-status", {}), ("_internal-notification-analyzer", {"hours_ago": "flow_hours_ago"})]
+    },
+    "create-ai-comment": {
+        "name_ja": "AIコメント作成",
+        "function": run_create_ai_comment,
+        "is_debug": False,
+        "show_in_schedule": True,
+        "description": "分析結果を元に、ユーザーへの返信コメントをAIで生成します。",
+        "order": 85,
     },
 }
