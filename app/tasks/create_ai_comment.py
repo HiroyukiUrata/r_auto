@@ -3,6 +3,8 @@ import os
 import json
 import re
 import random
+import time
+from google.genai.errors import ServerError
 from google import genai
 from app.core.base_task import BaseTask
 from app.core.database import get_users_for_ai_comment_creation, update_user_comment
@@ -57,13 +59,13 @@ class CreateAiCommentTask(BaseTask):
             
             users = get_users_for_ai_comment_creation()
             if not users:
-                logger.info("AIコメント作成対象のユーザーはいません。")
+                logger.debug("AIコメント作成対象のユーザーはいません。")
                 return True
 
-            logger.info(f"--- {len(users)}人のユーザーを対象にAIコメント作成を開始します ---")
+            logger.debug(f"--- {len(users)}人のユーザーを対象にAIコメント作成を開始します ---")
 
             # --- ステップ1: 名前の抽出 ---
-            logger.info("--- ステップ1: 名前の抽出を開始します ---")
+            logger.debug("--- ステップ1: 名前の抽出を開始します ---")
             name_extraction_prompt = f"{DEFAULT_PROMPT_TEXT}\n\n以下のJSON配列の各要素について、`comment_name`を生成し、JSON配列全体を完成させてください。\n\n```json\n"
             users_for_name_extraction = [{"id": u["id"], "name": u["name"], "comment_name": ""} for u in users]
             name_extraction_prompt += json.dumps(users_for_name_extraction, indent=2, ensure_ascii=False) + "\n```"
@@ -76,10 +78,10 @@ class CreateAiCommentTask(BaseTask):
             
             extracted_names = json.loads(json_match_name.group(1))
             id_to_comment_name = {item['id']: item.get('comment_name', '') for item in extracted_names}
-            logger.info("名前の抽出が完了しました。")
+            logger.debug("名前の抽出が完了しました。")
 
             # --- ステップ2: コメント本文の生成 ---
-            logger.info("--- ステップ2: コメント本文の生成を開始します ---")
+            logger.debug("--- ステップ2: コメント本文の生成を開始します ---")
             
             users_for_body_generation = [
                 # AIに渡す情報を絞り、本文生成に集中させる
@@ -89,11 +91,24 @@ class CreateAiCommentTask(BaseTask):
             body_generation_prompt = f"{COMMENT_BODY_PROMPT}\n\n以下のJSON配列の各要素について、`comment_body`を生成し、JSON配列全体を完成させてください。\n\n```json\n"
             body_generation_prompt += json.dumps(users_for_body_generation, indent=2, ensure_ascii=False) + "\n```"
             
-            response_body = client.models.generate_content(
-                model="gemini-2.5-flash", contents=body_generation_prompt
-            )
+            response_body = None
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    response_body = client.models.generate_content(
+                        model="gemini-2.5-flash", contents=body_generation_prompt
+                    )
+                    break # 成功したらループを抜ける
+                except ServerError as e:
+                    if "503" in str(e) and attempt < max_retries - 1:
+                        wait_time = (2 ** attempt) + random.uniform(0, 1) # 1, 3, 7秒...と待機時間を増やす
+                        logger.warning(f"Gemini APIが過負荷です。{wait_time:.1f}秒待機して再試行します... ({attempt + 1}/{max_retries})")
+                        time.sleep(wait_time)
+                    else:
+                        raise # 503以外のエラー、または最終リトライでも失敗した場合はエラーを再送出
+
             json_match_body = re.search(
-                r"```json\s*([\s\S]*?)\s*```", response_body.text
+                r"```json\s*([\s\S]*?)\s*```", response_body.text if response_body else ""
             )
             if not json_match_body:
                 logger.error("コメント本文生成の応答からJSONブロックが見つかりませんでした。")
@@ -103,10 +118,10 @@ class CreateAiCommentTask(BaseTask):
             id_to_comment_body = {
                 item["id"]: item.get("comment_body", "") for item in generated_bodies
             }
-            logger.info("コメント本文の生成が完了しました。")
+            logger.debug("コメント本文の生成が完了しました。")
 
             # --- 最終的な組み立てとDB更新 ---
-            logger.info("--- 最終的なコメントを組み立て、DBを更新します ---")
+            logger.debug("--- 最終的なコメントを組み立て、DBを更新します ---")
             updated_count = 0
             for user in users:
                 comment_name = id_to_comment_name.get(user['id'], '')
@@ -117,7 +132,7 @@ class CreateAiCommentTask(BaseTask):
                     final_comment = f"{greeting}{comment_body}"
 
                     update_user_comment(user['id'], final_comment)
-                    logger.info(f"  -> '{user['name']}'へのコメント生成成功: 「{final_comment}」")
+                    logger.debug(f"  -> '{user['name']}'へのコメント生成成功: 「{final_comment}」")
                     updated_count += 1
 
             logger.info(f"--- AIコメント作成完了。{updated_count}件のコメントを更新しました。 ---")

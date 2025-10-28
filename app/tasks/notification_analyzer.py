@@ -81,6 +81,7 @@ class NotificationAnalyzerTask(BaseTask):
     def __init__(self, hours_ago: int = 12):
         super().__init__(count=None) # このタスクはcount引数を直接使わない
         self.hours_ago = hours_ago
+        logging.debug(f"NotificationAnalyzerTask initialized with hours_ago = {self.hours_ago}")
         self.action_name = "通知分析"
         self.needs_browser = True
         self.use_auth_profile = True # ログイン状態が必要
@@ -118,7 +119,7 @@ class NotificationAnalyzerTask(BaseTask):
                 break
 
             last_count = current_count
-            logger.debug(f"  スクロール {attempt + 1}回目: {current_count}件のアクティビティ通知を検出。")
+            #logger.debug(f"  スクロール {attempt + 1}回目: {current_count}件のアクティビティ通知を検出。")
             
             page.evaluate("window.scrollBy(0, 500)")
             
@@ -128,9 +129,10 @@ class NotificationAnalyzerTask(BaseTask):
                     f"document.querySelectorAll(\"li[ng-repeat='notification in notifications.activityNotifications']\").length > {last_count}",
                     timeout=7000  # 7秒待っても増えなければタイムアウト
                 )
-                logger.debug("  -> 新しい通知が読み込まれました。")
+                #logger.debug("  -> 新しい通知が読み込まれました。")
             except PlaywrightError:
-                logger.debug("  -> 待機時間が経過しましたが、新しい通知は読み込まれませんでした。")
+                pass
+                #logger.debug("  -> 待機時間が経過しましたが、新しい通知は読み込まれませんでした。")
 
             # --- 時刻ベースの停止条件 ---
             last_item_timestamp_str = notification_list_items.last.locator("span.notice-time").get_attribute("title")
@@ -186,7 +188,7 @@ class NotificationAnalyzerTask(BaseTask):
         notification_list_items = self._scroll_to_bottom_and_collect_items(page)
 
         # --- 3. データ抽出 ---
-        logger.info(f"--- フェーズ1: {notification_list_items.count()}件の通知から基本情報を収集します。 ---")
+        logger.debug(f"--- フェーズ1: {notification_list_items.count()}件の通知から基本情報を収集します。 ---")
         all_notifications = []
         for item in notification_list_items.all():
             try:
@@ -238,7 +240,7 @@ class NotificationAnalyzerTask(BaseTask):
                 logger.warning(f"通知アイテムの取得中に予期せぬエラー: {item_error}")
 
         # --- フェーズ2: ユーザー単位で情報を集約し、過去データと合算 ---
-        logger.info(f"--- フェーズ2: {len(all_notifications)}件の通知をユーザー単位で集約します。 ---")
+        logger.debug(f"--- フェーズ2: {len(all_notifications)}件の通知をユーザー単位で集約します。 ---")
         aggregated_users = {}
         for notification in all_notifications:
             user_id_val = notification['id']
@@ -269,7 +271,7 @@ class NotificationAnalyzerTask(BaseTask):
             if new_ts > current_ts:
                 aggregated_users[user_id_val]['recent_action_timestamp'] = notification['action_timestamp']
 
-        logger.info(f"  -> {len(aggregated_users)}人のユニークユーザーに集約しました。")
+        logger.debug(f"  -> {len(aggregated_users)}人のユニークユーザーに集約しました。")
 
 
         # --- フェーズ3: 時間条件でフィルタリングし、優先度順にソート ---
@@ -311,14 +313,14 @@ class NotificationAnalyzerTask(BaseTask):
             except (ValueError, TypeError) as e:
                 logger.warning(f"ユーザー '{user.get('name')}' の不正な日付形式のタイムスタンプをスキップ: {user.get('latest_action_timestamp')} - {e}")
         
-        logger.info(f"  -> {len(users_to_process)}人のユーザーが処理対象です。")
+        logger.debug(f"  -> {len(users_to_process)}人のユーザーが処理対象です。")
 
         if not users_to_process:
-            logger.info("処理対象のユーザーが見つかりませんでした。")
-            logger.info("処理対象のユーザーが見つかりませんでした。タスクを終了します。")
+            logger.debug("処理対象のユーザーが見つかりませんでした。")
+            logger.debug("処理対象のユーザーが見つかりませんでした。タスクを終了します。")
             return True
 
-        logger.info("優先度順にソートします。")
+        logger.debug("優先度順にソートします。")
         sorted_users = sorted(
             users_to_process,
             key=lambda u: (
@@ -349,19 +351,19 @@ class NotificationAnalyzerTask(BaseTask):
         
 
         # --- フェーズ4: URL取得 ---
-        logger.info(f"--- フェーズ4: {len(sorted_users)}人のプロフィールURLを取得します。 ---")
+        logger.debug(f"--- フェーズ4: {len(sorted_users)}人のプロフィールURLを取得します。 ---")
         final_user_data = []
         last_scroll_position = 0  # スクロール位置を記憶する変数を初期化
 
-        for i, user_info in enumerate(sorted_users):
-            logger.debug(f"  {i+1}/{len(sorted_users)}: 「{user_info['name']}」のURLを取得中...")
+        for i, user_debug in enumerate(sorted_users):
+            logger.debug(f"  {i+1}/{len(sorted_users)}: 「{user_debug['name']}」のURLを取得中...")
 
             # DBにURLが既に存在するかチェック
-            existing_user = existing_users_map.get(user_info['id'])
+            existing_user = existing_users_map.get(user_debug['id'])
             if existing_user and existing_user.get('profile_page_url') and existing_user.get('profile_page_url') != '取得失敗':
-                user_info['profile_page_url'] = existing_user['profile_page_url']
-                logger.debug(f"  -> DBにURLが既に存在するためスキップ: {user_info['profile_page_url']}")
-                final_user_data.append(user_info)
+                user_debug['profile_page_url'] = existing_user['profile_page_url']
+                logger.debug(f"  -> DBにURLが既に存在するためスキップ: {user_debug['profile_page_url']}")
+                final_user_data.append(user_debug)
                 continue
 
             try:
@@ -372,7 +374,7 @@ class NotificationAnalyzerTask(BaseTask):
                     logger.debug(f"  スクロール位置を {last_scroll_position}px に復元しました。")
 
                 # ユーザーの通知アイテムを見つける
-                user_li_locator = page.locator(f"li[ng-repeat='notification in notifications.activityNotifications']:has-text(\"{user_info['name']}\")").filter(has=page.locator(f"span.notice-name span.strong:text-is(\"{user_info['name']}\")")).first
+                user_li_locator = page.locator(f"li[ng-repeat='notification in notifications.activityNotifications']:has-text(\"{user_debug['name']}\")").filter(has=page.locator(f"span.notice-name span.strong:text-is(\"{user_debug['name']}\")")).first
                 
                 # 要素が見つかるまでスクロール
                 is_found = False
@@ -380,15 +382,15 @@ class NotificationAnalyzerTask(BaseTask):
                     if user_li_locator.is_visible():
                         is_found = True
                         break
-                    logger.debug(f"  ユーザー「{user_info['name']}」の要素が見つかりません。スクロールします... ({attempt + 1}/30)")
+                    #logger.debug(f"  ユーザー「{user_debug['name']}」の要素が見つかりません。スクロールします... ({attempt + 1}/30)")
                     page.evaluate("window.scrollBy(0, 500)")
                     last_scroll_position = page.evaluate("window.scrollY")
                     page.wait_for_timeout(1000)
                 
                 if not is_found:
-                    logger.warning(f"スクロールしてもユーザー「{user_info['name']}」の要素が見つかりませんでした。スキップします。")
-                    user_info['profile_page_url'] = "取得失敗"
-                    final_user_data.append(user_info)
+                    logger.warning(f"スクロールしてもユーザー「{user_debug['name']}」の要素が見つかりませんでした。スキップします。")
+                    user_debug['profile_page_url'] = "取得失敗"
+                    final_user_data.append(user_debug)
                     continue
 
                 # ページ遷移の直前に現在のスクロール位置を記憶
@@ -397,7 +399,7 @@ class NotificationAnalyzerTask(BaseTask):
                 image_container_locator.click()
                 page.wait_for_load_state("domcontentloaded", timeout=15000)
                 
-                user_info['profile_page_url'] = page.url
+                user_debug['profile_page_url'] = page.url
                 logger.debug(f"  -> 取得したURL: {page.url}")
                 
                 page.go_back(wait_until="domcontentloaded")
@@ -406,24 +408,24 @@ class NotificationAnalyzerTask(BaseTask):
                 # ページが戻った後、リストが再描画されるのを待つ
                 page.locator("li[ng-repeat='notification in notifications.activityNotifications']").first.wait_for(state='visible', timeout=10000)
             except PlaywrightError as url_error:
-                logger.warning(f"  ユーザー「{user_info['name']}」のURL取得中にPlaywrightエラー: {url_error}")
-                self._take_screenshot_on_error(prefix=f"url_error_{user_info['id']}")
+                logger.warning(f"  ユーザー「{user_debug['name']}」のURL取得中にPlaywrightエラー: {url_error}")
+                self._take_screenshot_on_error(prefix=f"url_error_{user_debug['id']}")
                 continue
             except Exception as url_error:
-                logger.warning(f"  ユーザー「{user_info['name']}」のURL取得中に予期せぬエラー: {url_error}")
-                self._take_screenshot_on_error(prefix=f"url_error_{user_info['id']}")
+                logger.warning(f"  ユーザー「{user_debug['name']}」のURL取得中に予期せぬエラー: {url_error}")
+                self._take_screenshot_on_error(prefix=f"url_error_{user_debug['id']}")
                 continue
             
-            final_user_data.append(user_info)
+            final_user_data.append(user_debug)
             page.wait_for_timeout(random.uniform(0.5, 1.5))
 
-        logger.info("\n--- 分析完了: 処理対象ユーザー一覧 ---")
+        logger.debug("\n--- 分析完了: 処理対象ユーザー一覧 ---")
         for i, user in enumerate(final_user_data):
-            logger.info(f"  {i+1:2d}. {user['name']:<20} (URL: {user.get('profile_page_url', 'N/A')})")
-        logger.info("------------------------------------")
+            logger.debug(f"  {i+1:2d}. {user['name']:<20} (URL: {user.get('profile_page_url', 'N/A')})")
+        logger.debug("------------------------------------")
 
         # --- フェーズ5: AIプロンプトメッセージとコメントの生成 ---
-        logger.info(f"--- フェーズ5: {len(final_user_data)}人のユーザーにAIプロンプトメッセージとコメントを紐付けます。 ---")
+        logger.debug(f"--- フェーズ5: {len(final_user_data)}人のユーザーにAIプロンプトメッセージとコメントを紐付けます。 ---")
         for user in final_user_data:
             # AI向けの状況説明メッセージを生成
             messages = []
@@ -458,7 +460,7 @@ class NotificationAnalyzerTask(BaseTask):
             user['ai_prompt_updated_at'] = datetime.now().isoformat()
 
         # --- フェーズ6: 結果をDBに保存 ---
-        logger.info(f"--- フェーズ6: {len(final_user_data)}件の新規・更新データをDBに保存します。 ---")
+        logger.debug(f"--- フェーズ6: {len(final_user_data)}件の新規・更新データをDBに保存します。 ---")
         try:
             data_to_save = []
             for user_data in final_user_data:
@@ -470,15 +472,15 @@ class NotificationAnalyzerTask(BaseTask):
 
             if data_to_save:
                 upserted_count = bulk_upsert_user_engagements(data_to_save)
-                logger.info(f"{upserted_count}件のユーザーエンゲージメントデータをDBに保存/更新しました。")
+                logger.debug(f"{upserted_count}件のユーザーエンゲージメントデータをDBに保存/更新しました。")
 
             cleanup_old_user_engagements(days=30)
         except Exception as e:
-            logger.error(f"データベースへの保存中にエラーが発生しました: {e}", exc_info=True)
+            logger.error(f"データベースへの保存中にエラーが発生しました: {e}", exc_debug=True)
             self._take_screenshot_on_error(prefix="db_save_error")
             return False
         
-        logger.info("検証タスクの全フェーズが正常に完了しました。")
+        logger.debug("検証タスクの全フェーズが正常に完了しました。")
         return True
 
 def run_notification_analyzer(hours_ago: int = 12):

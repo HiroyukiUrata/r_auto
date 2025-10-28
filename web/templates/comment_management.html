@@ -26,9 +26,8 @@
             <tr>
                 <th scope="col" style="width: 5%;"></th>
                 <th scope="col" style="width: 7%;">アイコン</th>
-                <th scope="col" style="width: 50%;">ユーザー情報</th>
+                <th scope="col" style="width: 58%;">ユーザー情報</th>
                 <th scope="col" style="width: 30%;">アクション/フォロー状態</th>
-                <th scope="col" style="width: 8%;">最終コメント</th>
             </tr>
         </thead>
         <tbody id="user-table-body">
@@ -79,6 +78,7 @@
     .user-icon {
         width: 50px;
         height: 50px;
+        aspect-ratio: 1 / 1;
         object-fit: cover;
         border-radius: 50%;
     }
@@ -90,6 +90,65 @@
     .table th:first-child,
     .table td:first-child {
         display: none;
+    }
+    /* スマートフォンなどの小さい画面向けのスタイル */
+    @media (max-width: 767.98px) {
+        thead {
+            display: none; /* ヘッダーを非表示 */
+        }
+        tr {
+            display: grid;
+            grid-template-columns: 70px 1fr; /* アイコン | 情報 */
+            grid-template-areas:
+                "icon info";
+            gap: 0.75rem;
+            border: 1px solid #dee2e6;
+            border-top: none; /* 上の境界線を消す */
+            border-radius: .25rem;
+            margin-bottom: 0;
+            padding: 0.75rem;
+            position: relative;
+        }
+        td {
+            display: block;
+            text-align: left !important;
+            width: 100% !important;
+            border: none;
+            padding: 0;
+        }
+        td:before {
+            content: attr(data-label);
+            font-weight: bold;
+            display: block;
+            color: #6c757d;
+        }
+        td[data-label="アイコン"] {
+            grid-area: icon;
+            align-self: start; /* アイコンセルが縦に伸びないようにする */
+            padding: 0 !important; /* 余白をなくす */
+        }
+        td[data-label="ユーザー情報"] { grid-area: info; min-width: 0; }
+
+        /* スマホでは非表示にする列 */
+        td[data-label="アクション/フォロー状態"],
+        td[data-label="最終コメント"] {
+            display: none;
+        }
+
+        /* ラベルが不要なセル */
+        td[data-label="アイコン"]:before,
+        td[data-label="ユーザー情報"]:before {
+            content: "";
+            display: none;
+        }
+        /* 最初の行だけ上の境界線を表示 */
+        tr:first-child {
+            border-top: 1px solid #dee2e6;
+        }
+        .desktop-only { display: none; }
+    }
+    @media (min-width: 767.99px) {
+        .mobile-only { display: none; }
     }
 </style>
 {% endblock %}
@@ -205,33 +264,46 @@
                     const totalCollects = user.collect_count || 0;
                     const collectDisplay = recentCollects < totalCollects ? `${recentCollects}+` : recentCollects;
 
+                    // 3日以上経過 & 5いいね以上の優先ユーザーにアイコンを追加
+                    let priorityIcon = '';
+                    const threeDaysAgo = new Date();
+                    threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+                    if (user.last_commented_at && new Date(user.last_commented_at) < threeDaysAgo && user.recent_like_count >= 5) {
+                        priorityIcon = '<span title="再コメント対象の優先ユーザーです（最終コメントから3日以上経過 ＆ 今回5いいね以上）">🔥</span>';
+                    }
+
                     const row = `
                         <tr id="user-row-${user.id}" data-user='${escapedUserJson}'>
                             <td>
-                                <input class="form-check-input user-checkbox" type="checkbox" value="${user.id}">
+                                <input class="form-check-input user-checkbox" type="checkbox" value="${user.id}" onclick="event.stopPropagation();">
                             </td>
-                            <td>
+                            <td data-label="アイコン">
                                 <a href="${user.profile_page_url || '#'}" target="_blank" rel="noopener noreferrer">
                                     <img src="${user.profile_image_url || 'https://via.placeholder.com/50'}" alt="${user.name}" class="user-icon img-thumbnail">
                                 </a>
                             </td>
-                            <td class="text-start">
-                                <div class="d-flex justify-content-between align-items-center">
-                                    <div class="fw-bold truncate-cell" title="${user.name || ''}">${user.name || ''}</div>
-                                    <button type="button" class="btn btn-link p-0 text-secondary ms-2" onclick="showInfoModal(this.closest('tr'))" title="詳細情報を表示"><i class="bi bi-info-circle"></i></button>
-                                </div>
-                                <div class="text-muted small truncate-cell" title="${user.comment_text || ''}">${user.comment_text || ''}</div>
-                            </td>
-                            <td class="small text-muted">
-                                <div>❤️ ${likeDisplay}</div>
-                                <div>📂 ${collectDisplay}</div>
-                                <div class="mt-1">
-                                    ${isFollowingIcon}
-                                    ${followedByIcon}
+                            <td class="text-start" data-label="ユーザー情報" style="min-width: 0;">
+                                <!-- PC表示用のユーザー名とコメント -->
+                                <div class="fw-bold truncate-cell" title="${user.name || ''}">${priorityIcon} ${user.name || ''}</div>
+                                <div class="text-muted small truncate-cell desktop-only" title="${user.comment_text || ''}">${user.comment_text || ''}</div>
+                                <div class="mobile-only mt-1 d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <span class="small me-2">❤️ ${likeDisplay}</span>
+                                        <span class="small me-2">📂 ${collectDisplay}</span>
+                                        <span class="small">${isFollowingIcon} ${followedByIcon}</span>
+                                    </div>
+                                    <button type="button" class="btn btn-link p-0 text-secondary" onclick="showInfoModal(this.closest('tr'))" title="詳細情報を表示"><i class="bi bi-info-circle fs-5"></i></button>
                                 </div>
                             </td>
-                            <td class="small text-muted">
-                                ${lastCommented}
+                            <td class="small text-muted desktop-only" data-label="アクション/フォロー状態" style="min-width: 0;">
+                                <div class="d-flex justify-content-between align-items-center h-100 w-100">
+                                    <div class="d-flex flex-wrap align-items-center gap-2 text-nowrap">
+                                        <span>❤️ ${likeDisplay}</span>
+                                        <span>📂 ${collectDisplay}</span>
+                                        <span>${isFollowingIcon} ${followedByIcon}</span>
+                                    </div>
+                                    <button type="button" class="btn btn-link p-0 text-secondary" onclick="showInfoModal(this.closest('tr'))" title="詳細情報を表示"><i class="bi bi-info-circle fs-5"></i></button>
+                                </div>
                             </td>
                         </tr>
                     `;

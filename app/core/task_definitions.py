@@ -252,12 +252,12 @@ TASK_DEFINITIONS = {
     "notification-analyzer": {
         "name_ja": "返信コメント生成",
         "function": None, # フローなので直接の関数はなし
-        "default_kwargs": {"hours_ago": 12}, # UIからの手動実行時は12時間に設定
+        "default_kwargs": {"hours_ago": 12}, # スケジュール実行時のデフォルトは12時間
         "is_debug": False, # 通常タスクとして表示
         "show_in_schedule": True,
         "description": "通知を分析してユーザー情報をDBに保存し、その後AIで返信コメントを生成します。",
         "order": 80,
-        "flow": [("check-login-status", {}), ("_internal-notification-analyzer", {"hours_ago": "flow_hours_ago"}), ("commit-stale-actions", {}), ("create-ai-comment", {})]
+        "flow": [("check-login-status", {}), ("_internal-notification-analyzer", {}), ("commit-stale-actions", {}), ("create-ai-comment", {})]
     },
     "create-ai-comment": {
         "name_ja": "AIコメント作成",

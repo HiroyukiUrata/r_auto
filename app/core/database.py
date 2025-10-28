@@ -590,7 +590,7 @@ def bulk_upsert_user_engagements(users_data: list[dict]):
     # UPSERT用にデータをタプルのリストに変換
     records_to_upsert = [
         (
-            d.get('id'), d.get('name'), d.get('profile_page_url'), d.get('profile_image_url'),
+            d.get('id'), d.get('name'), d.get('profile_page_url'), d.get('profile_image_url'), d.get('latest_action_timestamp'),
             1 if d.get('is_following') else 0,
             d.get('recent_like_count', 0), d.get('recent_collect_count', 0), d.get('recent_comment_count', 0),
             d.get('recent_action_timestamp'),
@@ -603,21 +603,21 @@ def bulk_upsert_user_engagements(users_data: list[dict]):
         cursor = conn.cursor()
         # 存在しない場合はINSERT、存在する場合は指定したカラムのみをUPDATE
         cursor.executemany("""
-            INSERT INTO user_engagement (
-                id, name, profile_page_url, profile_image_url, is_following, 
-                recent_like_count, recent_collect_count, recent_comment_count, 
-                recent_action_timestamp, ai_prompt_message, ai_prompt_updated_at
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO user_engagement (id, name, profile_page_url, profile_image_url, latest_action_timestamp, is_following, recent_like_count, recent_collect_count, recent_comment_count, recent_action_timestamp, ai_prompt_message, ai_prompt_updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 name = excluded.name,
                 profile_page_url = COALESCE(excluded.profile_page_url, profile_page_url),
                 profile_image_url = excluded.profile_image_url,
+                -- 常に新しいタイムスタンプで上書きする
+                latest_action_timestamp = CASE
+                    WHEN excluded.latest_action_timestamp > latest_action_timestamp THEN excluded.latest_action_timestamp
+                    ELSE latest_action_timestamp
+                END,
                 is_following = excluded.is_following,
                 recent_like_count = recent_like_count + excluded.recent_like_count,
                 recent_collect_count = recent_collect_count + excluded.recent_collect_count,
                 recent_comment_count = recent_comment_count + excluded.recent_comment_count,
-                recent_action_timestamp = excluded.recent_action_timestamp,
                 ai_prompt_message = excluded.ai_prompt_message,
                 ai_prompt_updated_at = excluded.ai_prompt_updated_at
         """, records_to_upsert)
