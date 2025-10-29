@@ -13,7 +13,8 @@ from pathlib import Path
 from app.core.task_definitions import TASK_DEFINITIONS
 from app.core.database import (get_all_inventory_products, update_product_status, delete_all_products, init_db, 
                                delete_product, update_status_for_multiple_products, delete_multiple_products, get_product_count_by_status, 
-                               get_error_products_in_last_24h, update_product_priority, update_product_order, bulk_update_products_from_data)
+                               get_error_products_in_last_24h, update_product_priority, update_product_order, bulk_update_products_from_data,
+                               get_users_for_commenting)
 from app.tasks.posting import run_posting
 from app.tasks.get_post_url import run_get_post_url
 from app.tasks.import_products import process_and_import_products
@@ -111,6 +112,11 @@ async def read_keywords_page(request: Request):
 async def read_dashboard(request: Request):
     """ダッシュボードページを表示する"""
     return request.app.state.templates.TemplateResponse("dashboard.html", {"request": request})
+
+@router.get("/comment-management", response_class=HTMLResponse)
+async def read_comment_management(request: Request):
+    """コメント投稿管理ページを表示する"""
+    return request.app.state.templates.TemplateResponse("comment_management.html", {"request": request})
 
 @router.get("/error-management", response_class=HTMLResponse)
 async def read_error_management(request: Request):
@@ -595,6 +601,18 @@ async def bulk_status_update_products(request: BulkStatusUpdateRequest):
     except Exception as e:
         logging.error(f"商品の一括ステータス更新中にエラーが発生しました: {e}")
         return JSONResponse(status_code=500, content={"status": "error", "message": "一括更新に失敗しました。"})
+
+@router.get("/api/comment-targets")
+async def get_comment_targets():
+    """コメント投稿対象のユーザーリストを返す"""
+    try:
+        # データベースからコメント対象のユーザーを取得 (上限50件)
+        users = get_users_for_commenting(limit=50)
+        return JSONResponse(content=users)
+    except Exception as e:
+        logging.error(f"コメント対象ユーザーの取得中にエラーが発生しました: {e}", exc_info=True)
+        return JSONResponse(status_code=500, content={"status": "error", "message": "ユーザーリストの取得に失敗しました。"})
+
 
 @router.post("/api/products/bulk-update-from-json")
 async def bulk_update_from_json(request: JsonImportRequest):
