@@ -354,6 +354,11 @@
         // --- ここまで追加 ---
 
         function addTime(button, tag, hasCount) {
+            // ★変更点: 項目を追加する前に、まずカードを「編集中」状態にする
+            // これにより、変更前の状態が正しく保存される
+            markCardAsDirty(button);
+
+            // これ以降は元のロジック
             const cardBody = button.closest('.card-body');
             const timeInput = cardBody.querySelector(`#time-input-${tag}`);
             const newTime = timeInput.value;
@@ -385,7 +390,6 @@
             `;
             timesContainer.appendChild(timeEntry);
             timeInput.value = '';
-            markCardAsDirty(button); // 保存ボタンの状態を変更
         }
 
         function editTime(spanElement, hasCount) {
@@ -562,10 +566,12 @@
             
             // 既に編集モードでなければ、元の状態を保存し、キャンセルボタンを追加
             if (!currentCard.dataset.isDirty) {
-                currentCard.dataset.isDirty = 'true';
+                // ★変更点: isDirtyフラグを立てる前に、元のHTMLを保存する
                 const timesContainer = currentCard.querySelector('.time-list-container');
                 currentCard.dataset.originalTimesHtml = timesContainer.innerHTML;
 
+                currentCard.dataset.isDirty = 'true';
+                
                 const cancelButton = document.createElement('button');
                 cancelButton.className = 'btn btn-secondary btn-sm me-2';
                 cancelButton.innerHTML = '<i class="bi bi-x-circle"></i> キャンセル';
