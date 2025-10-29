@@ -13,7 +13,7 @@ from pathlib import Path
 from app.core.task_definitions import TASK_DEFINITIONS
 from app.core.database import (get_all_inventory_products, update_product_status, delete_all_products, init_db, 
                                delete_product, update_status_for_multiple_products, delete_multiple_products, get_product_count_by_status, 
-                               get_error_products_in_last_24h, update_product_priority, update_product_order, bulk_update_products_from_data,
+                               get_error_products_in_last_24h, update_product_priority, update_product_order, bulk_update_products_from_data, commit_user_actions,
                                get_users_for_commenting)
 from app.tasks.posting import run_posting
 from app.tasks.get_post_url import run_get_post_url
@@ -58,6 +58,9 @@ class JsonImportRequest(BaseModel):
 
 class BulkUpdateRequest(BaseModel):
     product_ids: list[int]
+
+class UserIdsRequest(BaseModel):
+    user_ids: list[str]
 
 class BulkStatusUpdateRequest(BaseModel):
     product_ids: list[int]
@@ -612,6 +615,24 @@ async def get_comment_targets():
     except Exception as e:
         logging.error(f"コメント対象ユーザーの取得中にエラーが発生しました: {e}", exc_info=True)
         return JSONResponse(status_code=500, content={"status": "error", "message": "ユーザーリストの取得に失敗しました。"})
+
+@router.post("/api/users/bulk-skip")
+async def bulk_skip_users(request: UserIdsRequest):
+    """
+    複数のユーザーのアクションをコミットし、コメント対象から除外（スキップ）する。
+    コメントは投稿しないため、last_commented_at は更新しない。
+    """
+    user_ids = request.user_ids
+    if not user_ids:
+        raise HTTPException(status_code=400, detail="ユーザーIDが指定されていません。")
+
+    try:
+        # is_comment_posted=False で呼び出し、アクションのコミットのみ行う
+        updated_count = commit_user_actions(user_ids, is_comment_posted=False)
+        return JSONResponse(content={"message": f"{updated_count}件のユーザーをスキップしました。", "count": updated_count})
+    except Exception as e:
+        logging.error(f"ユーザーの一括スキップ処理中にエラーが発生しました: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="サーバーエラーが発生しました。")
 
 
 @router.post("/api/products/bulk-update-from-json")

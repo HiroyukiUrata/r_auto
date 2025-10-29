@@ -169,12 +169,24 @@
         if (userIds.length === 0) return;
         if (!confirm(`${userIds.length}件のユーザーへのコメント投稿をスキップしますか？`)) return;
 
-        // ここでは未実装のアラートを表示するに留めます。
-        // inventory.html のようなAPI連携が必要な場合は別途実装します。
-        alert(`（未実装）${userIds.join(', ')} のユーザーをスキップします。`);
-        // 成功した場合の例:
-        // userIds.forEach(id => document.getElementById(`user-row-${id}`).remove());
-        // updateBulkActionButtons();
+        try {
+            const response = await fetch('/api/users/bulk-skip', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_ids: userIds })
+            });
+            const result = await response.json();
+            if (!response.ok) {
+                throw new Error(result.detail || 'スキップ処理に失敗しました。');
+            }
+            
+            // 成功したらテーブルから行を削除
+            userIds.forEach(id => document.getElementById(`user-row-${id}`).remove());
+            updateBulkActionButtons();
+            alert(result.message);
+        } catch (error) {
+            alert(`エラー: ${error.message}`);
+        }
     }
 
     document.addEventListener('DOMContentLoaded', function () {
