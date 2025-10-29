@@ -919,7 +919,12 @@ def _run_task_internal(tag: str, is_part_of_flow: bool, **kwargs):
                 logging.debug(f"--- 新フロー実行: 「{definition['name_ja']}」が正常に完了しました。 ---")
         
         run_threaded(run_flow)
-        return {"status": "success", "message": f"タスクフロー「{definition['name_ja']}」(件数: {flow_kwargs.get('count')})の実行を開始しました。"}
+        
+        count = flow_kwargs.get('count')
+        count_str = f"(件数: {count})" if count is not None else ""
+        message = f"タスクフロー「{definition['name_ja']}」{count_str}の実行を開始しました。"
+
+        return {"status": "success", "message": message}
 
     def task_wrapper(**kwargs):
         """タスク実行後に後続タスクを呼び出すラッパー関数"""

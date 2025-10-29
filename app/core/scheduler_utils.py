@@ -131,6 +131,7 @@ def get_log_summary(period='24h'):
         '記事投稿': {'count': 0, 'errors': 0},
         'いいね活動': {'count': 0, 'errors': 0},
         'フォロー活動': {'count': 0, 'errors': 0},
+        '返信コメント生成': {'count': 0, 'errors': 0},
     }
     
     # ログ名とUI表示名をマッピング
@@ -146,7 +147,7 @@ def get_log_summary(period='24h'):
     summary_pattern = re.compile(r"(?:\[I\]|INFO).*\[Action Summary\]\s*name=(?P<name>[^,]+),\s*count=(?P<count>\d+)")
     # [E] または ERROR の両方に対応
     # TimeoutErrorを含む、より広範なエラーパターンを追加
-    generic_error_pattern = re.compile(r"(?:\[E\]|ERROR|\[W\]|WARNING).*「(?P<name>[^」]+)」(?:アクション中に|クリック中に|実行中に|が失敗しました).*")
+    generic_error_pattern = re.compile(r"(?:\[E\]|ERROR|\[W\]|WARNING).*「(?P<name>[^」]+)」(?:アクション中に|クリック中に|実行中に|が失敗しました|タスクの実行中にエラーが発生しました).*")
 
     # タイムスタンプをキャプチャするためのより一般的な正規表現
     # 詳細形式: YYYY-MM-DD HH:MM:SS,ms
@@ -196,9 +197,13 @@ def get_log_summary(period='24h'):
                     log_name = data['name'].strip()
                     count = int(data['count'])
                     
+                    # まずマッピングを試す
                     ui_name = log_name_to_ui_name.get(log_name)
                     if ui_name and ui_name in actions:
                         actions[ui_name]["count"] += count
+                    # マッピングにないが、actionsのキーと直接一致する場合
+                    elif log_name in actions:
+                        actions[log_name]["count"] += count
                     continue
 
                 # エラーの集計
@@ -211,6 +216,11 @@ def get_log_summary(period='24h'):
                     # マッピングを元にUI表示名を取得
                     ui_name = log_name_to_ui_name.get(simple_action_name)
                     if ui_name and ui_name in actions:
+                        actions[ui_name]["errors"] += 1
+                    # 「返信コメント生成」フローに含まれるタスクのエラーを集約
+                    elif simple_action_name in ["通知分析", "AIコメント作成"] and "返信コメント生成" in actions:
+                        actions["返信コメント生成"]["errors"] += 1
+                    elif simple_action_name in actions: # マッピングにないが直接一致する場合
                         actions[ui_name]["errors"] += 1
                     elif simple_action_name in actions: # マッピングにないが直接一致する場合
                         actions[simple_action_name]["errors"] += 1

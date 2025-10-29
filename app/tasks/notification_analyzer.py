@@ -275,17 +275,23 @@ class NotificationAnalyzerTask(BaseTask):
 
 
         # --- フェーズ3: 時間条件でフィルタリングし、優先度順にソート ---
-        logger.info(f"--- フェーズ3: 時間条件でユーザーをフィルタリングします。 ---")
+        logger.debug(f"--- フェーズ3: 時間条件でユーザーをフィルタリングします。 ---")
         
         latest_db_timestamp = get_latest_engagement_timestamp() # この呼び出しは残す
         
         # 過去12時間以内のアクションを対象とする
-        target_hours_ago = datetime.now() - timedelta(hours=self.hours_ago)
+        target_hours_ago_dt = datetime.now() - timedelta(hours=self.hours_ago)
         # 3日以内にコメント済みのユーザーを除外するための閾値
         three_days_ago = datetime.now() - timedelta(days=3)
         
-        logger.info(f"  - DBの最新時刻: {latest_db_timestamp.strftime('%Y-%m-%d %H:%M:%S') if latest_db_timestamp > datetime.min else '（データなし）'}")
-        logger.info(f"  - {self.hours_ago}時間前の時刻: {target_hours_ago.strftime('%Y-%m-%d %H:%M:%S')}")
+        # 分析の開始基準となる時刻を決定（より新しい方を採用）
+        analysis_start_time = max(latest_db_timestamp, target_hours_ago_dt)
+        
+        logger.info(f"「{analysis_start_time.strftime('%Y-%m-%d %H:%M:%S')}」以降の新しい通知を解析します。")
+        if analysis_start_time == latest_db_timestamp:
+            logger.debug("  (基準: DBに記録されている最新のアクション時刻)")
+        else:
+            logger.debug(f"  (基準: {self.hours_ago}時間前)")
 
         users_to_process = []
         # 既存DBのデータを取得（last_commented_at を参照するため）
@@ -302,9 +308,8 @@ class NotificationAnalyzerTask(BaseTask):
                 # 既存の last_commented_at をユーザー情報に付与 (キーを 'id' に修正)
                 existing_user_data = existing_users_map.get(user['id'])
                 user['last_commented_at'] = existing_user_data.get('last_commented_at') if existing_user_data else None
-                # 条件: 12時間以内で、かつDBの最新時刻より新しい
-                # さらに、recent_like_count, recent_collect_count, recent_comment_count のいずれかが0より大きいこと。
-                if (action_time > target_hours_ago and 
+                # 条件: 分析開始時刻より新しい
+                if (action_time > target_hours_ago_dt and 
                     action_time > latest_db_timestamp and 
                     (user.get('recent_like_count', 0) > 0 or 
                      user.get('recent_collect_count', 0) > 0 or 
@@ -355,8 +360,10 @@ class NotificationAnalyzerTask(BaseTask):
         final_user_data = []
         last_scroll_position = 0  # スクロール位置を記憶する変数を初期化
 
+        total_users = len(sorted_users)
         for i, user_debug in enumerate(sorted_users):
-            logger.debug(f"  {i+1}/{len(sorted_users)}: 「{user_debug['name']}」のURLを取得中...")
+            # プログレスバーを表示
+            self._print_progress_bar(i, total_users, prefix=f'URL取得中:', suffix=f"{user_debug['name'][:15]:<15}")
 
             # DBにURLが既に存在するかチェック
             existing_user = existing_users_map.get(user_debug['id'])
@@ -418,6 +425,12 @@ class NotificationAnalyzerTask(BaseTask):
             
             final_user_data.append(user_debug)
             page.wait_for_timeout(random.uniform(0.5, 1.5))
+
+        # プログレスバーの行をクリア
+        if total_users > 0:
+            # 最終状態を表示して完了させる
+            self._print_progress_bar(total_users, total_users, prefix='URL取得完了', suffix=' ' * 20)
+
 
         logger.debug("\n--- 分析完了: 処理対象ユーザー一覧 ---")
         for i, user in enumerate(final_user_data):

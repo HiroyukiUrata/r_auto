@@ -16,14 +16,14 @@ class CommitStaleActionsTask(BaseTask):
         self.hours = hours
 
     def _execute_main_logic(self):
-        logger.info(f"--- {self.hours}時間以上経過した未処理のアクションを検索・コミットします ---")
+        logger.debug(f"--- {self.hours}時間以上経過した未処理のアクションを検索・コミットします ---")
         try:
             stale_user_ids = get_stale_user_ids_for_commit(hours=self.hours)
             if not stale_user_ids:
-                logger.info("自動コミット対象のユーザーはいません。")
+                logger.debug("自動コミット対象のユーザーはいません。")
                 return True
             
-            logger.info(f"{len(stale_user_ids)}人のユーザーのアクションを自動コミットします。")
+            logger.debug(f"{len(stale_user_ids)}人のユーザーのアクションを自動コミットします。")
             commit_user_actions(stale_user_ids, is_comment_posted=False)
             return True
         except Exception as e:
