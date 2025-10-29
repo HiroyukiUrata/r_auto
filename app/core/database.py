@@ -709,7 +709,11 @@ def get_users_for_commenting(limit: int = 10) -> list[dict]:
         query = f"""
             SELECT * FROM user_engagement
             WHERE
-                comment_text IS NOT NULL AND comment_text != '' AND recent_action_timestamp IS NOT NULL
+                -- 必須項目のチェック
+                (recent_like_count > 0 OR recent_collect_count > 0 OR recent_comment_count > 0) AND
+                profile_page_url IS NOT NULL AND profile_page_url != '' AND profile_page_url != '取得失敗' AND
+                comment_text IS NOT NULL AND comment_text != '' AND
+                recent_action_timestamp IS NOT NULL
                 AND (
                     -- 基本条件: 24時間以内のアクションがあり、未コメント
                     (last_commented_at IS NULL AND recent_action_timestamp >= '{twenty_four_hours_ago}')

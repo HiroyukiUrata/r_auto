@@ -218,7 +218,7 @@
                     let priorityIcon = '';
                     const threeDaysAgo = new Date();
                     threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
-                    if ((user.last_commented_at && new Date(user.last_commented_at) < threeDaysAgo && user.recent_like_count >= 5) || true) {
+                    if ((user.last_commented_at && new Date(user.last_commented_at) < threeDaysAgo && user.recent_like_count >= 5)) {
                         priorityIcon = '<div class="priority-icon" title="再コメント対象の優先ユーザーです（最終コメントから3日以上経過 ＆ 今回5いいね以上）">🔥</div>';
                     }
 
