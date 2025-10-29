@@ -749,14 +749,21 @@ def get_users_for_ai_comment_creation() -> list[dict]:
     """
     conn = get_db_connection()
     try:
+        
         cursor = conn.cursor()
         query = """
             SELECT * FROM user_engagement
             WHERE
-                ai_prompt_message IS NOT NULL AND ai_prompt_message != ''
-                AND (
-                    comment_generated_at IS NULL
-                    OR ai_prompt_updated_at > comment_generated_at
+                ai_prompt_message IS NOT NULL AND ai_prompt_message != '' AND (
+                    -- 条件1: 新規フォロワーは常に対象
+                    ai_prompt_message LIKE '%新規にフォロー%'
+                    OR
+                    -- 条件2: いいねのみの場合は3件以上
+                    (ai_prompt_message NOT LIKE '%新規にフォロー%' AND recent_like_count >= 3)
+                ) AND (
+                    -- 生成済みコメントのチェック
+                    comment_generated_at IS NULL OR
+                    ai_prompt_updated_at > comment_generated_at
                 )
             ORDER BY latest_action_timestamp DESC
         """
