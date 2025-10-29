@@ -133,8 +133,8 @@
 
                 const timesHtml = job.times.map(entry => `
                     <div class="time-entry d-flex justify-content-between align-items-center p-2 border-bottom">
-                        <span class="time-display" onclick="editTime(this, ${isCountableTask})">${entry.time}<span class="badge bg-secondary ms-2 count-display" data-count="${entry.count}">${isCountableTask ? `${entry.count}件` : ''}</span></span>
-                        <button type="button" class="btn btn-sm btn-danger py-0 px-1" aria-label="削除" onclick="markCardAsDirty(this); this.parentElement.remove();"><i class="bi bi-x-lg"></i></button>
+                        <span class="time-display" onclick="editTime(this, ${isCountableTask})">${entry.time}<span class="badge bg-secondary ms-2 count-display" data-count="${entry.count}">${isCountableTask ? (entry.count > 0 ? `${entry.count}件` : '0件') : ''}</span></span>
+                        <button type="button" class="btn btn-sm btn-danger py-0 px-1" aria-label="削除" onclick="removeTime(this)"><i class="bi bi-x-lg"></i></button>
                     </div>
                 `).join('');
 
@@ -352,10 +352,9 @@
             scheduleChartInstance.update();
         }
         // --- ここまで追加 ---
-
+        
         function addTime(button, tag, hasCount) {
-            // ★変更点: 項目を追加する前に、まずカードを「編集中」状態にする
-            // これにより、変更前の状態が正しく保存される
+            // 1. 変更前にDirty化して元の状態を保存
             markCardAsDirty(button);
 
             // これ以降は元のロジック
@@ -386,13 +385,23 @@
             timeEntry.className = 'time-entry d-flex justify-content-between align-items-center p-2 border-bottom';
             timeEntry.innerHTML = `
                 <span class="time-display" onclick="editTime(this, ${hasCount})">${newTime}${countBadge}</span>
-                <button type="button" class="btn btn-sm btn-danger py-0 px-1" aria-label="削除" onclick="this.parentElement.remove(); markCardAsDirty(this);"><i class="bi bi-x-lg"></i></button>
+                <button type="button" class="btn btn-sm btn-danger py-0 px-1" aria-label="削除" onclick="removeTime(this)"><i class="bi bi-x-lg"></i></button>
             `;
             timesContainer.appendChild(timeEntry);
             timeInput.value = '';
         }
 
+        function removeTime(button) {
+            // 1. 変更前にDirty化して元の状態を保存
+            markCardAsDirty(button);
+            // 2. 要素を削除
+            button.parentElement.remove();
+        }
+
         function editTime(spanElement, hasCount) {
+            // 1. 編集開始時にDirty化して元の状態を保存
+            markCardAsDirty(spanElement);
+
             // 他の編集中の入力があれば、先にそれを確定させる
             const existingInput = spanElement.closest('.time-list-container').querySelector('input[type="time"].time-edit-input');
             if (existingInput) {
@@ -419,6 +428,7 @@
             timeInput.focus();
 
             const updateHandler = () => {
+                // 1. 新しい値を取得 (inputGroupがDOMに存在するうちに)
                 const newTime = timeInput.value;
                 const countInput = inputGroup.querySelector('.count-edit-input');
                 let newCount = 1;
@@ -426,21 +436,19 @@
                     const parsedCount = parseInt(countInput.value, 10);
                     newCount = isNaN(parsedCount) ? 0 : parsedCount;
                 }
-
-                const timesContainer = inputGroup.closest('.time-list-container');
-                const existingTimes = Array.from(timesContainer.querySelectorAll('.time-display')).map(s => s.textContent.split('<')[0]);
                 
-                // 自分以外の時刻と重複チェック（時刻が空でない場合のみ）
+                // 2. 重複チェック (spanElementがDOMに存在するうちに)
+                const timesContainer = spanElement.closest('.time-list-container');
+                const existingTimes = Array.from(timesContainer.querySelectorAll('.time-display')).map(s => s.textContent.split('<')[0]);
                 if (newTime && newTime !== originalTime && existingTimes.includes(newTime)) {
                     alert('この時刻は既に追加されています。');
-                    // 値を変更せずに編集モードを終了
                 } else if (newTime && (newTime !== originalTime || newCount != originalCount)) {
+                    // 3. 値が変更されていれば、表示を更新
                     const newCountBadge = hasCount ? `<span class="badge bg-secondary ms-2 count-display" data-count="${newCount}">${newCount > 0 ? `${newCount}件` : '0件'}</span>` : '';
                     spanElement.innerHTML = `${newTime}${newCountBadge}`;
-                    markCardAsDirty(inputGroup);
+                    markCardAsDirty(spanElement); // 値が実際に変更されたので、再度Dirtyマークを試みる（既にDirtyなら何もしない）
                 }
-
-                // inputを削除し、spanを再表示
+                // 4. 最後に、入力欄を削除して元のテキストを表示
                 inputGroup.remove();
                 spanElement.style.display = '';
             };
@@ -454,27 +462,6 @@
                     timeInput.blur();
                 }
             });
-        }
-
-        async function handleSave(tag) {
-            const card = document.getElementById(`task-card-${tag}`);
-            const timeEntries = card.querySelectorAll('.time-entry');
-            const isEnabled = card.querySelector(`#master-toggle-${tag}`).checked;
-
-            const newTimes = Array.from(timeEntries).map(entry => {
-                // .time-display の最初の子要素（テキストノード）から時刻を取得し、前後の空白を削除
-                const timeDisplaySpan = entry.querySelector('.time-display');
-                const time = timeDisplaySpan.childNodes[0].nodeValue.trim();
-                const countBadge = entry.querySelector('.count-display');
-                const count = countBadge ? parseInt(countBadge.dataset.count, 10) : 1;
-                return { time, count };
-            });
-
-            const success = await saveSchedule(tag, isEnabled, newTimes);
-            if (success) {
-                alert('スケジュールを保存しました。');
-                await fetchSchedules();
-            }
         }
 
         async function fetchGlobalConfig() {
@@ -594,6 +581,30 @@
                     card.classList.add('disabled');
                 }
             });
+        }
+
+        async function handleSave(tag) {
+            // 編集中の入力があれば、先にそれを確定させる
+            const activeInput = document.querySelector('.time-edit-input');
+            if (activeInput) { activeInput.blur(); }
+
+            const card = document.getElementById(`task-card-${tag}`);
+            const timeEntries = card.querySelectorAll('.time-entry');
+            const isEnabled = card.querySelector(`#master-toggle-${tag}`).checked;
+
+            const newTimes = Array.from(timeEntries).map(entry => {
+                const timeDisplaySpan = entry.querySelector('.time-display');
+                const time = timeDisplaySpan.childNodes[0].nodeValue.trim();
+                const countBadge = entry.querySelector('.count-display');
+                const count = countBadge ? parseInt(countBadge.dataset.count, 10) : 1;
+                return { time, count };
+            });
+
+            const success = await saveSchedule(tag, isEnabled, newTimes);
+            if (success) {
+                showToast('保存完了', 'スケジュールを保存しました。');
+                await fetchSchedules(); // 画面を再描画して「要保存」状態を解除
+            }
         }
 
         function cancelChanges(cardElement) {
