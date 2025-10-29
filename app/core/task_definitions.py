@@ -9,7 +9,7 @@ from app.tasks import (
     run_backup_database,
     run_restore_auth_state,
 )
-from app.tasks.test_task import run_test_task
+
 from app.tasks.commit_stale_actions import run_commit_stale_actions
 from app.tasks.rakuten_search_procure import search_and_procure_from_rakuten
 from app.tasks.notification_analyzer import run_notification_analyzer

@@ -12,8 +12,7 @@ from pathlib import Path
 # タスク定義を一元的にインポート
 from app.core.task_definitions import TASK_DEFINITIONS
 from app.core.database import (get_all_inventory_products, update_product_status, delete_all_products, init_db, 
-                               delete_product, update_status_for_multiple_products, delete_multiple_products, get_product_count_by_status,
-                               get_users_for_commenting, commit_user_actions,
+                               delete_product, update_status_for_multiple_products, delete_multiple_products, get_product_count_by_status, 
                                get_error_products_in_last_24h, update_product_priority, update_product_order, bulk_update_products_from_data)
 from app.tasks.posting import run_posting
 from app.tasks.get_post_url import run_get_post_url
@@ -58,9 +57,6 @@ class JsonImportRequest(BaseModel):
 
 class BulkUpdateRequest(BaseModel):
     product_ids: list[int]
-
-class UserIdsRequest(BaseModel):
-    user_ids: list[str]
 
 class BulkStatusUpdateRequest(BaseModel):
     product_ids: list[int]
@@ -119,18 +115,11 @@ async def read_dashboard(request: Request):
 @router.get("/error-management", response_class=HTMLResponse)
 async def read_error_management(request: Request):
     """エラー管理ページを表示する"""
-    # ファイル名を解析するための正規表現パターン
-    # 例: error_いいね_20231027-103045.png
-    return request.app.state.templates.TemplateResponse("error_management.html", {"request": request})
-
-@router.get("/comment-management", response_class=HTMLResponse)
-async def read_comment_management(request: Request):
-    """コメント投稿管理ページを表示する"""
-    return request.app.state.templates.TemplateResponse("comment_management.html", {"request": request})
-
-@router.get("/api/screenshots")
-async def get_screenshots():
-    filename_pattern = re.compile(r'^(?P<prefix>[^_]+)_(?P<action_name>.+)_(?P<timestamp>\d{8}-\d{6})\.png$')
+    # ファイル名を解析するための正規表現パターンを修正
+    # 例: url_error_my_user_id_通知分析_20231027-103045.png
+    # 末尾からタイムスタンプとアクション名を特定するように変更し、プレフィックスにアンダースコアが含まれても対応できるようにする
+    # アクション名はタイムスタンプの直前にあるアンダースコアで区切られた部分と仮定
+    filename_pattern = re.compile(r'^(?P<prefix>.+?)_(?P<action_name>[^_]+)_(?P<timestamp>\d{8}-\d{6})\.png$')
     
     files = []
     file_details = {}
@@ -171,36 +160,6 @@ async def get_screenshots():
 
     # 既存のエラー商品表示機能はそのままに、スクリーンショットの情報を追加で渡す
     return request.app.state.templates.TemplateResponse("error_management.html", {"request": request, "files": files, "file_details": file_details})
-    return JSONResponse(content={"files": files, "file_details": file_details})
-
-@router.get("/api/comment-targets")
-async def get_comment_targets():
-    """
-    コメント投稿対象のユーザーリストを取得するAPI。
-    """
-    try:
-        # DBから投稿対象のユーザーを50件取得
-        users = get_users_for_commenting(limit=50)
-        return JSONResponse(content=users)
-        # sqlite3.Rowオブジェクトを辞書に変換してからJSONで返す
-        return JSONResponse(content=[dict(user) for user in users])
-    except Exception as e:
-        logging.error(f"コメント対象ユーザーの取得中にエラー: {e}", exc_info=True)
-        return JSONResponse(status_code=500, content={"error": str(e)})
-
-@router.post("/api/users/skip")
-async def skip_users(request: UserIdsRequest):
-    """
-    指定されたユーザーのアクションをコミット（累計に加算してrecentをリセット）する。
-    コメントは投稿しないため、last_commented_atは更新しない。
-    """
-    try:
-        committed_count = commit_user_actions(request.user_ids, is_comment_posted=False)
-        return JSONResponse(content={"status": "success", "message": f"{committed_count}件のユーザーをスキップしました。"})
-    except Exception as e:
-        logging.error(f"ユーザースキップ処理中にエラー: {e}", exc_info=True)
-        return JSONResponse(status_code=500, content={"error": "サーバーエラーが発生しました。"})
-
 
 # --- API Routes ---
 @router.get("/api/schedules")
@@ -771,18 +730,12 @@ async def update_schedule(update_request: ScheduleUpdateRequest):
     return {"status": "success", "message": f"Task '{tag}' schedule updated."}
 
 @router.post("/api/tasks/{tag}/run")
-async def run_task_now(tag: str, request: Request):
+async def run_task_now(tag: str):
     """
     指定されたタスクを即時実行する。
     フローの起点となるタスクとして実行される。
-    リクエストボディで引数を渡すことができる。
     """
-    try:
-        # リクエストボディからJSON形式の引数を取得。ボディが空なら空の辞書。
-        extra_kwargs = await request.json() if request.headers.get('content-length') != '0' else {}
-    except json.JSONDecodeError:
-        extra_kwargs = {} # JSONデコードに失敗した場合も空の辞書
-    return _run_task_internal(tag, is_part_of_flow=False, **extra_kwargs)
+    return _run_task_internal(tag, is_part_of_flow=False)
 
 @router.get("/api/logs", response_class=PlainTextResponse)
 async def get_logs():
@@ -808,6 +761,8 @@ def _run_task_internal(tag: str, is_part_of_flow: bool, **kwargs):
     """
     # スケジュールライブラリが内部的に渡す可能性のある引数を除外
     flow_run_kwargs = {k: v for k, v in kwargs.items() if k != 'job_func'}
+
+    logging.debug(f"[_run_task_internal] tag={tag}, is_part_of_flow={is_part_of_flow}, kwargs={flow_run_kwargs}")
 
     definition = TASK_DEFINITIONS.get(tag)
 
@@ -878,30 +833,22 @@ def _run_task_internal(tag: str, is_part_of_flow: bool, **kwargs):
                     sub_task_def = TASK_DEFINITIONS[sub_task_id]
                     logging.debug(f"  フロー実行中 ({i+1}/{len(tasks_in_flow)}): 「{sub_task_def['name_ja']}」")
                     sub_task_func = sub_task_def["function"]
-
+                    
                     # 引数を解決
                     final_kwargs = sub_task_def.get("default_kwargs", {}).copy()
-                    logging.debug(f"    1. タスクのデフォルト引数を適用: {final_kwargs}")
-
                     for key, value in sub_task_args.items():
                         if value == "flow_count":
                             final_kwargs[key] = flow_kwargs.get('count')
-                        elif value == "flow_hours_ago":
-                            final_kwargs[key] = flow_kwargs.get('hours_ago')
-                    logging.debug(f"    2. フロー定義からの引数をマージ: {final_kwargs}")
-
                     # フロー全体に渡された引数で、個別のタスクの引数を上書きする
                     final_kwargs.update(flow_kwargs)
-                    logging.debug(f"    3. フロー全体の引数をマージ: {final_kwargs}")
-
+                    
                     try:
                         # タスク関数が実際に受け取れる引数のみを渡す
                         sig = inspect.signature(sub_task_func)
                         valid_args = {
-                            k: v for k, v in final_kwargs.items()
+                            k: v for k, v in final_kwargs.items() 
                             if k in sig.parameters
                         }
-                        logging.debug(f"    => 最終的な実行引数: {valid_args}")
                         task_result = sub_task_func(**valid_args)
                         if task_result is False: # 明示的にFalseの場合のみ失敗とみなす
                             logging.error(f"フロー内のタスク「{sub_task_def['name_ja']}」が失敗しました。フローを中断します。")
@@ -919,12 +866,7 @@ def _run_task_internal(tag: str, is_part_of_flow: bool, **kwargs):
                 logging.debug(f"--- 新フロー実行: 「{definition['name_ja']}」が正常に完了しました。 ---")
         
         run_threaded(run_flow)
-        
-        count = flow_kwargs.get('count')
-        count_str = f"(件数: {count})" if count is not None else ""
-        message = f"タスクフロー「{definition['name_ja']}」{count_str}の実行を開始しました。"
-
-        return {"status": "success", "message": message}
+        return {"status": "success", "message": f"タスクフロー「{definition['name_ja']}」(件数: {flow_kwargs.get('count')})の実行を開始しました。"}
 
     def task_wrapper(**kwargs):
         """タスク実行後に後続タスクを呼び出すラッパー関数"""
