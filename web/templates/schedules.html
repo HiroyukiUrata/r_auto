@@ -129,7 +129,7 @@
 
             schedules.forEach(job => {
                 // 件数設定が可能なタスクのタグリスト
-                const isCountableTask = !['backup-database'].includes(job.tag);
+                const isCountableTask = !['backup-database', 'notification-analyzer'].includes(job.tag);
 
                 const timesHtml = job.times.map(entry => `
                     <div class="time-entry d-flex justify-content-between align-items-center p-2 border-bottom">
@@ -354,14 +354,19 @@
         // --- ここまで追加 ---
         
         function addTime(button, tag, hasCount) {
-            // 1. 変更前にDirty化して元の状態を保存
-            markCardAsDirty(button);
-
-            // これ以降は元のロジック
             const cardBody = button.closest('.card-body');
             const timeInput = cardBody.querySelector(`#time-input-${tag}`);
             const newTime = timeInput.value;
+
+            // ★変更点: 先に値のチェックを行い、空なら何もせずに終了
             if (!newTime) return;
+
+            // 1. 変更前に元の状態を保存し、UIをDirty状態にする
+            const card = button.closest('.card');
+            if (!card.dataset.isDirty) {
+                card.dataset.originalTimesHtml = card.querySelector('.time-list-container').innerHTML;
+            }
+            markCardAsDirty(button); // UIを「要保存」に変更
 
             let newCount = 1;
             const countInput = cardBody.querySelector(`#count-input-${tag}`);
@@ -392,16 +397,22 @@
         }
 
         function removeTime(button) {
-            // 1. 変更前にDirty化して元の状態を保存
-            markCardAsDirty(button);
+            // 1. 変更前に元の状態を保存し、UIをDirty状態にする
+            const card = button.closest('.card');
+            if (!card.dataset.isDirty) {
+                card.dataset.originalTimesHtml = card.querySelector('.time-list-container').innerHTML;
+            }
+            markCardAsDirty(button); // UIを「要保存」に変更
             // 2. 要素を削除
             button.parentElement.remove();
         }
 
         function editTime(spanElement, hasCount) {
-            // 1. 編集開始時にDirty化して元の状態を保存
-            markCardAsDirty(spanElement);
-
+            // ★変更点: 編集開始時に元の状態を保存するが、UIはまだ変更しない
+            const card = spanElement.closest('.card');
+            if (!card.dataset.isDirty) {
+                card.dataset.originalTimesHtml = card.querySelector('.time-list-container').innerHTML;
+            }
             // 他の編集中の入力があれば、先にそれを確定させる
             const existingInput = spanElement.closest('.time-list-container').querySelector('input[type="time"].time-edit-input');
             if (existingInput) {
@@ -411,7 +422,9 @@
             // 時刻のテキスト部分（例: "10:00"）を正確に取得
             const originalTime = spanElement.childNodes[0].nodeValue.trim();
             const countBadge = spanElement.querySelector('.count-display');
-            const originalCount = countBadge ? parseInt(countBadge.dataset.count, 10) : 1;
+            // ★変更点: hasCountがfalseの場合、countは常に1として扱い、変更判定に影響させない
+            const originalCount = hasCount && countBadge ? parseInt(countBadge.dataset.count, 10) : 1;
+
             const timeEntryDiv = spanElement.parentElement;
 
             const inputGroup = document.createElement('div');
@@ -431,7 +444,8 @@
                 // 1. 新しい値を取得 (inputGroupがDOMに存在するうちに)
                 const newTime = timeInput.value;
                 const countInput = inputGroup.querySelector('.count-edit-input');
-                let newCount = 1;
+                // ★変更点: hasCountがfalseの場合、countは常に1として扱う
+                let newCount = hasCount ? 1 : 1;
                 if (countInput) {
                     const parsedCount = parseInt(countInput.value, 10);
                     newCount = isNaN(parsedCount) ? 0 : parsedCount;
@@ -446,8 +460,9 @@
                     // 3. 値が変更されていれば、表示を更新
                     const newCountBadge = hasCount ? `<span class="badge bg-secondary ms-2 count-display" data-count="${newCount}">${newCount > 0 ? `${newCount}件` : '0件'}</span>` : '';
                     spanElement.innerHTML = `${newTime}${newCountBadge}`;
-                    markCardAsDirty(spanElement); // 値が実際に変更されたので、再度Dirtyマークを試みる（既にDirtyなら何もしない）
+                    markCardAsDirty(spanElement); // ★変更点: 値が実際に変更されたここで初めてUIを「要保存」状態にする
                 }
+
                 // 4. 最後に、入力欄を削除して元のテキストを表示
                 inputGroup.remove();
                 spanElement.style.display = '';
@@ -553,10 +568,7 @@
             
             // 既に編集モードでなければ、元の状態を保存し、キャンセルボタンを追加
             if (!currentCard.dataset.isDirty) {
-                // ★変更点: isDirtyフラグを立てる前に、元のHTMLを保存する
-                const timesContainer = currentCard.querySelector('.time-list-container');
-                currentCard.dataset.originalTimesHtml = timesContainer.innerHTML;
-
+                // ★変更点: 元のHTMLの保存は各編集アクションの開始時に行うため、ここではUIの変更のみ
                 currentCard.dataset.isDirty = 'true';
                 
                 const cancelButton = document.createElement('button');
