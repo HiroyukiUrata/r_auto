@@ -149,7 +149,7 @@ TASK_DEFINITIONS = {
         "name_ja": "フォロー活動",
         "function": None, # フローなので直接の関数はなし
         "is_debug": False,
-        "default_kwargs": {"count": 10}, # フロー全体に渡す引数
+        "default_kwargs": {"count": 3}, # フロー全体に渡す引数
         "description": "ログイン状態を確認後、設定されたキーワードに基づいて「フォロー」アクションを実行します。",
         "order": 70,
         "flow": "check-login-status | _internal-follow-action"
@@ -243,7 +243,7 @@ TASK_DEFINITIONS = {
     "_internal-notification-analyzer": {
         "name_ja": "（内部処理）通知分析実行",
         "function": run_notification_analyzer,
-        "is_debug": True,
+        "is_debug": False,
         "default_kwargs": {"hours_ago": 12},
         "show_in_schedule": False,
         "description": "楽天ROOMのお知らせページからユーザーのエンゲージメント情報を分析し、DBに保存します。",
@@ -252,12 +252,12 @@ TASK_DEFINITIONS = {
     "notification-analyzer": {
         "name_ja": "返信コメント生成",
         "function": None, # フローなので直接の関数はなし
-        "default_kwargs": {"hours_ago": 12}, # スケジュール実行時のデフォルトは12時間
-        "is_debug": False, # 通常タスクとして表示
+        "default_kwargs": {"hours_ago": 12}, # スケジュール実行時のデフォルト値
+        "is_debug": False, # 即時実行にも表示する
         "show_in_schedule": True,
-        "description": "通知を分析してユーザー情報をDBに保存し、その後AIで返信コメントを生成します。",
+        "description": "通知を分析しコメントを生成します。スケジュール実行時は12時間、即時実行時は30分(hours_ago=0.5)が推奨です。",
         "order": 80,
-        "flow": [("check-login-status", {}), ("_internal-notification-analyzer", {}), ("commit-stale-actions", {}), ("create-ai-comment", {})]
+        "flow": [ ("check-login-status",{}), ("_internal-notification-analyzer", {"hours_ago": "flow_hours_ago"}), ("commit-stale-actions", {}), ("create-ai-comment", {})]
     },
     "create-ai-comment": {
         "name_ja": "AIコメント作成",
@@ -274,13 +274,5 @@ TASK_DEFINITIONS = {
         "show_in_schedule": False,
         "description": "24時間以上放置されている未処理のアクションを自動的にスキップ扱いとしてコミットします。",
         "order": 90,
-    },
-    "test-task": {
-        "name_ja": "【検証用】スクロールテスト",
-        "function": run_test_task,
-        "is_debug": True,
-        "show_in_schedule": False,
-        "description": "通知分析のスクロールロジックを段階的に検証するための軽量タスクです。お知らせページへの遷移とスクロール開始準備までを行います。",
-        "order": 999,
     },
 }

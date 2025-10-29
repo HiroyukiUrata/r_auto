@@ -523,18 +523,28 @@
             if (!confirm(`タスク「${name_ja}」を今すぐ実行しますか？`)) {
                 return;
             }
+
+            // APIリクエストのオプションを準備
+            const fetchOptions = {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            };
+
+            // 'notification-analyzer' タスクの場合、特別な引数をボディに含める
+            if (tag === 'notification-analyzer') {
+                fetchOptions.body = JSON.stringify({ hours_ago: 0.5 });
+            }
+
             try {
-                const response = await fetch(`/api/tasks/${tag}/run`, {
-                    method: 'POST'
-                });
+                const response = await fetch(`/api/tasks/${tag}/run`, fetchOptions);
                 const result = await response.json();
                 if (!response.ok) {
                     throw new Error(result.message || 'タスクの実行開始に失敗しました。');
                 }
-            showToast('タスク開始', result.message);
+                showToast('タスク開始', result.message);
             } catch (error) {
                 console.error('Error running task:', error);
-            showToast('エラー', error.message, true);
+                showToast('エラー', error.message, true);
             }
         }
 

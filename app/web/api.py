@@ -771,12 +771,18 @@ async def update_schedule(update_request: ScheduleUpdateRequest):
     return {"status": "success", "message": f"Task '{tag}' schedule updated."}
 
 @router.post("/api/tasks/{tag}/run")
-async def run_task_now(tag: str):
+async def run_task_now(tag: str, request: Request):
     """
     指定されたタスクを即時実行する。
     フローの起点となるタスクとして実行される。
+    リクエストボディで引数を渡すことができる。
     """
-    return _run_task_internal(tag, is_part_of_flow=False)
+    try:
+        # リクエストボディからJSON形式の引数を取得。ボディが空なら空の辞書。
+        extra_kwargs = await request.json() if request.headers.get('content-length') != '0' else {}
+    except json.JSONDecodeError:
+        extra_kwargs = {} # JSONデコードに失敗した場合も空の辞書
+    return _run_task_internal(tag, is_part_of_flow=False, **extra_kwargs)
 
 @router.get("/api/logs", response_class=PlainTextResponse)
 async def get_logs():
@@ -802,9 +808,6 @@ def _run_task_internal(tag: str, is_part_of_flow: bool, **kwargs):
     """
     # スケジュールライブラリが内部的に渡す可能性のある引数を除外
     flow_run_kwargs = {k: v for k, v in kwargs.items() if k != 'job_func'}
-
-    logging.debug(f"[_run_task_internal] ENTRY: tag='{tag}', is_part_of_flow={is_part_of_flow}, kwargs={flow_run_kwargs}")
-    logging.debug(f"[_run_task_internal] tag={tag}, is_part_of_flow={is_part_of_flow}, kwargs={flow_run_kwargs}")
 
     definition = TASK_DEFINITIONS.get(tag)
 
@@ -839,7 +842,6 @@ def _run_task_internal(tag: str, is_part_of_flow: bool, **kwargs):
         # 1. デフォルト引数をコピー
         flow_kwargs = definition.get("default_kwargs", {}).copy()
         # 2. スケジュール実行などから渡された引数で上書き
-        logging.debug(f"[_run_task_internal] Flow '{tag}' started. Initial flow_kwargs from definition: {flow_kwargs}")
         flow_kwargs.update(flow_run_kwargs)
 
         logging.debug(f"--- 新フロー実行: 「{definition['name_ja']}」を開始します。 ---")
@@ -876,24 +878,30 @@ def _run_task_internal(tag: str, is_part_of_flow: bool, **kwargs):
                     sub_task_def = TASK_DEFINITIONS[sub_task_id]
                     logging.debug(f"  フロー実行中 ({i+1}/{len(tasks_in_flow)}): 「{sub_task_def['name_ja']}」")
                     sub_task_func = sub_task_def["function"]
-                    
+
                     # 引数を解決
                     final_kwargs = sub_task_def.get("default_kwargs", {}).copy()
+                    logging.debug(f"    1. タスクのデフォルト引数を適用: {final_kwargs}")
+
                     for key, value in sub_task_args.items():
                         if value == "flow_count":
-                            logging.debug(f"  Resolving 'flow_count' to {flow_kwargs.get('count')}")
                             final_kwargs[key] = flow_kwargs.get('count')
+                        elif value == "flow_hours_ago":
+                            final_kwargs[key] = flow_kwargs.get('hours_ago')
+                    logging.debug(f"    2. フロー定義からの引数をマージ: {final_kwargs}")
+
                     # フロー全体に渡された引数で、個別のタスクの引数を上書きする
                     final_kwargs.update(flow_kwargs)
-                    
+                    logging.debug(f"    3. フロー全体の引数をマージ: {final_kwargs}")
+
                     try:
                         # タスク関数が実際に受け取れる引数のみを渡す
                         sig = inspect.signature(sub_task_func)
                         valid_args = {
-                            k: v for k, v in final_kwargs.items() 
+                            k: v for k, v in final_kwargs.items()
                             if k in sig.parameters
                         }
-                        logging.debug(f"    Executing sub-task '{sub_task_id}' with args: {valid_args}")
+                        logging.debug(f"    => 最終的な実行引数: {valid_args}")
                         task_result = sub_task_func(**valid_args)
                         if task_result is False: # 明示的にFalseの場合のみ失敗とみなす
                             logging.error(f"フロー内のタスク「{sub_task_def['name_ja']}」が失敗しました。フローを中断します。")
@@ -956,7 +964,6 @@ def _run_task_internal(tag: str, is_part_of_flow: bool, **kwargs):
     # 1. デフォルト引数を取得, 2. 実行時引数で上書き
     final_kwargs = definition.get("default_kwargs", {}).copy() 
     final_kwargs.update(kwargs)
-    logging.debug(f"[_run_task_internal] Running single task '{tag}' with final_kwargs: {final_kwargs}")
     job_thread, result_container = run_threaded(task_wrapper, **final_kwargs) 
 
     message = f"タスク「{definition['name_ja']}」の実行を開始しました。"

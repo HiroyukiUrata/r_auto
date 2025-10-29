@@ -81,7 +81,7 @@ class NotificationAnalyzerTask(BaseTask):
     def __init__(self, hours_ago: int = 12):
         super().__init__(count=None) # このタスクはcount引数を直接使わない
         self.hours_ago = hours_ago
-        logging.debug(f"NotificationAnalyzerTask initialized with hours_ago = {self.hours_ago}")
+ 
         self.action_name = "通知分析"
         self.needs_browser = True
         self.use_auth_profile = True # ログイン状態が必要
