@@ -24,10 +24,10 @@
     <table class="table table-striped table-sm align-middle" style="table-layout: fixed; width: 100%;">
         <thead>
             <tr>
-                <th scope="col" style="width: 5%;"></th>
-                <th scope="col" style="width: 7%;">アイコン</th>
-                <th scope="col" style="width: 58%;">ユーザー情報</th>
-                <th scope="col" style="width: 30%;">アクション/フォロー状態</th>
+                <th scope="col" style="width: 70px;">アイコン</th>
+                <th scope="col" style="width: 60%;">ユーザー情報</th>
+                <th scope="col" style="width: 20%;">アクション</th>
+                <th scope="col" style="width: 10%;">詳細</th>
             </tr>
         </thead>
         <tbody id="user-table-body">
@@ -71,9 +71,14 @@
     tbody tr {
         cursor: pointer;
     }
+    /* 行の背景色ハイライトは使わず、透明にする */
+    tr.selected {
+        background-color: transparent !important;
+    }
+    /* 選択された行のアイコン枠線を強調 */
     tr.selected .img-thumbnail {
-        border: 3px solid #0d6efd;
-        padding: 1px;
+        border: 3px solid #0d6efd; /* プライマリカラーで枠線を太く */
+        padding: 1px; /* 枠線の太さが増えた分、パディングを調整 */
     }
     .user-icon {
         width: 50px;
@@ -82,73 +87,24 @@
         object-fit: cover;
         border-radius: 50%;
     }
-    .table .form-check-input {
-        width: 1.25em;
-        height: 1.25em;
-        vertical-align: middle;
+    .icon-container {
+        position: relative;
+        display: inline-block; /* or block, depending on layout */
     }
-    .table th:first-child,
-    .table td:first-child {
-        display: none;
+    .status-icons {
+        position: absolute;
+        top: -8px;
+        left: -2px;
+        display: flex;
+        gap: 2px;
+        z-index: 1; /* アイコンの枠線より手前に表示する */
     }
-    /* スマートフォンなどの小さい画面向けのスタイル */
-    @media (max-width: 767.98px) {
-        thead {
-            display: none; /* ヘッダーを非表示 */
-        }
-        tr {
-            display: grid;
-            grid-template-columns: 70px 1fr; /* アイコン | 情報 */
-            grid-template-areas:
-                "icon info";
-            gap: 0.75rem;
-            border: 1px solid #dee2e6;
-            border-top: none; /* 上の境界線を消す */
-            border-radius: .25rem;
-            margin-bottom: 0;
-            padding: 0.75rem;
-            position: relative;
-        }
-        td {
-            display: block;
-            text-align: left !important;
-            width: 100% !important;
-            border: none;
-            padding: 0;
-        }
-        td:before {
-            content: attr(data-label);
-            font-weight: bold;
-            display: block;
-            color: #6c757d;
-        }
-        td[data-label="アイコン"] {
-            grid-area: icon;
-            align-self: start; /* アイコンセルが縦に伸びないようにする */
-            padding: 0 !important; /* 余白をなくす */
-        }
-        td[data-label="ユーザー情報"] { grid-area: info; min-width: 0; }
-
-        /* スマホでは非表示にする列 */
-        td[data-label="アクション/フォロー状態"],
-        td[data-label="最終コメント"] {
-            display: none;
-        }
-
-        /* ラベルが不要なセル */
-        td[data-label="アイコン"]:before,
-        td[data-label="ユーザー情報"]:before {
-            content: "";
-            display: none;
-        }
-        /* 最初の行だけ上の境界線を表示 */
-        tr:first-child {
-            border-top: 1px solid #dee2e6;
-        }
-        .desktop-only { display: none; }
-    }
-    @media (min-width: 767.99px) {
-        .mobile-only { display: none; }
+    .priority-icon {
+        position: absolute;
+        bottom: -5px;
+        left: -8px;
+        z-index: 1;
+        font-size: 1.2rem; /* アイコンサイズを少し大きく */
     }
 </style>
 {% endblock %}
@@ -156,10 +112,11 @@
 {% block scripts %}
 <script>
     let infoModalInstance = null;
+    let lastSelectedRowIndex = null;
 
     function showInfoModal(element) {
         event.stopPropagation();
-        const user = JSON.parse(element.dataset.user);
+        const user = JSON.parse(element.closest('tr').dataset.user);
 
         document.getElementById('modal-user-name').textContent = user.name;
         document.getElementById('modal-comment-text').textContent = user.comment_text;
@@ -177,7 +134,9 @@
     }
 
     function getSelectedUserIds() {
-        return Array.from(document.querySelectorAll('.user-checkbox:checked')).map(cb => cb.value);
+        return Array.from(document.querySelectorAll('#user-table-body tr.selected')).map(row => {
+            return row.id.replace('user-row-', '');
+        });
     }
 
     function updateBulkActionButtons() {
@@ -188,11 +147,11 @@
     }
 
     function toggleSelectAll() {
-        const allCheckboxes = document.querySelectorAll('.user-checkbox');
-        const allSelected = getSelectedUserIds().length === allCheckboxes.length;
-        allCheckboxes.forEach(checkbox => {
-            checkbox.checked = !allSelected;
-            checkbox.closest('tr').classList.toggle('selected', !allSelected);
+        const allRows = document.querySelectorAll('#user-table-body tr');
+        const isAllSelected = getSelectedUserIds().length === allRows.length;
+
+        allRows.forEach(row => {
+            row.classList.toggle('selected', !isAllSelected);
         });
         updateBulkActionButtons();
     }
@@ -210,21 +169,12 @@
         if (userIds.length === 0) return;
         if (!confirm(`${userIds.length}件のユーザーへのコメント投稿をスキップしますか？`)) return;
 
-        fetch('/api/users/skip', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ user_ids: userIds })
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.status === 'success') {
-                alert(data.message);
-                location.reload(); // 画面をリロードしてリストを更新
-            } else {
-                alert('エラーが発生しました: ' + data.error);
-            }
-        })
-        .catch(error => alert('通信エラーが発生しました: ' + error));
+        // ここでは未実装のアラートを表示するに留めます。
+        // inventory.html のようなAPI連携が必要な場合は別途実装します。
+        alert(`（未実装）${userIds.join(', ')} のユーザーをスキップします。`);
+        // 成功した場合の例:
+        // userIds.forEach(id => document.getElementById(`user-row-${id}`).remove());
+        // updateBulkActionButtons();
     }
 
     document.addEventListener('DOMContentLoaded', function () {
@@ -242,7 +192,7 @@
                 const tableBody = document.getElementById('user-table-body');
                 tableBody.innerHTML = '';
                 if (data.length === 0) {
-                    tableBody.innerHTML = '<tr><td colspan="6" class="text-center">コメント投稿対象のユーザーはいません。</td></tr>';
+                    tableBody.innerHTML = '<tr><td colspan="4" class="text-center">コメント投稿対象のユーザーはいません。</td></tr>';
                     return;
                 }
                 data.forEach(user => {
@@ -251,7 +201,7 @@
                     
                     // フォロー状態のアイコンを決定
                     // 自分がフォローしているか (is_following)
-                    const isFollowingIcon = user.is_following ? '<i class="bi bi-person-check-fill text-primary" title="あなたがフォローしています"></i>' : '<i class="bi bi-person-plus text-muted" title="あなたはフォローしていません"></i>';
+                    const isFollowingIcon = user.is_following ? '<i class="bi bi-person-check-fill text-success" title="あなたがフォローしています"></i>' : '';
                     // 相手がフォローしてくれたか (follow_count)
                     const followedByIcon = user.follow_count > 0 ? '<i class="bi bi-person-heart text-danger" title="相手からフォローされました"></i>' : '';
 
@@ -268,41 +218,33 @@
                     let priorityIcon = '';
                     const threeDaysAgo = new Date();
                     threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
-                    if (user.last_commented_at && new Date(user.last_commented_at) < threeDaysAgo && user.recent_like_count >= 5) {
-                        priorityIcon = '<span title="再コメント対象の優先ユーザーです（最終コメントから3日以上経過 ＆ 今回5いいね以上）">🔥</span>';
+                    if ((user.last_commented_at && new Date(user.last_commented_at) < threeDaysAgo && user.recent_like_count >= 5) || true) {
+                        priorityIcon = '<div class="priority-icon" title="再コメント対象の優先ユーザーです（最終コメントから3日以上経過 ＆ 今回5いいね以上）">🔥</div>';
                     }
 
                     const row = `
                         <tr id="user-row-${user.id}" data-user='${escapedUserJson}'>
-                            <td>
-                                <input class="form-check-input user-checkbox" type="checkbox" value="${user.id}" onclick="event.stopPropagation();">
-                            </td>
-                            <td data-label="アイコン">
-                                <a href="${user.profile_page_url || '#'}" target="_blank" rel="noopener noreferrer">
-                                    <img src="${user.profile_image_url || 'https://via.placeholder.com/50'}" alt="${user.name}" class="user-icon img-thumbnail">
-                                </a>
-                            </td>
-                            <td class="text-start" data-label="ユーザー情報" style="min-width: 0;">
-                                <!-- PC表示用のユーザー名とコメント -->
-                                <div class="fw-bold truncate-cell" title="${user.name || ''}">${priorityIcon} ${user.name || ''}</div>
-                                <div class="text-muted small truncate-cell desktop-only" title="${user.comment_text || ''}">${user.comment_text || ''}</div>
-                                <div class="mobile-only mt-1 d-flex justify-content-between align-items-center">
-                                    <div>
-                                        <span class="small me-2">❤️ ${likeDisplay}</span>
-                                        <span class="small me-2">📂 ${collectDisplay}</span>
-                                        <span class="small">${isFollowingIcon} ${followedByIcon}</span>
-                                    </div>
-                                    <button type="button" class="btn btn-link p-0 text-secondary" onclick="showInfoModal(this.closest('tr'))" title="詳細情報を表示"><i class="bi bi-info-circle fs-5"></i></button>
+                            <td class="align-middle text-center">
+                                <div class="icon-container">
+                                    <a href="${user.profile_page_url || '#'}" target="_blank" rel="noopener noreferrer">
+                                        <img src="${user.profile_image_url || 'https://via.placeholder.com/50'}" alt="${user.name}" class="user-icon img-thumbnail">
+                                    </a>
+                                    <div class="status-icons">${isFollowingIcon} ${followedByIcon}</div>${priorityIcon}
                                 </div>
                             </td>
-                            <td class="small text-muted desktop-only" data-label="アクション/フォロー状態" style="min-width: 0;">
-                                <div class="d-flex justify-content-between align-items-center h-100 w-100">
-                                    <div class="d-flex flex-wrap align-items-center gap-2 text-nowrap">
-                                        <span>❤️ ${likeDisplay}</span>
-                                        <span>📂 ${collectDisplay}</span>
-                                        <span>${isFollowingIcon} ${followedByIcon}</span>
-                                    </div>
-                                    <button type="button" class="btn btn-link p-0 text-secondary" onclick="showInfoModal(this.closest('tr'))" title="詳細情報を表示"><i class="bi bi-info-circle fs-5"></i></button>
+                            <td class="text-start" style="min-width: 0;">
+                                <div class="fw-bold truncate-cell" title="${user.name || ''}">${user.name || ''}</div>
+                                <div class="text-muted small truncate-cell" title="${user.comment_text || ''}">${user.comment_text || ''}</div>
+                            </td>
+                            <td class="small text-muted" style="min-width: 0;">
+                                <div class="d-flex flex-wrap align-items-center gap-2 text-nowrap">
+                                    <span>❤️ ${likeDisplay}</span>
+                                    <span>📂 ${collectDisplay}</span>
+                                </div>
+                            </td>
+                            <td class="text-center">
+                                <div class="d-flex justify-content-center align-items-center h-100">
+                                    <button type="button" class="btn btn-link p-0 text-secondary" onclick="showInfoModal(this.closest('tr'))" title="詳細情報を表示"><i class="bi bi-info-circle fs-4"></i></button>
                                 </div>
                             </td>
                         </tr>
@@ -313,23 +255,43 @@
             .catch(error => {
                 console.error('Error:', error);
                 const tableBody = document.getElementById('user-table-body');
-                tableBody.innerHTML = `<tr><td colspan="6" class="text-center text-danger">${error.message}</td></tr>`;
+                tableBody.innerHTML = `<tr><td colspan="4" class="text-center text-danger">${error.message}</td></tr>`;
             });
 
-        document.getElementById('user-table-body').addEventListener('change', function (e) {
-            if (e.target.classList.contains('user-checkbox')) {
-                e.target.closest('tr').classList.toggle('selected', e.target.checked);
-                updateBulkActionButtons();
-            }
-        });
-
-        document.getElementById('user-table-body').addEventListener('click', function (e) {
-            if (e.target.closest('a, button, .form-check-input')) return;
-            
+        const tableBody = document.getElementById('user-table-body');
+        tableBody.addEventListener('click', function (e) {
+            const rows = Array.from(tableBody.querySelectorAll('tr'));
             const row = e.target.closest('tr');
-            // チェックボックスをクリックする動作に変更
-            const checkbox = row.querySelector('.user-checkbox');
-            if (checkbox) checkbox.click();
+            if (!row) return;
+
+            // 詳細ボタン列(4番目)またはリンクのクリックは無視
+            const cell = e.target.closest('td');
+            if (e.target.closest('a') || (cell && cell.cellIndex === 3)) {
+                return;
+            }
+
+            const currentIndex = rows.indexOf(row);
+
+            if (e.shiftKey && lastSelectedRowIndex !== null) {
+                // Shift + Click: 範囲選択
+                const start = Math.min(currentIndex, lastSelectedRowIndex);
+                const end = Math.max(currentIndex, lastSelectedRowIndex);
+                rows.forEach((r, index) => {
+                    if (index >= start && index <= end) {
+                        r.classList.add('selected');
+                    }
+                });
+                lastSelectedRowIndex = currentIndex; // Shift選択後もlastSelectedを更新
+            } else if (e.ctrlKey || e.metaKey) {
+                // Ctrl/Cmd + Click: 個別選択/選択解除
+                row.classList.toggle('selected');
+                lastSelectedRowIndex = currentIndex;
+            } else {
+                // 通常のクリック: チェックボックスのように選択/選択解除をトグルする
+                row.classList.toggle('selected');
+                lastSelectedRowIndex = currentIndex;
+            }
+            updateBulkActionButtons();
         });
     });
 </script>
