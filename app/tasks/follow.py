@@ -7,6 +7,8 @@ import re
 from playwright.sync_api import expect, Locator, Error
 # BaseTaskのインポート
 from app.core.base_task import BaseTask
+# selector_utilsからconvert_to_robust_selectorをインポート
+from app.utils.selector_utils import convert_to_robust_selector
 
 class FollowTask(BaseTask):
     """
@@ -119,9 +121,14 @@ class FollowTask(BaseTask):
 
         # 4. モーダル内の最初のユーザーのプロフィール名をクリックし、そのユーザーのルームへ遷移
         first_user_in_modal = page.locator(self.list_container_selector).first
-        first_user_profile_link = first_user_in_modal.locator('a.profile-name-content--iyogY').first
+        
+        # 動的なクラス名を含むセレクタを堅牢なものに変換
+        robust_profile_link_selector = convert_to_robust_selector('a.profile-name-content--iyogY')
+        first_user_profile_link = first_user_in_modal.locator(robust_profile_link_selector).first
         try:
-            user_name = first_user_profile_link.locator('span.profile-name--2Hsi5').first.inner_text().strip()
+            # 動的なクラス名を含むセレクタを堅牢なものに変換
+            robust_profile_name_selector = convert_to_robust_selector('span.profile-name--2Hsi5')
+            user_name = first_user_profile_link.locator(robust_profile_name_selector).first.inner_text().strip()
         except Exception:
             user_name = "（ユーザー名取得失敗）"
         
