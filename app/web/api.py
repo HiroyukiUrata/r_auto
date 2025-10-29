@@ -769,13 +769,19 @@ async def update_schedule(update_request: ScheduleUpdateRequest):
     return {"status": "success", "message": f"Task '{tag}' schedule updated."}
 
 @router.post("/api/tasks/{tag}/run")
-async def run_task_now(tag: str):
+async def run_task_now(tag: str, request: Request):
     """
     指定されたタスクを即時実行する。
     フローの起点となるタスクとして実行される。
+    リクエストボディで引数を渡すことができる。
     """
-    return _run_task_internal(tag, is_part_of_flow=False)
-
+    try:
+        # リクエストボディからJSON形式の引数を取得。ボディが空なら空の辞書。
+        extra_kwargs = await request.json() if request.headers.get('content-length') != '0' else {}
+    except json.JSONDecodeError:
+        extra_kwargs = {} # JSONデコードに失敗した場合も空の辞書
+    return _run_task_internal(tag, is_part_of_flow=False, **extra_kwargs)
+ 
 @router.get("/api/logs", response_class=PlainTextResponse)
 async def get_logs():
     """ログファイルの内容をテキスト形式で返します。"""
@@ -800,8 +806,6 @@ def _run_task_internal(tag: str, is_part_of_flow: bool, **kwargs):
     """
     # スケジュールライブラリが内部的に渡す可能性のある引数を除外
     flow_run_kwargs = {k: v for k, v in kwargs.items() if k != 'job_func'}
-
-    logging.debug(f"[_run_task_internal] tag={tag}, is_part_of_flow={is_part_of_flow}, kwargs={flow_run_kwargs}")
 
     definition = TASK_DEFINITIONS.get(tag)
 
@@ -878,6 +882,9 @@ def _run_task_internal(tag: str, is_part_of_flow: bool, **kwargs):
                     for key, value in sub_task_args.items():
                         if value == "flow_count":
                             final_kwargs[key] = flow_kwargs.get('count')
+                        elif value == "flow_hours_ago":
+                            final_kwargs[key] = flow_kwargs.get('hours_ago')
+
                     # フロー全体に渡された引数で、個別のタスクの引数を上書きする
                     final_kwargs.update(flow_kwargs)
                     
