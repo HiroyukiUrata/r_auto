@@ -40,13 +40,13 @@
 <div class="row">
     <div class="col-md-6 mb-4">
         <div class="card h-100">
-            <div class="card-header">キーワードA群（商品カテゴリなど）</div>
+            <div class="card-header">キーワードA群（商品カテゴリ）</div>
             <div class="card-body d-flex flex-column">
-                <div id="keywords-a-container" class="keyword-container mb-3"></div>
-                <div class="input-group mt-auto">
-                    <input type="text" id="new-keyword-a" class="form-control" placeholder="キーワードを追加">
-                    <button class="btn btn-outline-secondary" type="button" onclick="addKeyword('a')">追加</button>
+                <p class="text-muted small">検索対象とする商品カテゴリを選択してください。</p>
+                <div class="accordion" id="genreAccordion">
+                    <!-- カテゴリ別アコーディオンがここに挿入されます -->
                 </div>
+                <div id="keywords-a-container" class="d-none"></div>
             </div>
         </div>
     </div>
@@ -68,11 +68,81 @@
 
 {% block scripts %}
 <script>
+    const GENRE_CATEGORIES = {
+        "ファッション": ["100371", "551177", "100433", "216131", "558885", "558929", "216129"],
+        "食品・飲料": ["100227", "551167", "100316", "510915", "510901"],
+        "家電・デジタル": ["562637", "211742", "100026", "564500", "565004"],
+        "生活・インテリア": ["100804", "215783", "558944", "101213", "100005"],
+        "美容・健康": ["100939", "100938", "551169"],
+        "趣味・ホビー": ["566382", "101070", "200162", "101240", "101205", "101164", "112493"],
+        "キッズ・ベビー": ["100533"],
+        "車・バイク": ["101114", "503190"],
+        "その他": ["101438", "111427", "101381", "100000"]
+    };
+
+    const RAKUTEN_GENRES = {
+        "100371": "レディースファッション", "551177": "メンズファッション", "100433": "インナー・下着・ナイトウェア", "216131": "バッグ・小物・ブランド雑貨", "558885": "靴", "558929": "腕時計", "216129": "ジュエリー・アクセサリー",
+        "100227": "食品", "551167": "スイーツ・お菓子", "100316": "水・ソフトドリンク", "510915": "ビール・洋酒", "510901": "日本酒・焼酎",
+        "562637": "家電", "211742": "TV・オーディオ・カメラ", "100026": "パソコン・周辺機器", "564500": "スマートフォン・タブレット", "565004": "光回線・モバイル通信",
+        "100804": "インテリア・寝具・収納", "215783": "日用品雑貨・文房具・手芸", "558944": "キッチン用品・食器・調理器具", "101213": "ペット・ペットグッズ", "100005": "花・ガーデン・DIY",
+        "100939": "美容・コスメ・香水", "100938": "ダイエット・健康", "551169": "医薬品・コンタクト・介護",
+        "566382": "おもちゃ", "101070": "スポーツ・アウトドア", "200162": "本・雑誌・コミック", "101240": "CD・DVD", "101205": "テレビゲーム", "101164": "ホビー", "112493": "楽器・音響機器",
+        "100533": "キッズ・ベビー・マタニティ",
+        "101114": "車・バイク", "503190": "車用品・バイク用品",
+        "101438": "サービス・リフォーム", "111427": "住宅・不動産", "101381": "カタログギフト・チケット", "100000": "百貨店・総合通販・ギフト"
+    };
+
+    function renderGenreCheckboxes(savedKeywords = []) {
+        const accordionContainer = document.getElementById('genreAccordion');
+        accordionContainer.innerHTML = '';
+
+        Object.entries(GENRE_CATEGORIES).forEach(([categoryName, genreIds], index) => {
+            const categoryId = `category-${index}`;
+            const selectedCount = genreIds.filter(id => savedKeywords.includes(id)).length;
+
+            const accordionItem = document.createElement('div');
+            accordionItem.className = 'accordion-item';
+            accordionItem.innerHTML = `
+                <h2 class="accordion-header" id="heading-${categoryId}">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-${categoryId}" aria-expanded="false" aria-controls="collapse-${categoryId}">
+                        ${categoryName}
+                        <span class="badge bg-primary rounded-pill ms-auto me-2" id="badge-${categoryId}">${selectedCount > 0 ? selectedCount : ''}</span>
+                    </button>
+                </h2>
+                <div id="collapse-${categoryId}" class="accordion-collapse collapse" aria-labelledby="heading-${categoryId}">
+                    <div class="accordion-body">
+                        ${genreIds.map(id => {
+                            const isChecked = savedKeywords.includes(id);
+                            return `
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" value="${id}" id="genre-${id}" ${isChecked ? 'checked' : ''} onchange="updateBadgeCount('${categoryId}', ${genreIds.length})">
+                                    <label class="form-check-label" for="genre-${id}">${RAKUTEN_GENRES[id]}</label>
+                                </div>`;
+                        }).join('')}
+                    </div>
+                </div>
+            `;
+            accordionContainer.appendChild(accordionItem);
+        });
+    }
+
+    function updateBadgeCount(categoryId, totalCount) {
+        const collapseElement = document.getElementById(`collapse-${categoryId}`);
+        const selectedCount = collapseElement.querySelectorAll('.form-check-input:checked').length;
+        const badge = document.getElementById(`badge-${categoryId}`);
+        badge.textContent = selectedCount > 0 ? selectedCount : '';
+    }
+
+    function getSelectedGenres() {
+        const container = document.getElementById('genreAccordion');
+        return Array.from(container.querySelectorAll('.form-check-input:checked')).map(input => input.value);
+    }
+
     async function fetchKeywords() {
         try {
             const response = await fetch('/api/keywords');
             const data = await response.json();
-            renderKeywords('a', data.keywords_a);
+            renderGenreCheckboxes(data.keywords_a);
             renderKeywords('b', data.keywords_b);
         } catch (error) {
             console.error('Failed to fetch keywords:', error);
@@ -98,13 +168,13 @@
         const input = document.getElementById(`new-keyword-${group}`);
         const keyword = input.value.trim();
         if (keyword) {
-            renderKeywords(group, [keyword, ...getKeywordsFromDOM(group)]);
+            renderKeywords(group, [keyword, ...getKeywordsFromDOM('b')]);
             input.value = '';
         }
     }
 
     async function saveKeywords(showMessages = true) {
-        const keywords_a = getKeywordsFromDOM('a');
+        const keywords_a = getSelectedGenres();
         const keywords_b = getKeywordsFromDOM('b');
 
         try {
@@ -234,8 +304,8 @@
 
 {% block styles %}
 <style>
-    .keyword-container {
-        min-height: 200px; /* コンテナの最小高さを確保 */
+    #keywords-b-container {
+        min-height: 200px;
     }
 </style>
 {% endblock %}

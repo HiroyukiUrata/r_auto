@@ -243,8 +243,13 @@
 
     async function bulkExecute() {
         const selectedUsers = getSelectedUsers();
+        const selectedRows = Array.from(document.querySelectorAll('#user-table-body tr.selected'));
         if (selectedUsers.length === 0) return;
         if (!confirm(`${selectedUsers.length}件のユーザーに「いいねバック＆コメント投稿」を実行しますか？`)) return;
+
+        // 先にUIから行を削除し、ボタンの状態を更新
+        selectedRows.forEach(row => row.remove());
+        updateBulkActionButtons();
 
         try {
             const response = await fetch('/api/users/bulk-engage', {
@@ -252,18 +257,12 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ users: selectedUsers })
             });
-            const result = await response.json();
             if (!response.ok) {
+                const result = await response.json();
                 throw new Error(result.detail || 'エンゲージメントタスクの開始に失敗しました。');
             }
-            
-            // 成功したらテーブルから行を削除
-            selectedUsers.forEach(user => {
-                const row = document.getElementById(`user-row-${user.id}`);
-                if (row) row.remove();
-            });
-            updateBulkActionButtons();
-            alert(result.message);
+            // 成功メッセージはバックグラウンドで処理されるため、ここでは表示しないか、コンソールに出力する程度に留める
+            console.log('エンゲージメントタスクを開始しました。');
         } catch (error) {
             alert(`エラー: ${error.message}`);
         }
@@ -273,6 +272,11 @@
         const userIds = getSelectedUserIds();
         if (userIds.length === 0) return;
         if (!confirm(`${userIds.length}件のユーザーへのコメント投稿をスキップしますか？`)) return;
+
+        // 先にUIから行を削除し、ボタンの状態を更新
+        const selectedRows = userIds.map(id => document.getElementById(`user-row-${id}`));
+        selectedRows.forEach(row => { if(row) row.remove(); });
+        updateBulkActionButtons();
 
         try {
             const response = await fetch('/api/users/bulk-skip', {
@@ -284,11 +288,8 @@
             if (!response.ok) {
                 throw new Error(result.detail || 'スキップ処理に失敗しました。');
             }
-            
-            // 成功したらテーブルから行を削除
-            userIds.forEach(id => document.getElementById(`user-row-${id}`).remove());
-            updateBulkActionButtons();
-            alert(result.message);
+            // 成功メッセージは不要なため削除
+            console.log(result.message);
         } catch (error) {
             alert(`エラー: ${error.message}`);
         }
