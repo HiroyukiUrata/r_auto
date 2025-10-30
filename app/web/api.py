@@ -16,7 +16,7 @@ from app.core.task_definitions import TASK_DEFINITIONS
 from app.core.database import (get_all_inventory_products, update_product_status, delete_all_products, init_db, 
                                delete_product, update_status_for_multiple_products, delete_multiple_products, get_product_count_by_status,
                                get_error_products_in_last_24h, update_product_priority, update_product_order, bulk_update_products_from_data, commit_user_actions, get_all_user_engagements,
-                               get_users_for_commenting)
+                               get_users_for_commenting, update_user_comment)
 from app.tasks.posting import run_posting
 from app.tasks.get_post_url import run_get_post_url
 from app.tasks.import_products import process_and_import_products
@@ -74,6 +74,10 @@ class BulkStatusUpdateRequest(BaseModel):
 class KeywordsUpdateRequest(BaseModel):
     keywords_a: list[str]
     keywords_b: list[str]
+
+class CommentUpdateRequest(BaseModel):
+    user_id: str
+    comment_text: str
 
 
 # --- HTML Routes ---
@@ -658,6 +662,21 @@ async def engage_with_multiple_users(payload: BulkEngagePayload, background_task
     background_tasks.add_task(task_manager.run_task_by_tag, "engage-user", users=payload.users)
 
     return {"message": f"{len(payload.users)}件のユーザーへのエンゲージメントタスクを開始しました。"}
+
+@router.patch("/api/users/update-comment", summary="指定されたユーザーのコメントを更新")
+async def patch_user_comment(request: CommentUpdateRequest):
+    """
+    指定されたユーザーIDのコメントテキストを更新する。
+    """
+    try:
+        update_user_comment(
+            user_id=request.user_id,
+            comment_text=request.comment_text
+        )
+        return JSONResponse(content={"status": "success", "message": "コメントを更新しました。"})
+    except Exception as e:
+        logging.error(f"ユーザー(ID: {request.user_id})のコメント更新中にエラーが発生しました: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="サーバーエラーによりコメントの更新に失敗しました。")
 
 
 

@@ -55,7 +55,7 @@
         <h6 class="fw-bold">ユーザー名</h6>
         <p id="modal-user-name"></p>
         <h6 class="fw-bold mt-3">生成済みコメント</h6>
-        <p id="modal-comment-text" style="white-space: pre-wrap;"></p>
+        <textarea class="form-control" id="modal-comment-text" rows="6" style="white-space: pre-wrap;"></textarea>
         <h6 class="fw-bold mt-3">
             <a class="text-decoration-none text-dark" data-bs-toggle="collapse" href="#collapseFullData" role="button" aria-expanded="false" aria-controls="collapseFullData">
                 全データ <i class="bi bi-chevron-down small"></i>
@@ -66,6 +66,7 @@
         </div>
       </div>
       <div class="modal-footer">
+        <button type="button" class="btn btn-success me-auto" id="modal-save-comment-btn" onclick="updateComment()"><i class="bi bi-save-fill me-1"></i>コメントを保存</button>
         <a href="#" id="modal-profile-link" class="btn btn-primary" target="_blank" rel="noopener noreferrer" style="display: none;"><i class="bi bi-box-arrow-up-right me-1"></i>プロフィールを開く</a>
         <a href="#" id="modal-last-comment-link" class="btn btn-info" target="_blank" rel="noopener noreferrer" style="display: none;"><i class="bi bi-chat-left-text-fill me-1"></i>投稿済ページへ</a>
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">閉じる</button>
@@ -128,13 +129,18 @@
     let infoModalInstance = null;
     let lastSelectedRowIndex = null;
 
+    // モーダルが閉じた後に実行するコールバックを保持する変数
+    let onModalHiddenCallback = null;
+
     function showInfoModal(element) {
         event.stopPropagation();
         const user = JSON.parse(element.closest('tr').dataset.user);
-
         document.getElementById('modal-user-name').textContent = user.name;
-        document.getElementById('modal-comment-text').textContent = user.comment_text;
+        // <textarea> に値を設定するために .value を使用
+        document.getElementById('modal-comment-text').value = user.comment_text || ''; // 値をセット
         document.getElementById('modal-full-data').textContent = JSON.stringify(user, null, 2);
+        // 保存ボタンにユーザーIDをセット
+        document.getElementById('modal-save-comment-btn').dataset.userId = user.id;
 
         // プロフィールページへのリンク
         const profileLink = document.getElementById('modal-profile-link');
@@ -155,6 +161,55 @@
         }
 
         infoModalInstance.show();
+    }
+
+    async function updateComment() {
+        const saveBtn = document.getElementById('modal-save-comment-btn');
+        const userId = saveBtn.dataset.userId;
+        const newComment = document.getElementById('modal-comment-text').value;
+
+        if (!userId) {
+            alert('ユーザーIDが取得できませんでした。');
+            return;
+        }
+
+        // ボタンをローディング状態にする
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 保存中...';
+
+        try {
+            const response = await fetch('/api/users/update-comment', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_id: userId, comment_text: newComment })
+            });
+
+            const result = await response.json();
+            if (!response.ok) {
+                throw new Error(result.detail || 'コメントの更新に失敗しました。');
+            }
+
+            // モーダルが完全に閉じた後にテーブルを更新するためのコールバック関数を設定
+            onModalHiddenCallback = () => {
+                const row = document.getElementById(`user-row-${userId}`);
+                if (row) {
+                    let user = JSON.parse(row.dataset.user);
+                    user.comment_text = newComment;
+                    // 修正: JSON文字列をエスケープせずにそのまま設定する
+                    row.dataset.user = JSON.stringify(user);
+                    row.querySelector('.text-muted.small').textContent = newComment;
+                    row.querySelector('.text-muted.small').title = newComment;
+                }
+                onModalHiddenCallback = null; // 一度実行したらコールバックをリセット
+            };
+            infoModalInstance.hide();
+        } catch (error) {
+            alert(`エラー: ${error.message}`);
+        } finally {
+            // ボタンの状態を元に戻す
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = '<i class="bi bi-save-fill me-1"></i>コメントを保存';
+        }
     }
 
     function getSelectedUserIds() {
@@ -247,7 +302,16 @@
         const tableBody = document.getElementById('user-table-body');
         tableBody.innerHTML = '<tr><td colspan="4" class="text-center"><div class="spinner-border spinner-border-sm" role="status"><span class="visually-hidden">Loading...</span></div></td></tr>';
 
-        infoModalInstance = new bootstrap.Modal(document.getElementById('infoModal'));
+        // モーダルのインスタンスがなければ初期化し、イベントリスナーを設定
+        if (!infoModalInstance) {
+            const modalElement = document.getElementById('infoModal');
+            infoModalInstance = new bootstrap.Modal(modalElement);
+            // モーダルが完全に閉じた後に発火するイベントを捕捉
+            modalElement.addEventListener('hidden.bs.modal', function () {
+                if (onModalHiddenCallback) onModalHiddenCallback();
+            });
+        }
+
         fetch(apiUrl)
             .then(response => {
                 if (!response.ok) {
@@ -263,7 +327,9 @@
                     return;
                 }
                 data.forEach(user => {
-                    const escapedUserJson = JSON.stringify(user).replace(/'/g, '&apos;').replace(/"/g, '&quot;');
+                    // HTML属性に設定するため、JSON文字列内のシングルクォートをエスケープする
+                    const escapedUserJson = JSON.stringify(user).replace(/'/g, '&#39;');
+
                     const lastCommented = user.last_commented_at ? new Date(user.last_commented_at).toLocaleDateString('ja-JP') : 'なし';
                     
                     // フォロー状態のアイコンを決定
@@ -357,6 +423,10 @@
         // Tooltipの初期化
         const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]');
         const tooltipList = [...tooltipTriggerList].map(tooltipTriggerEl => new bootstrap.Tooltip(tooltipTriggerEl));
+
+        // ページ読み込み時にモーダルインスタンスを初期化
+        // この時点ではまだ表示しない
+        // infoModalInstance = new bootstrap.Modal(document.getElementById('infoModal'));
 
         fetchUsers();
         const tableBody = document.getElementById('user-table-body');
