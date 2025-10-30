@@ -61,6 +61,7 @@
       </div>
       <div class="modal-footer">
         <a href="#" id="modal-profile-link" class="btn btn-primary" target="_blank" rel="noopener noreferrer" style="display: none;"><i class="bi bi-box-arrow-up-right me-1"></i>プロフィールを開く</a>
+        <a href="#" id="modal-last-comment-link" class="btn btn-info" target="_blank" rel="noopener noreferrer" style="display: none;"><i class="bi bi-chat-left-text-fill me-1"></i>投稿済ページへ</a>
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">閉じる</button>
       </div>
     </div>
@@ -129,12 +130,22 @@
         document.getElementById('modal-comment-text').textContent = user.comment_text;
         document.getElementById('modal-full-data').textContent = JSON.stringify(user, null, 2);
 
+        // プロフィールページへのリンク
         const profileLink = document.getElementById('modal-profile-link');
         if (user.profile_page_url && user.profile_page_url !== '取得失敗') {
             profileLink.href = user.profile_page_url;
             profileLink.style.display = 'inline-block';
         } else {
             profileLink.style.display = 'none';
+        }
+
+        // 最後にコメントした投稿へのリンク
+        const lastCommentLink = document.getElementById('modal-last-comment-link');
+        if (user.last_commented_post_url) {
+            lastCommentLink.href = user.last_commented_post_url;
+            lastCommentLink.style.display = 'inline-block';
+        } else {
+            lastCommentLink.style.display = 'none';
         }
 
         infoModalInstance.show();
