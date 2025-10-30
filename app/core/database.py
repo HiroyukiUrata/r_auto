@@ -121,6 +121,7 @@ def init_db():
                 recent_like_count INTEGER DEFAULT 0, -- 今セッション
                 recent_collect_count INTEGER DEFAULT 0, -- 今セッション
                 recent_comment_count INTEGER DEFAULT 0, -- 今セッション
+                recent_follow_count INTEGER DEFAULT 0, -- 今セッション
                 recent_action_timestamp TEXT, -- 今セッションの最新アクション日時
                 comment_text TEXT,
                 last_commented_at TEXT,
@@ -144,6 +145,7 @@ def init_db():
 
         add_column_to_engagement_if_not_exists(cursor, 'ai_prompt_updated_at', 'TEXT')
         add_column_to_engagement_if_not_exists(cursor, 'comment_generated_at', 'TEXT')
+        add_column_to_engagement_if_not_exists(cursor, 'recent_follow_count', 'INTEGER')
 
         # --- 既存タイムスタンプのフォーマットをISO 8601に統一するマイグレーション処理 ---
         # この処理は一度実行されると、次回以降は更新対象がなくなる
@@ -564,6 +566,58 @@ def get_latest_engagement_timestamp() -> datetime:
         conn.close()
     return datetime.min
 
+def get_users_for_url_acquisition() -> list[dict]:
+    """
+    プロフィールページのURLがまだ取得されていないユーザーを取得する。
+    - profile_page_url が NULL または空文字列
+    - 取得失敗の記録がない
+    - 優先度順にソート
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT * FROM user_engagement
+            WHERE (profile_page_url IS NULL OR profile_page_url = '')
+                AND (
+                    recent_like_count >= 3
+                    OR (is_following > 0 AND recent_follow_count > 0 AND recent_like_count >= 1)
+                )
+            ORDER BY 
+                (CASE WHEN recent_follow_count > 0 THEN 1 ELSE 0 END) DESC,
+                recent_like_count DESC,
+                recent_collect_count DESC,
+                latest_action_timestamp DESC
+        """)
+        users = [dict(row) for row in cursor.fetchall()]
+        return users
+    finally:
+        conn.close()
+
+def get_users_for_prompt_creation() -> list[dict]:
+    """
+    AIプロンプトメッセージを生成/更新する必要があるユーザーを取得する。
+    - URLが取得済み
+    - ai_prompt_updated_at が latest_action_timestamp より古い、または NULL
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT * FROM user_engagement
+            WHERE profile_page_url IS NOT NULL
+              AND (ai_prompt_updated_at IS NULL OR ai_prompt_updated_at < latest_action_timestamp)
+              AND (
+                  recent_like_count >= 5
+                  OR (is_following > 0 AND recent_follow_count > 0 AND recent_like_count >= 1)
+              )
+        """)
+        users = [dict(row) for row in cursor.fetchall()]
+        return users
+    finally:
+        conn.close()
+
+
 def get_all_user_engagements_map() -> dict:
     """
     user_engagementテーブルからすべてのユーザーデータを取得し、user_idをキーとする辞書で返す。
@@ -592,7 +646,7 @@ def bulk_upsert_user_engagements(users_data: list[dict]):
         (
             d.get('id'), d.get('name'), d.get('profile_page_url'), d.get('profile_image_url'), d.get('latest_action_timestamp'),
             1 if d.get('is_following') else 0,
-            d.get('recent_like_count', 0), d.get('recent_collect_count', 0), d.get('recent_comment_count', 0),
+            d.get('recent_like_count', 0), d.get('recent_collect_count', 0), d.get('recent_comment_count', 0), d.get('recent_follow_count', 0),
             d.get('recent_action_timestamp'),
             d.get('ai_prompt_message'), d.get('ai_prompt_updated_at')
         ) for d in users_data
@@ -603,8 +657,8 @@ def bulk_upsert_user_engagements(users_data: list[dict]):
         cursor = conn.cursor()
         # 存在しない場合はINSERT、存在する場合は指定したカラムのみをUPDATE
         cursor.executemany("""
-            INSERT INTO user_engagement (id, name, profile_page_url, profile_image_url, latest_action_timestamp, is_following, recent_like_count, recent_collect_count, recent_comment_count, recent_action_timestamp, ai_prompt_message, ai_prompt_updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO user_engagement (id, name, profile_page_url, profile_image_url, latest_action_timestamp, is_following, recent_like_count, recent_collect_count, recent_comment_count, recent_follow_count, recent_action_timestamp, ai_prompt_message, ai_prompt_updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 name = excluded.name,
                 profile_page_url = COALESCE(excluded.profile_page_url, profile_page_url),
@@ -618,10 +672,12 @@ def bulk_upsert_user_engagements(users_data: list[dict]):
                 recent_like_count = recent_like_count + excluded.recent_like_count,
                 recent_collect_count = recent_collect_count + excluded.recent_collect_count,
                 recent_comment_count = recent_comment_count + excluded.recent_comment_count,
+                follow_count = follow_count + excluded.follow_count, -- notification_analyzerからの直接加算
                 ai_prompt_message = excluded.ai_prompt_message,
                 ai_prompt_updated_at = excluded.ai_prompt_updated_at
         """, records_to_upsert)
         conn.commit()
+        logging.debug(f"{cursor.rowcount}件のユーザーエンゲージメントデータをUPSERTしました。")
         return cursor.rowcount
     finally:
         conn.close()
@@ -654,9 +710,11 @@ def commit_user_actions(user_ids: list[str], is_comment_posted: bool):
                 like_count = like_count + recent_like_count,
                 collect_count = collect_count + recent_collect_count,
                 comment_count = comment_count + recent_comment_count,
+                follow_count = follow_count + recent_follow_count,
                 recent_like_count = 0,
                 recent_collect_count = 0,
                 recent_comment_count = 0,
+                recent_follow_count = 0,
                 last_commented_at = CASE WHEN ? THEN ? ELSE last_commented_at END
             WHERE id IN ({placeholders})
         """
@@ -683,7 +741,7 @@ def get_stale_user_ids_for_commit(hours: int = 24) -> list[str]:
             SELECT id FROM user_engagement
             WHERE
                 recent_action_timestamp < ?
-                AND (recent_like_count > 0 OR recent_collect_count > 0 OR recent_comment_count > 0)
+                AND (recent_like_count > 0 OR recent_collect_count > 0 OR recent_comment_count > 0 OR recent_follow_count > 0)
         """
         cursor.execute(query, (threshold_time,))
         user_ids = [row['id'] for row in cursor.fetchall()]
@@ -711,7 +769,6 @@ def get_users_for_commenting(limit: int = 10) -> list[dict]:
             WHERE
                 -- 必須項目のチェック
                 (recent_like_count > 0 OR recent_collect_count > 0 OR recent_comment_count > 0) AND
-                profile_page_url IS NOT NULL AND profile_page_url != '' AND profile_page_url != '取得失敗' AND
                 comment_text IS NOT NULL AND comment_text != '' AND
                 recent_action_timestamp IS NOT NULL
                 AND (
@@ -753,19 +810,12 @@ def get_users_for_ai_comment_creation() -> list[dict]:
         cursor = conn.cursor()
         query = """
             SELECT * FROM user_engagement
-            WHERE
-                ai_prompt_message IS NOT NULL AND ai_prompt_message != '' AND (
-                    -- 条件1: 新規フォロワーは常に対象
-                    ai_prompt_message LIKE '%新規にフォロー%'
-                    OR
-                    -- 条件2: いいねのみの場合は3件以上
-                    (ai_prompt_message NOT LIKE '%新規にフォロー%' AND recent_like_count >= 3)
-                ) AND (
-                    -- 生成済みコメントのチェック
-                    comment_generated_at IS NULL OR
-                    ai_prompt_updated_at > comment_generated_at
+            WHERE 
+                ai_prompt_message IS NOT NULL AND ai_prompt_message != ''
+                AND (
+                    comment_generated_at IS NULL 
+                    OR ai_prompt_updated_at > comment_generated_at
                 )
-            ORDER BY latest_action_timestamp DESC
         """
         cursor.execute(query)
 
