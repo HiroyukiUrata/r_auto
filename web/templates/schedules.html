@@ -614,8 +614,14 @@
 
             const success = await saveSchedule(tag, isEnabled, newTimes);
             if (success) {
+                // 現在のスクロール位置を記憶
+                const scrollY = window.scrollY;
+
                 showToast('保存完了', 'スケジュールを保存しました。');
-                await fetchSchedules(); // 画面を再描画して「要保存」状態を解除
+                // 画面を再描画
+                await fetchSchedules();
+                // 記憶したスクロール位置に戻す
+                window.scrollTo(0, scrollY);
             }
         }
 
