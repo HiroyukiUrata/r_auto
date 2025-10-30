@@ -8,12 +8,14 @@ import os
 import json
 from pydantic import BaseModel
 from pathlib import Path
+from fastapi import BackgroundTasks
 
 # タスク定義を一元的にインポート
+from app.core.task_manager import TaskManager
 from app.core.task_definitions import TASK_DEFINITIONS
 from app.core.database import (get_all_inventory_products, update_product_status, delete_all_products, init_db, 
-                               delete_product, update_status_for_multiple_products, delete_multiple_products, get_product_count_by_status, 
-                               get_error_products_in_last_24h, update_product_priority, update_product_order, bulk_update_products_from_data, commit_user_actions,
+                               delete_product, update_status_for_multiple_products, delete_multiple_products, get_product_count_by_status,
+                               get_error_products_in_last_24h, update_product_priority, update_product_order, bulk_update_products_from_data, commit_user_actions, get_all_user_engagements,
                                get_users_for_commenting)
 from app.tasks.posting import run_posting
 from app.tasks.get_post_url import run_get_post_url
@@ -61,6 +63,9 @@ class BulkUpdateRequest(BaseModel):
 
 class UserIdsRequest(BaseModel):
     user_ids: list[str]
+
+class BulkEngagePayload(BaseModel):
+    users: list[dict]
 
 class BulkStatusUpdateRequest(BaseModel):
     product_ids: list[int]
@@ -606,12 +611,18 @@ async def bulk_status_update_products(request: BulkStatusUpdateRequest):
         return JSONResponse(status_code=500, content={"status": "error", "message": "一括更新に失敗しました。"})
 
 @router.get("/api/comment-targets")
-async def get_comment_targets():
+async def get_comment_targets(request: Request):
     """コメント投稿対象のユーザーリストを返す"""
     try:
-        # データベースからコメント対象のユーザーを取得 (上限50件)
-        users = get_users_for_commenting(limit=50)
-        return JSONResponse(content=users)
+        show_all = request.query_params.get('all', 'false').lower() == 'true'
+        
+        if show_all:
+            # 全ユーザー表示モード（デバッグ用）
+            users = get_all_user_engagements(limit=200)
+        else:
+            # 通常のコメント対象ユーザー表示モード
+            users = get_users_for_commenting(limit=50)
+        return JSONResponse(content=users)    
     except Exception as e:
         logging.error(f"コメント対象ユーザーの取得中にエラーが発生しました: {e}", exc_info=True)
         return JSONResponse(status_code=500, content={"status": "error", "message": "ユーザーリストの取得に失敗しました。"})
@@ -633,6 +644,21 @@ async def bulk_skip_users(request: UserIdsRequest):
     except Exception as e:
         logging.error(f"ユーザーの一括スキップ処理中にエラーが発生しました: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="サーバーエラーが発生しました。")
+
+@router.post("/api/users/bulk-engage", summary="選択した複数のユーザーにエンゲージメントタスクを実行")
+async def engage_with_multiple_users(payload: BulkEngagePayload, background_tasks: BackgroundTasks):
+    """
+    選択された複数のユーザーに対して、いいねバックとコメント投稿のタスクを非同期で実行する。
+    """
+    if not payload.users:
+        raise HTTPException(status_code=400, detail="対象ユーザーが指定されていません。")
+
+    task_manager = TaskManager()
+    # ユーザーリスト全体を1つのタスクとしてスケジュール
+    background_tasks.add_task(task_manager.run_task_by_tag, "engage-user", users=payload.users)
+
+    return {"message": f"{len(payload.users)}件のユーザーへのエンゲージメントタスクを開始しました。"}
+
 
 
 @router.post("/api/products/bulk-update-from-json")
@@ -795,7 +821,6 @@ async def get_logs():
             return "".join(lines[-1000:])
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"ログの読み込みに失敗しました: {str(e)}")
-
 
 def _run_task_internal(tag: str, is_part_of_flow: bool, **kwargs):
     """

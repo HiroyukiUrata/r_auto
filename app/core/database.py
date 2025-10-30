@@ -862,6 +862,23 @@ def get_users_for_ai_comment_creation() -> list[dict]:
     finally:
         conn.close()
 
+def get_all_user_engagements(limit: int = 100) -> list[dict]:
+    """
+    user_engagementテーブルからすべてのユーザーデータを取得する（デバッグ用）。
+    最新アクション日時の降順でソートする。
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        # 最新のアクションがあったユーザーを優先して表示
+        query = "SELECT * FROM user_engagement ORDER BY recent_action_timestamp DESC, latest_action_timestamp DESC LIMIT ?"
+        cursor.execute(query, (limit,))
+        users = [dict(row) for row in cursor.fetchall()]
+        return users
+    finally:
+        conn.close()
+
+
 def update_user_comment(user_id: str, comment_text: str):
     """
     指定されたユーザーのcomment_textとcomment_generated_atを更新する。

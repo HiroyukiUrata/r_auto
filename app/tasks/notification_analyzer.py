@@ -91,17 +91,15 @@ class NotificationAnalyzerTask(BaseTask):
         # このタスクはヘッドレスモードではスクロールが不安定なため、常にOFFにする
         self.force_non_headless = True
 
-    def _scroll_to_bottom_and_collect_items(self, page: Page) -> Locator:
+    def _scroll_to_bottom_and_collect_items(self, page: Page, scroll_stop_base_time: datetime) -> Locator:
         """
-        お知らせページを最後までスクロールし、すべての通知アイテムのLocatorを返す。
-        このメソッドはスクロール処理にのみ責任を持つ。
+        指定された基準時刻までお知らせページをスクロールし、すべての通知アイテムのLocatorを返す。
         """
-        # --- スクロール停止条件の準備 ---
-        latest_db_timestamp = get_latest_engagement_timestamp()
-        # ユーザーの指定時間に1時間のバッファを加えて、より確実にデータを取得する
-        buffer_hours = self.hours_ago + 1
-        target_hours_ago = datetime.now() - timedelta(hours=buffer_hours)
-        logger.debug(f"スクロール停止条件: DB最新時刻 ({latest_db_timestamp.strftime('%Y-%m-%d %H:%M:%S') if latest_db_timestamp > datetime.min else 'なし'}) または 約{self.hours_ago}時間前 ({target_hours_ago.strftime('%Y-%m-%d %H:%M:%S')})")
+        # 基準時刻をログに出力
+        logger.debug(f"スクロール停止基準時刻: {scroll_stop_base_time.strftime('%Y-%m-%d %H:%M:%S')}")
+
+        # スクロールは取りこぼしがないように、基準時刻からさらに1時間のバッファを持って行う
+        scroll_target_hours_ago = scroll_stop_base_time - timedelta(hours=1)
 
         # --- ループによる自動スクロール処理 ---
         logger.debug("条件に合致するまでアクティビティをスクロールして読み込みます...")
@@ -142,11 +140,9 @@ class NotificationAnalyzerTask(BaseTask):
             if last_item_timestamp_str:
                 try:
                     last_item_time = datetime.strptime(last_item_timestamp_str, '%Y-%m-%d %H:%M:%S')
-                    if last_item_time < target_hours_ago:
-                        logger.debug(f"最終通知時刻が約{self.hours_ago}時間前を下回ったため、スクロールを停止します。")
-                        break
-                    if last_item_time < latest_db_timestamp:
-                        logger.debug("最終通知時刻がDBの最新時刻を下回ったため、スクロールを停止します。")
+                    # 基準時刻（バッファなし）と比較して停止するかどうかを判断
+                    if last_item_time < scroll_stop_base_time:
+                        logger.debug(f"最終通知時刻が基準時刻 ({scroll_stop_base_time.strftime('%Y-%m-%d %H:%M:%S')}) を下回ったため、スクロールを停止します。")
                         break
                 except (ValueError, TypeError):
                     logger.warning(f"タイムスタンプの解析に失敗しました: {last_item_timestamp_str}")
@@ -173,6 +169,17 @@ class NotificationAnalyzerTask(BaseTask):
         # --- 2. 無限スクロールによる情報収集 ---
         logger.debug("「アクティビティ」セクションをスクロールして情報を収集します。")
         activity_title_locator = page.locator("div.title[ng-show='notifications.activityNotifications.length > 0']")
+
+        # --- 基準時刻の決定 ---
+        latest_db_timestamp = get_latest_engagement_timestamp()
+        user_specified_time = datetime.now() - timedelta(hours=self.hours_ago)
+        if latest_db_timestamp > user_specified_time:
+            base_time = latest_db_timestamp
+            logger.debug(f"基準時刻: DBの最新時刻 ({base_time.strftime('%Y-%m-%d %H:%M:%S')}) を優先します。")
+        else:
+            base_time = user_specified_time
+            logger.debug(f"基準時刻: ユーザー指定の約{self.hours_ago}時間前 ({base_time.strftime('%Y-%m-%d %H:%M:%S')}) を優先します。")
+
         try:
             activity_title_locator.wait_for(state='attached', timeout=10000)
         except PlaywrightError:
@@ -188,11 +195,22 @@ class NotificationAnalyzerTask(BaseTask):
             return True
 
         # --- ステップ1: スクロール処理を呼び出し、全通知アイテムを取得 ---
-        notification_list_items = self._scroll_to_bottom_and_collect_items(page)
+        notification_list_items = self._scroll_to_bottom_and_collect_items(page, base_time)
 
         # --- 3. データ抽出 ---
         logger.debug(f"--- フェーズ1: {notification_list_items.count()}件の通知から基本情報を収集します。 ---")
+        # DOM上の最も古い通知時刻をログに出力
+        if notification_list_items.count() > 0:
+            oldest_item_timestamp_str = notification_list_items.last.locator("span.notice-time").get_attribute("title")
+            logger.debug(f"  -> DOM上の最も古い通知時刻: {oldest_item_timestamp_str}")
+
         all_notifications = []
+
+        # --- 足切り時刻の準備 ---
+        # スクロール停止条件と同じロジックで、これより古い通知は無視するための時刻を定義
+        cutoff_timestamp = base_time # スクロールで使った基準時刻をそのまま使用
+        logger.debug(f"データ抽出の足切り時刻: {cutoff_timestamp.strftime('%Y-%m-%d %H:%M:%S')} (これより古いか等しい通知は除外)")
+
         for item in notification_list_items.all():
             try:
                 user_name_element = item.locator("span.notice-name span.strong").first
@@ -221,14 +239,22 @@ class NotificationAnalyzerTask(BaseTask):
 
                     action_text = item.locator("div.right-text > p").first.inner_text()
                     action_timestamp_str = item.locator("span.notice-time").first.get_attribute("title")
-                    
-                    # タイムスタンプをISO 8601形式に統一
-                    action_timestamp_iso = action_timestamp_str
+
+                    # --- タイムスタンプによる足切り処理 ---
                     if action_timestamp_str:
                         try:
-                            action_timestamp_iso = datetime.strptime(action_timestamp_str, '%Y-%m-%d %H:%M:%S').isoformat()
+                            action_time = datetime.strptime(action_timestamp_str, '%Y-%m-%d %H:%M:%S')
+                            # 足切り時刻より古い通知はスキップ
+                            if action_time <= cutoff_timestamp:
+                                continue
+                            action_timestamp_iso = action_time.isoformat()
                         except (ValueError, TypeError):
                             logger.warning(f"不正な日付形式のため、元の値を保持します: {action_timestamp_str}")
+                            action_timestamp_iso = action_timestamp_str
+                    else:
+                        # タイムスタンプがない通知は処理対象外
+                        logger.warning("通知アイテムにタイムスタンプがありません。スキップします。")
+                        continue
                     
                     # 「未フォロー」ボタンが存在しない、または非表示であればフォロー中と判断
                     is_following = not item.locator("span.follow:has-text('未フォロー')").is_visible()
@@ -241,6 +267,13 @@ class NotificationAnalyzerTask(BaseTask):
                 logger.warning(f"通知アイテムの取得中にPlaywrightエラー: {item_error}")
             except Exception as item_error:
                 logger.warning(f"通知アイテムの取得中に予期せぬエラー: {item_error}")
+
+        # 足切り後の最も古い通知時刻をログに出力
+        if all_notifications:
+            oldest_filtered_timestamp = all_notifications[-1]['action_timestamp']
+            logger.debug(f"  -> 足切り後の最も古い通知時刻: {oldest_filtered_timestamp}")
+        else:
+            logger.debug("  -> 足切り後の通知はありません。")
 
         # --- フェーズ2: ユーザー単位で情報を集約し、過去データと合算 ---
         logger.debug(f"--- フェーズ2: {len(all_notifications)}件の通知をユーザー単位で集約します。 ---")
@@ -255,6 +288,7 @@ class NotificationAnalyzerTask(BaseTask):
                     'recent_comment_count': 0, 'recent_follow_count': 0,
                     'is_following': notification['is_following'],
                     'recent_action_timestamp': notification['action_timestamp'],
+                    'latest_action_timestamp': notification['action_timestamp'], # この行を追加
                 }
             
             # 各アクションのカウントを更新
@@ -278,6 +312,11 @@ class NotificationAnalyzerTask(BaseTask):
 
         # --- フェーズ3: DBへの一次保存 ---
         logger.debug(f"--- フェーズ3: {len(aggregated_users)}件の集約データをDBに保存します。 ---")
+        # DB保存前の最も古い通知時刻をログに出力
+        if aggregated_users:
+            oldest_aggregated_timestamp = min(user['recent_action_timestamp'] for user in aggregated_users.values())
+            logger.debug(f"  -> DB保存前の最も古い通知時刻: {oldest_aggregated_timestamp}")
+
         if aggregated_users:
             upserted_count = bulk_upsert_user_engagements(list(aggregated_users.values()))
             logger.debug(f"{upserted_count}件のユーザーエンゲージメントデータをDBに保存/更新しました。")

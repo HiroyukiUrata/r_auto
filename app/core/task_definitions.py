@@ -16,6 +16,7 @@ from app.tasks.notification_analyzer import run_notification_analyzer
 from app.tasks.rakuten_api_procure import procure_from_rakuten_api
 from app.tasks.create_ai_comment import run_create_ai_comment
 from app.tasks.create_caption_api import run_create_caption_api
+from app.tasks.engage_user import run_engage_user
 
 """
 システム内の全タスクの定義を一元管理する。
@@ -274,5 +275,13 @@ TASK_DEFINITIONS = {
         "show_in_schedule": False,
         "description": "24時間以上放置されている未処理のアクションを自動的にスキップ扱いとしてコミットします。",
         "order": 90,
+    },
+    "engage-user": {
+        "name_ja": "ユーザーエンゲージメント実行",
+        "function": run_engage_user,
+        "is_debug": False,
+        "show_in_schedule": False, # APIからのみ呼び出す
+        "description": "指定された複数のユーザーにいいねバックとコメント投稿を行います。",
+        "order": 9999,
     },
 }

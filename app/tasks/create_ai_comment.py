@@ -132,7 +132,9 @@ class CreateAiCommentTask(BaseTask):
         
         json_match = re.search(r"```json\s*([\s\S]*?)\s*```", response.text if response else "")
         if not json_match:
-            logger.error(f"名前抽出の応答からJSONブロックが見つかりませんでした（バッチ {batch_num}）。")
+            error_message = f"名前抽出の応答からJSONブロックが見つかりませんでした（バッチ {batch_num}）。"
+            logger.error(error_message)
+            logger.error(f"Gemini APIからの応答(生): {response.text if response else '応答なし'}")
             return {}
             
         extracted_names = json.loads(json_match.group(1))
@@ -151,7 +153,9 @@ class CreateAiCommentTask(BaseTask):
 
         json_match = re.search(r"```json\s*([\s\S]*?)\s*```", response.text if response else "")
         if not json_match:
-            logger.error(f"コメント本文生成の応答からJSONブロックが見つかりませんでした（バッチ {batch_num}）。")
+            error_message = f"コメント本文生成の応答からJSONブロックが見つかりませんでした（バッチ {batch_num}）。"
+            logger.error(error_message)
+            logger.error(f"Gemini APIからの応答(生): {response.text if response else '応答なし'}")
             return {}
 
         generated_bodies = json.loads(json_match.group(1))

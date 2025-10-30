@@ -17,6 +17,13 @@
                 <i class="bi bi-check-square me-1"></i>すべて選択
             </button>
         </div>
+        <div class="form-check form-switch ms-3">
+            <input class="form-check-input" type="checkbox" role="switch" id="show-all-users-switch" onchange="fetchUsers()">
+            <label class="form-check-label small" for="show-all-users-switch">
+                全ユーザー表示
+                <i class="bi bi-info-circle" data-bs-toggle="tooltip" title="ONにすると、DBに存在する全ユーザーを最新アクション順に表示します（デバッグ用）"></i>
+            </label>
+        </div>
     </div>
 </div>
 
@@ -156,12 +163,38 @@
         updateBulkActionButtons();
     }
 
+    function getSelectedUsers() {
+        return Array.from(document.querySelectorAll('#user-table-body tr.selected')).map(row => {
+            return JSON.parse(row.dataset.user.replace(/&quot;/g, '"').replace(/&apos;/g, "'"));
+        });
+    }
+
     async function bulkExecute() {
-        const userIds = getSelectedUserIds();
-        if (userIds.length === 0) return;
-        if (!confirm(`${userIds.length}件のユーザーにコメントを投稿しますか？`)) return;
-        alert(`（未実装）${userIds.join(', ')} のユーザーにコメントを投稿します。`);
-        // TODO: API呼び出しを実装
+        const selectedUsers = getSelectedUsers();
+        if (selectedUsers.length === 0) return;
+        if (!confirm(`${selectedUsers.length}件のユーザーに「いいねバック＆コメント投稿」を実行しますか？`)) return;
+
+        try {
+            const response = await fetch('/api/users/bulk-engage', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ users: selectedUsers })
+            });
+            const result = await response.json();
+            if (!response.ok) {
+                throw new Error(result.detail || 'エンゲージメントタスクの開始に失敗しました。');
+            }
+            
+            // 成功したらテーブルから行を削除
+            selectedUsers.forEach(user => {
+                const row = document.getElementById(`user-row-${user.id}`);
+                if (row) row.remove();
+            });
+            updateBulkActionButtons();
+            alert(result.message);
+        } catch (error) {
+            alert(`エラー: ${error.message}`);
+        }
     }
 
     async function bulkSkip() {
@@ -189,10 +222,16 @@
         }
     }
 
-    document.addEventListener('DOMContentLoaded', function () {
-        infoModalInstance = new bootstrap.Modal(document.getElementById('infoModal'));
+    function fetchUsers() {
+        const showAll = document.getElementById('show-all-users-switch').checked;
+        const apiUrl = showAll ? '/api/comment-targets?all=true' : '/api/comment-targets';
 
-        fetch('/api/comment-targets') // TODO: このAPIエンドポイントを実装する必要がある
+        // テーブルをローディング状態にする
+        const tableBody = document.getElementById('user-table-body');
+        tableBody.innerHTML = '<tr><td colspan="4" class="text-center"><div class="spinner-border spinner-border-sm" role="status"><span class="visually-hidden">Loading...</span></div></td></tr>';
+
+        infoModalInstance = new bootstrap.Modal(document.getElementById('infoModal'));
+        fetch(apiUrl)
             .then(response => {
                 if (!response.ok) {
                     if (response.status === 404) return []; // 404の場合は空の配列を返す
@@ -201,7 +240,6 @@
                 return response.json();
             })
             .then(data => {
-                const tableBody = document.getElementById('user-table-body');
                 tableBody.innerHTML = '';
                 if (data.length === 0) {
                     tableBody.innerHTML = '<tr><td colspan="4" class="text-center">コメント投稿対象のユーザーはいません。</td></tr>';
@@ -226,21 +264,30 @@
                     const totalCollects = user.collect_count || 0;
                     const collectDisplay = recentCollects < totalCollects ? `${recentCollects}+` : recentCollects;
 
-                    // 最終アクション時刻のフォーマット
+                    // --- 最終アクション時刻を相対表記にフォーマット ---
                     let recentActionTime, timeIcon;
                     if (user.recent_action_timestamp) {
+                        const now = new Date();
                         const actionDate = new Date(user.recent_action_timestamp);
-                        // 画面幅に応じてフォーマットを切り替える
-                        if (window.innerWidth < 768) {
-                            recentActionTime = actionDate.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
-                            timeIcon = ''; // スマホではアイコンなし
+                        const diffMinutes = Math.floor((now - actionDate) / (1000 * 60));
+                        const diffHours = Math.floor(diffMinutes / 60);
+                        const diffDays = Math.floor(diffHours / 24);
+
+                        if (diffMinutes < 60) {
+                            recentActionTime = `${diffMinutes}分前`;
+                        } else if (diffHours < 24) {
+                            recentActionTime = `${diffHours}時間前`;
                         } else {
-                            recentActionTime = actionDate.toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-                            timeIcon = '<i class="bi bi-clock me-1"></i>'; // PCではアイコンあり
+                            recentActionTime = `${diffDays}日前`;
                         }
+                        timeIcon = '<i class="bi bi-clock me-1"></i>';
                     } else {
                         recentActionTime = 'N/A';
                         timeIcon = '<i class="bi bi-clock me-1"></i>';
+                    }
+                    // スマホ表示ではアイコンを非表示にする
+                    if (window.innerWidth < 768) {
+                        timeIcon = '';
                     }
 
                     // 3日以上経過 & 5いいね以上の優先ユーザーにアイコンを追加
@@ -287,6 +334,14 @@
                 tableBody.innerHTML = `<tr><td colspan="4" class="text-center text-danger">${error.message}</td></tr>`;
             });
 
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        // Tooltipの初期化
+        const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]');
+        const tooltipList = [...tooltipTriggerList].map(tooltipTriggerEl => new bootstrap.Tooltip(tooltipTriggerEl));
+
+        fetchUsers();
         const tableBody = document.getElementById('user-table-body');
         tableBody.addEventListener('click', function (e) {
             const rows = Array.from(tableBody.querySelectorAll('tr'));
