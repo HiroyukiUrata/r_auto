@@ -230,8 +230,10 @@ document.addEventListener('DOMContentLoaded', function () {
             console.log("[DASHBOARD_JS] APIから受け取ったキーワードデータ:", keywordsData);
             keywordsContainer.innerHTML = '';
             if (keywordsData && keywordsData.length > 0) {
-                keywordsData.slice(0, 3).forEach(keyword => {
-                    keywordsContainer.innerHTML += `<a href="https://search.rakuten.co.jp/search/mall/${encodeURIComponent(keyword)}/" target="_blank" class="btn btn-outline-secondary btn-sm me-2 mb-2">${keyword}</a>`;
+                keywordsData.slice(0, 5).forEach(kw_obj => {
+                    const url = `https://search.rakuten.co.jp/search/mall/${encodeURIComponent(kw_obj.keyword)}/${kw_obj.genre_id}/`;
+                    const displayText = `${kw_obj.keyword} (${kw_obj.genre_name})`;
+                    keywordsContainer.innerHTML += `<a href="${url}" target="_blank" class="btn btn-outline-secondary btn-sm me-2 mb-2">${displayText}</a>`;
                 });
             } else {
                 keywordsContainer.innerHTML = '<p class="text-muted">最近使用したキーワードはありません。</p>';

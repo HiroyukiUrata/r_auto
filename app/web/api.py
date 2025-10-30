@@ -468,7 +468,7 @@ async def get_recent_keywords():
     try:
         if os.path.exists(RECENT_KEYWORDS_FILE):
             with open(RECENT_KEYWORDS_FILE, "r", encoding="utf-8") as f:
-                keywords = json.load(f)
+                keywords = json.load(f) # これはオブジェクトのリスト [{keyword: "...", genre_name: "...", genre_id: "..."}, ...]
             return JSONResponse(content=keywords)
         return JSONResponse(content=[])
     except Exception as e:
