@@ -376,7 +376,8 @@ class NotificationAnalyzerTask(BaseTask):
             elif follow_count > recent_follow_count:
                 messages.append("以前からフォローしてくれているユーザーです。")
             else:
-                messages.append("まだフォローされていないユーザーです。")
+                pass
+                #messages.append("まだフォローされていないユーザーです。")
 
             # 2. いいね関係
             if recent_likes > 0:

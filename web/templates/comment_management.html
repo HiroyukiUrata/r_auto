@@ -226,6 +226,23 @@
                     const totalCollects = user.collect_count || 0;
                     const collectDisplay = recentCollects < totalCollects ? `${recentCollects}+` : recentCollects;
 
+                    // 最終アクション時刻のフォーマット
+                    let recentActionTime, timeIcon;
+                    if (user.recent_action_timestamp) {
+                        const actionDate = new Date(user.recent_action_timestamp);
+                        // 画面幅に応じてフォーマットを切り替える
+                        if (window.innerWidth < 768) {
+                            recentActionTime = actionDate.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+                            timeIcon = ''; // スマホではアイコンなし
+                        } else {
+                            recentActionTime = actionDate.toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+                            timeIcon = '<i class="bi bi-clock me-1"></i>'; // PCではアイコンあり
+                        }
+                    } else {
+                        recentActionTime = 'N/A';
+                        timeIcon = '<i class="bi bi-clock me-1"></i>';
+                    }
+
                     // 3日以上経過 & 5いいね以上の優先ユーザーにアイコンを追加
                     let priorityIcon = '';
                     const threeDaysAgo = new Date();
@@ -249,9 +266,9 @@
                                 <div class="text-muted small truncate-cell" title="${user.comment_text || ''}">${user.comment_text || ''}</div>
                             </td>
                             <td class="small text-muted" style="min-width: 0;">
-                                <div class="d-flex flex-wrap align-items-center gap-2 text-nowrap">
-                                    <span>❤️ ${likeDisplay}</span>
-                                    <span>📂 ${collectDisplay}</span>
+                                <div class="d-flex flex-wrap align-items-center gap-2">
+                                    <span class="text-nowrap">❤️ ${likeDisplay}</span>
+                                    <span title="最終アクション日時">${timeIcon}${recentActionTime}</span>
                                 </div>
                             </td>
                             <td class="text-center">
