@@ -56,8 +56,14 @@
         <p id="modal-user-name"></p>
         <h6 class="fw-bold mt-3">生成済みコメント</h6>
         <p id="modal-comment-text" style="white-space: pre-wrap;"></p>
-        <h6 class="fw-bold mt-3">全データ</h6>
-        <pre><code id="modal-full-data" class="bg-light p-2 rounded" style="font-size: 0.8rem; display: block;"></code></pre>
+        <h6 class="fw-bold mt-3">
+            <a class="text-decoration-none text-dark" data-bs-toggle="collapse" href="#collapseFullData" role="button" aria-expanded="false" aria-controls="collapseFullData">
+                全データ <i class="bi bi-chevron-down small"></i>
+            </a>
+        </h6>
+        <div class="collapse" id="collapseFullData">
+            <pre><code id="modal-full-data" class="bg-light p-2 rounded" style="font-size: 0.8rem; display: block; min-height: 100px;"></code></pre>
+        </div>
       </div>
       <div class="modal-footer">
         <a href="#" id="modal-profile-link" class="btn btn-primary" target="_blank" rel="noopener noreferrer" style="display: none;"><i class="bi bi-box-arrow-up-right me-1"></i>プロフィールを開く</a>

@@ -142,8 +142,14 @@
             <!-- JSでここにタイムスタンプが挿入されます -->
         </ul>
 
-        <h5 class="mt-4"><i class="bi bi-database me-2"></i>全データ</h5>
-        <pre><code id="modal-full-data" class="bg-light p-3 rounded" style="font-size: 0.8rem; display: block;"></code></pre>
+        <h5 class="mt-4">
+            <a class="text-decoration-none text-dark" data-bs-toggle="collapse" href="#collapseFullDataError" role="button" aria-expanded="false" aria-controls="collapseFullDataError">
+                <i class="bi bi-database me-2"></i>全データ <i class="bi bi-chevron-down small"></i>
+            </a>
+        </h5>
+        <div class="collapse" id="collapseFullDataError">
+            <pre><code id="modal-full-data" class="bg-light p-3 rounded" style="font-size: 0.8rem; display: block; min-height: 100px;"></code></pre>
+        </div>
 
       </div>
       <div class="modal-footer">
