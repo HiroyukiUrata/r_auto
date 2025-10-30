@@ -663,21 +663,55 @@ def bulk_upsert_user_engagements(users_data: list[dict]):
                 name = excluded.name,
                 profile_page_url = COALESCE(excluded.profile_page_url, profile_page_url),
                 profile_image_url = excluded.profile_image_url,
-                -- 常に新しいタイムスタンプで上書きする
+                -- 常に新しいタイムスタンプで上書きする (recent_action_timestamp を考慮)
                 latest_action_timestamp = CASE
-                    WHEN excluded.latest_action_timestamp > latest_action_timestamp THEN excluded.latest_action_timestamp
-                    ELSE latest_action_timestamp
+                    WHEN excluded.recent_action_timestamp > COALESCE(latest_action_timestamp, '') THEN excluded.recent_action_timestamp
+                    ELSE COALESCE(latest_action_timestamp, excluded.recent_action_timestamp)
                 END,
                 is_following = excluded.is_following,
                 recent_like_count = recent_like_count + excluded.recent_like_count,
                 recent_collect_count = recent_collect_count + excluded.recent_collect_count,
                 recent_comment_count = recent_comment_count + excluded.recent_comment_count,
-                follow_count = follow_count + excluded.follow_count, -- notification_analyzerからの直接加算
+                recent_follow_count = recent_follow_count + excluded.recent_follow_count,
                 ai_prompt_message = excluded.ai_prompt_message,
                 ai_prompt_updated_at = excluded.ai_prompt_updated_at
         """, records_to_upsert)
         conn.commit()
         logging.debug(f"{cursor.rowcount}件のユーザーエンゲージメントデータをUPSERTしました。")
+        return cursor.rowcount
+    finally:
+        conn.close()
+
+def bulk_update_user_profiles(users_data: list[dict]):
+    """
+    複数のユーザーのプロフィール情報（URLやAIプロンプト）を一括で更新する。
+    この関数は recent_ カウントを加算しない。
+    """
+    if not users_data:
+        return 0
+
+    records_to_update = [
+        (
+            d.get('profile_page_url'),
+            d.get('ai_prompt_message'),
+            d.get('ai_prompt_updated_at'),
+            d.get('id')
+        ) for d in users_data
+    ]
+
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        # 存在する場合に指定したカラムのみをUPDATE
+        cursor.executemany("""
+            UPDATE user_engagement SET
+                profile_page_url = COALESCE(?, profile_page_url),
+                ai_prompt_message = COALESCE(?, ai_prompt_message),
+                ai_prompt_updated_at = COALESCE(?, ai_prompt_updated_at)
+            WHERE id = ?
+        """, records_to_update)
+        conn.commit()
+        logging.debug(f"{cursor.rowcount}件のユーザープロフィール情報を更新しました。")
         return cursor.rowcount
     finally:
         conn.close()

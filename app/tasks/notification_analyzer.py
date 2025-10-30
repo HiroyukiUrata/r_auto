@@ -14,6 +14,7 @@ from app.core.database import (
     get_latest_engagement_timestamp,
     get_all_user_engagements_map,
     bulk_upsert_user_engagements,
+    bulk_update_user_profiles,
     cleanup_old_user_engagements,
     get_users_for_url_acquisition,
     get_users_for_prompt_creation,
@@ -278,10 +279,6 @@ class NotificationAnalyzerTask(BaseTask):
         # --- フェーズ3: DBへの一次保存 ---
         logger.debug(f"--- フェーズ3: {len(aggregated_users)}件の集約データをDBに保存します。 ---")
         if aggregated_users:
-            # プロンプトを再評価するため、このセッションでアクティブなユーザーのプロンプトを一旦リセットする
-            for user_id in aggregated_users:
-                aggregated_users[user_id]['ai_prompt_message'] = None
-                aggregated_users[user_id]['ai_prompt_updated_at'] = None
             upserted_count = bulk_upsert_user_engagements(list(aggregated_users.values()))
             logger.debug(f"{upserted_count}件のユーザーエンゲージメントデータをDBに保存/更新しました。")
 
@@ -319,8 +316,8 @@ class NotificationAnalyzerTask(BaseTask):
                 
                 if not is_found:
                     logger.warning(f"スクロールしてもユーザー「{user_data['name']}」の要素が見つかりませんでした。スキップします。")
-                    user_data['profile_page_url'] = None # "取得失敗" ではなく None を設定
-                    bulk_upsert_user_engagements([user_data]) # 失敗したことを記録
+                    user_data['profile_page_url'] = '取得失敗' # 取得失敗を記録
+                    bulk_update_user_profiles([user_data]) # 失敗したことを記録
                     continue
 
                 # ページ遷移の直前に現在のスクロール位置を記憶
@@ -346,7 +343,7 @@ class NotificationAnalyzerTask(BaseTask):
                 self._take_screenshot_on_error(prefix=f"url_error_{user_data['id']}")
                 continue
             
-            bulk_upsert_user_engagements([user_data]) # 1件ずつDBに保存
+            bulk_update_user_profiles([user_data]) # 1件ずつDBに保存
             page.wait_for_timeout(random.uniform(0.5, 1.5))
 
         # プログレスバーの行をクリア
@@ -399,7 +396,7 @@ class NotificationAnalyzerTask(BaseTask):
         logger.debug(f"--- フェーズ6: {len(users_for_prompt_creation)}件のAIプロンプトメッセージをDBに保存します。 ---")
         try:
             if users_for_prompt_creation:
-                upserted_count = bulk_upsert_user_engagements(users_for_prompt_creation)
+                upserted_count = bulk_update_user_profiles(users_for_prompt_creation)
                 logger.debug(f"{upserted_count}件のAIプロンプトメッセージをDBに保存/更新しました。")
             
             cleanup_old_user_engagements(days=30)
