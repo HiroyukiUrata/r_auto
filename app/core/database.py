@@ -801,16 +801,20 @@ def get_users_for_commenting(limit: int = 10) -> list[dict]:
         query = f"""
             SELECT * FROM user_engagement
             WHERE
-                -- 必須項目のチェック
-                (recent_like_count > 0 OR recent_collect_count > 0 OR recent_comment_count > 0) AND
-                comment_text IS NOT NULL AND comment_text != '' AND
-                recent_action_timestamp IS NOT NULL
-                AND (
-                    -- 基本条件: 24時間以内のアクションがあり、未コメント
-                    (last_commented_at IS NULL AND recent_action_timestamp >= '{twenty_four_hours_ago}')
+                -- 必須条件: 未処理のアクションがあり、タイムスタンプが存在する
+                (recent_like_count > 0 OR recent_collect_count > 0 OR recent_comment_count > 0)
+                AND recent_action_timestamp IS NOT NULL AND (
+                    -- パターンA: コメント生成済みで、以下のいずれかに合致
+                    (comment_text IS NOT NULL AND comment_text != '' AND (
+                        -- 基本条件: 24時間以内のアクションがあり、未コメント
+                        (last_commented_at IS NULL AND recent_action_timestamp >= '{twenty_four_hours_ago}')
+                        OR
+                        -- 例外条件: 3日以上経過し、今セッションでいいね5件以上
+                        (last_commented_at IS NOT NULL AND last_commented_at < '{three_days_ago}' AND recent_like_count >= 5)
+                    ))
                     OR
-                    -- 例外条件: 3日以上経過し、今セッションでいいね5件以上
-                    (last_commented_at IS NOT NULL AND last_commented_at < '{three_days_ago}' AND recent_like_count >= 5)
+                    -- パターンB: 未コメントで、今セッションでいいね3件以上（コメント未生成でもOK）
+                    (last_commented_at IS NULL AND recent_like_count >= 3)
                 )
             ORDER BY
                 CASE
