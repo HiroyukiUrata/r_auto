@@ -35,7 +35,8 @@ class EngageUserTask(BaseTask):
         # ユーザーページでは、いいね済みの状態をクラスで判別できないため、クリック後に要素ごと非表示にする戦略を取る
 
         liked_count = 0
-        for _ in range(20): # 最大20回スクロールして探す
+        clicked_buttons = set() # クリック済みのボタンを一意に識別するためのセット
+        for scroll_attempt in range(5): # スクロール試行は最大5回まで
             if liked_count >= target_like_count:
                 break
 
@@ -43,10 +44,16 @@ class EngageUserTask(BaseTask):
             # 動的クラス名に対応するため、安定した部分クラス名で検索
             image_icon_selector = convert_to_robust_selector("button.image-icon--2vI3U")
             outline_icon_selector = convert_to_robust_selector("div.rex-favorite-outline--n4SWN")
-            like_buttons = page.locator(f"{image_icon_selector}:has({outline_icon_selector}):visible").all()
+            
+            # まだクリックしていないボタンのみを対象にする
+            all_like_buttons = page.locator(f"{image_icon_selector}:has({outline_icon_selector}):visible").all()
+            like_buttons = []
+            for btn in all_like_buttons:
+                if btn not in clicked_buttons:
+                    like_buttons.append(btn)
 
             if not like_buttons:
-                logger.debug("  -> いいね可能なボタンが見つかりません。ページをスクロールします...")
+                logger.debug(f"  -> いいね可能なボタンが見つかりません。ページをスクロールします... (試行 {scroll_attempt + 1}/5)")
                 page.evaluate("window.scrollBy(0, 500)")
                 time.sleep(2)
                 continue
@@ -60,7 +67,8 @@ class EngageUserTask(BaseTask):
                 try:
                     # ボタンの祖先要素である投稿アイテム全体(カード)を探す
                     # 正しいXPathを使用して、動的クラス名を持つ祖先div要素を特定する
-                    item_container = button.locator('xpath=ancestor::div[contains(@class, "collect--")]')
+                    item_container = button.locator('xpath=ancestor::div[contains(@class, "vertical-space--")]')
+                    clicked_buttons.add(button) # クリック済みセットに追加
                     button.click()
                     # 「いいね」した投稿をその場で非表示にして、次のループで見つけないようにする
                     item_container.evaluate("node => node.style.display = 'none'")
@@ -81,31 +89,64 @@ class EngageUserTask(BaseTask):
             return
 
         logger.debug(f"  -> 最新投稿にコメントします。")
+        # ページを一番上までスクロール
+        page.evaluate("window.scrollTo(0, 0)")
+        time.sleep(1)
+
         try:
-            # ページを一番上までスクロール
-            page.evaluate("window.scrollTo(0, 0)")
-            time.sleep(1)
+            # --- 1. コメント数が最も多い投稿を探す ---
+            # 参考スクリプトに合わせて、より内側のコンテナをカードとして特定する
+            post_card_selector = convert_to_robust_selector("div.container--JAywt")
+            post_cards_locator = page.locator(post_card_selector)
+            post_cards_locator.first.wait_for(state="visible", timeout=15000)
+            
+            all_posts = post_cards_locator.all()
+            if not all_posts:
+                logger.error("  -> コメント対象の投稿が見つかりませんでした。")
+                return
 
-            # 最初の投稿のコメントアイコンをクリック
-            first_comment_icon = page.locator("a.icon-comment").first
-            first_comment_icon.wait_for(state='visible', timeout=10000)
-            first_comment_icon.click()
+            max_comments = -1
+            target_post_card = all_posts[0] # フォールバックとして最初の投稿を保持
 
-            # コメント入力欄と投稿ボタンを待機
-            comment_textarea = page.locator("textarea[ng-model='comment.comment']")
-            comment_textarea.wait_for(state='visible', timeout=10000)
+            comment_icon_selector = convert_to_robust_selector("div.rex-comment-outline--2vaPK")
+            for post_card in all_posts:
+                try:
+                    comment_icon = post_card.locator(comment_icon_selector)
+                    if comment_icon.count() > 0:
+                        comment_count_element = comment_icon.locator("xpath=./following-sibling::div[1]")
+                        comment_count = int(comment_count_element.inner_text())
+                        if comment_count > max_comments:
+                            max_comments = comment_count
+                            target_post_card = post_card
+                except (ValueError, PlaywrightError):
+                    continue
+            
+            if max_comments < 1:
+                logger.debug("  -> コメントが1件以上の投稿が見つからなかったため、最初の投稿を対象とします。")
+            else:
+                logger.debug(f"  -> コメント数が最も多い投稿が見つかりました (コメント数: {max_comments})。")
 
-            # コメントを入力
+            # --- 2. 投稿の詳細ページに遷移 ---
+            image_link_selector = convert_to_robust_selector("a.link-image--15_8Q")
+            target_post_card.locator(image_link_selector).click()
+            page.wait_for_load_state("domcontentloaded", timeout=20000)
+            logger.debug(f"  -> 投稿詳細ページに遷移しました: {page.url}")
+
+            # --- 3. コメントボタンをクリック ---
+            comment_button_selector = convert_to_robust_selector('div.pointer--3rZ2h:has-text("コメント")')
+            page.locator(comment_button_selector).click()
+
+            # --- 4. コメントを入力して投稿 ---
+            comment_textarea = page.locator('textarea[placeholder="コメントを書いてください"]')
+            comment_textarea.wait_for(state="visible", timeout=15000)
             comment_textarea.fill(comment_text)
             time.sleep(random.uniform(0.5, 1))
 
-            # 投稿ボタンをクリック
-            post_button = page.get_by_role("button", name="投稿する")
-            post_button.click()
+            page.get_by_role("button", name="送信").click()
 
-            # 投稿完了を待機（ここでは簡易的に固定時間待機）
-            time.sleep(2)
-            logger.debug("  -> コメント投稿が完了しました。")
+            # 投稿完了を待機
+            time.sleep(3)
+            logger.debug(f"  -> コメント投稿が完了しました。投稿URL: {page.url}")
 
         except PlaywrightError as e:
             logger.error(f"コメント投稿中にエラーが発生しました: {e}")
@@ -136,16 +177,17 @@ class EngageUserTask(BaseTask):
                 # 1. いいねバック
                 self._like_back(page, user_name, user.get("recent_like_count", 0))
 
+                # 2. コメント投稿
+                comment_text = user.get("comment_text")
+                self._post_comment(page, user_id, comment_text)
+
                 # 状況確認のために少し待機
                 logger.debug("  -> 状況確認のため5秒間待機します...")
-                time.sleep(25)
-
-                # 2. コメント投稿
-                # self._post_comment(page, user_id, user.get("comment_text"))
+                time.sleep(5)
 
                 # 3. アクションのコミット
-                logger.debug(f"  -> アクションをコミットします。（現在はログ出力のみ）")
-                # commit_user_actions(user_ids=[user_id], is_comment_posted=True)
+                logger.debug(f"  -> アクションをコミットします。(現在はログ出力のみ)")
+                commit_user_actions(user_id=user_id, is_comment_posted=bool(comment_text), post_url=page.url if comment_text else None)
                 
                 processed_count += 1
             except Exception as e:

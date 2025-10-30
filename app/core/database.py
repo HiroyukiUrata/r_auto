@@ -128,6 +128,7 @@ def init_db():
                 ai_prompt_message TEXT,
                 ai_prompt_updated_at TEXT,
                 comment_generated_at TEXT
+                last_commented_post_url TEXT
             )
         ''')
         logging.info("user_engagementテーブルが正常に初期化されました。")
@@ -146,6 +147,7 @@ def init_db():
         add_column_to_engagement_if_not_exists(cursor, 'ai_prompt_updated_at', 'TEXT')
         add_column_to_engagement_if_not_exists(cursor, 'comment_generated_at', 'TEXT')
         add_column_to_engagement_if_not_exists(cursor, 'recent_follow_count', 'INTEGER')
+        add_column_to_engagement_if_not_exists(cursor, 'last_commented_post_url', 'TEXT')
 
         # --- 既存タイムスタンプのフォーマットをISO 8601に統一するマイグレーション処理 ---
         # この処理は一度実行されると、次回以降は更新対象がなくなる
@@ -726,11 +728,12 @@ def cleanup_old_user_engagements(days: int = 30):
     logging.info(f"{cursor.rowcount}件の古いエンゲージメントデータを削除しました（{days}日以上経過）。")
     conn.close()
 
-def commit_user_actions(user_ids: list[str], is_comment_posted: bool):
+def commit_user_actions(user_id: str, is_comment_posted: bool, post_url: str | None = None):
     """
     指定されたユーザーのrecentアクションを累計に加算し、recentをリセットする。
-    コメントが投稿された場合はlast_commented_atも更新する。
+    コメントが投稿された場合はlast_commented_atとlast_commented_post_urlも更新する。
     """
+    user_ids = [user_id] # 将来的に複数対応もできるようリストで扱う
     if not user_ids:
         return 0
     
@@ -748,11 +751,14 @@ def commit_user_actions(user_ids: list[str], is_comment_posted: bool):
                 recent_like_count = 0,
                 recent_collect_count = 0,
                 recent_comment_count = 0,
-                recent_follow_count = 0,
-                last_commented_at = CASE WHEN ? THEN ? ELSE last_commented_at END
+                recent_follow_count = 0
             WHERE id IN ({placeholders})
         """
-        params = [is_comment_posted, datetime.now().isoformat()] + user_ids
+        if is_comment_posted:
+            update_query = update_query.replace("WHERE", ", last_commented_at = ?, last_commented_post_url = ? WHERE")
+            params = [datetime.now().isoformat(), post_url] + user_ids
+        else:
+            params = user_ids
         cursor.execute(update_query, params)
         conn.commit()
         logging.info(f"{cursor.rowcount}件のユーザーアクションをコミットしました。")
