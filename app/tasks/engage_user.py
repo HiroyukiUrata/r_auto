@@ -35,25 +35,22 @@ class EngageUserTask(BaseTask):
         # ユーザーページでは、いいね済みの状態をクラスで判別できないため、クリック後に要素ごと非表示にする戦略を取る
 
         liked_count = 0
-        clicked_buttons = set() # クリック済みのボタンを一意に識別するためのセット
-        for scroll_attempt in range(5): # スクロール試行は最大5回まで
+        for _ in range(7): # 最大20回スクロールして探す
             if liked_count >= target_like_count:
                 break
+
+            # ヘッドレスモードでの描画遅延を考慮し、ボタンを探す前に少し待機する
+            time.sleep(3)
 
             # ユーザーページの「未いいね」ボタンを探す
             # 動的クラス名に対応するため、安定した部分クラス名で検索
             image_icon_selector = convert_to_robust_selector("button.image-icon--2vI3U")
             outline_icon_selector = convert_to_robust_selector("div.rex-favorite-outline--n4SWN")
-            
-            # まだクリックしていないボタンのみを対象にする
-            all_like_buttons = page.locator(f"{image_icon_selector}:has({outline_icon_selector}):visible").all()
-            like_buttons = []
-            for btn in all_like_buttons:
-                if btn not in clicked_buttons:
-                    like_buttons.append(btn)
+            like_buttons = page.locator(f"{image_icon_selector}:has({outline_icon_selector}):visible").all()
+
 
             if not like_buttons:
-                logger.debug(f"  -> いいね可能なボタンが見つかりません。ページをスクロールします... (試行 {scroll_attempt + 1}/5)")
+                logger.debug(f"  -> いいね可能なボタンが見つかりません。ページをスクロールします... ")
                 page.evaluate("window.scrollBy(0, 500)")
                 time.sleep(2)
                 continue
@@ -68,7 +65,6 @@ class EngageUserTask(BaseTask):
                     # ボタンの祖先要素である投稿アイテム全体(カード)を探す
                     # 正しいXPathを使用して、動的クラス名を持つ祖先div要素を特定する
                     item_container = button.locator('xpath=ancestor::div[contains(@class, "vertical-space--")]')
-                    clicked_buttons.add(button) # クリック済みセットに追加
                     button.click()
                     # 「いいね」した投稿をその場で非表示にして、次のループで見つけないようにする
                     item_container.evaluate("node => node.style.display = 'none'")
@@ -174,16 +170,13 @@ class EngageUserTask(BaseTask):
                 page.goto(profile_page_url, wait_until="domcontentloaded")
                 logger.debug(f"  -> プロフィールページにアクセスしました: {profile_page_url}")
 
+
                 # 1. いいねバック
                 self._like_back(page, user_name, user.get("recent_like_count", 0))
 
                 # 2. コメント投稿
                 comment_text = user.get("comment_text")
                 self._post_comment(page, user_id, comment_text)
-
-                # 状況確認のために少し待機
-                logger.debug("  -> 状況確認のため5秒間待機します...")
-                time.sleep(5)
 
                 # 3. アクションのコミット
                 logger.debug(f"  -> アクションをコミットします。(現在はログ出力のみ)")
