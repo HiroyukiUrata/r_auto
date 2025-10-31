@@ -7,3 +7,4 @@ from app.tasks.save_auth_state import run_save_auth_state
 from app.tasks.backup_db import run_backup_database
 from app.tasks.restore_auth_state import run_restore_auth_state
 from app.tasks.commit_stale_actions import run_commit_stale_actions
+from app.tasks.manual_test import run_manual_test

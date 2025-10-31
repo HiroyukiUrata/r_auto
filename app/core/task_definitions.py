@@ -9,6 +9,7 @@ from app.tasks import (
     run_backup_database,
     run_restore_auth_state,
 )
+from app.tasks.manual_test import run_manual_test
 
 from app.tasks.commit_stale_actions import run_commit_stale_actions
 from app.tasks.rakuten_search_procure import search_and_procure_from_rakuten
@@ -283,5 +284,14 @@ TASK_DEFINITIONS = {
         "show_in_schedule": False, # APIからのみ呼び出す
         "description": "指定された複数のユーザーにいいねバックとコメント投稿を行います。",
         "order": 9999,
+    },
+    "manual-test": {
+        "name_ja": "手動テスト",
+        "function": run_manual_test,
+        "is_debug": True,
+        "show_in_schedule": False,
+        "description": "指定したURLを開き、ブラウザが閉じるまで待機します。デバッグやセレクタの調査に利用します。",
+        "order": 100,
+        "default_kwargs": {"script": "test_scripts/example.py"},
     },
 }
