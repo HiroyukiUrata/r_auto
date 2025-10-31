@@ -22,15 +22,15 @@ class EngageUserTask(BaseTask):
         self.users = users
 
     def _like_back(self, page: Page, user_name: str, like_back_count: int):
-        """いいねバック処理"""
+        """いいね返し処理"""
         # いいねのお返しは最大5件までとする
         target_like_count = min(like_back_count, 5)
 
         if target_like_count <= 0:
-            logger.debug(f"いいねバックの対象件数が0のため、スキップします。")
-            return
+            logger.debug(f"いいね返しの対象件数が0のため、スキップします。")
+            return False
 
-        logger.debug(f"ユーザー「{user_name}」に{target_like_count}件のいいねバックを開始します。")
+        logger.debug(f"ユーザー「{user_name}」に{target_like_count}件のいいね返しを開始します。")
 
         # 「いいね済み」のカードを特定して非表示にする
 
@@ -84,16 +84,18 @@ class EngageUserTask(BaseTask):
                 target_card.evaluate("node => { node.style.display = 'none'; }")
 
         except Exception as e:
-            logger.error(f"いいねバック中にエラーが発生しました: {e}")
-            return # _like_backメソッド自体を終了させる
+            logger.error(f"いいね返し中にエラーが発生しました: {e}")
+            return False # _like_backメソッド自体を終了させる
 
-        logger.debug(f"  -> いいねバック完了。合計{liked_count}件実行しました。")
+        logger.debug(f"  -> いいね返し完了。合計{liked_count}件実行しました。")
+        # 1件でもいいねできていれば成功とみなす
+        return liked_count > 0
 
     def _post_comment(self, page: Page, user_id: str, comment_text: str):
-        """コメント投稿処理"""
+        """コメント返し処理"""
         if not comment_text:
             logger.debug("投稿するコメントがないため、スキップします。")
-            return
+            return False
 
         logger.debug(f"  -> 最新投稿にコメントします。")
         # ページを一番上までスクロール
@@ -110,7 +112,7 @@ class EngageUserTask(BaseTask):
             all_posts = post_cards_locator.all()
             if not all_posts:
                 logger.error("  -> コメント対象の投稿が見つかりませんでした。")
-                return
+                return False
 
             max_comments = -1
             target_post_card = all_posts[0] # フォールバックとして最初の投稿を保持
@@ -135,6 +137,9 @@ class EngageUserTask(BaseTask):
 
             # --- 2. 投稿の詳細ページに遷移 ---
             image_link_selector = convert_to_robust_selector("a.link-image--15_8Q")
+            # クリック前に要素が画面内に表示されるようにスクロールする
+            target_post_card.scroll_into_view_if_needed()
+            time.sleep(0.5) # スクロール後の描画を少し待つ
             target_post_card.locator(image_link_selector).click()
             page.wait_for_load_state("domcontentloaded", timeout=20000)
             logger.debug(f"  -> 投稿詳細ページに遷移しました: {page.url}")
@@ -153,15 +158,18 @@ class EngageUserTask(BaseTask):
 
             # 投稿完了を待機
             time.sleep(3)
-            logger.debug(f"  -> コメント投稿が完了しました。投稿URL: {page.url}")
+            logger.debug(f"  -> コメント返しが完了しました。投稿URL: {page.url}")
+            return True
 
         except PlaywrightError as e:
-            logger.error(f"コメント投稿中にエラーが発生しました: {e}")
+            logger.error(f"コメント返し中にエラーが発生しました: {e}")
             self._take_screenshot_on_error(prefix=f"comment_error_{user_id}")
+            return False
 
     def _execute_main_logic(self):
         total_users = len(self.users)
-        processed_count = 0
+        like_back_processed_count = 0
+        comment_processed_count = 0
         
         for i, user in enumerate(self.users):
             user_id = user.get("id")
@@ -182,27 +190,32 @@ class EngageUserTask(BaseTask):
                 logger.debug(f"  -> プロフィールページにアクセスしました: {profile_page_url}")
 
 
-                # 1. いいねバック
-                self._like_back(page, user_name, user.get("recent_like_count", 0))
+                # 1. いいね返し
+                like_back_success = self._like_back(page, user_name, user.get("recent_like_count", 0))
+                if like_back_success:
+                    like_back_processed_count += 1
 
-                if True: 
-                    # 2. コメント投稿
-                    comment_text = user.get("comment_text")
-                    self._post_comment(page, user_id, comment_text)
+                # 2. コメント返し
+                comment_text = user.get("comment_text")
+                comment_success = self._post_comment(page, user_id, comment_text)
+                if comment_success:
+                    comment_processed_count += 1
 
-                    # 3. アクションのコミット
-                    logger.debug(f"  -> アクションをコミットします。(現在はログ出力のみ)")
-                    commit_user_actions(user_ids=[user_id], is_comment_posted=bool(comment_text), post_url=page.url if comment_text else None)
-                    
-                processed_count += 1
+                # 3. アクションのコミット
+                # いいね返しまたはコメント返しのどちらかが成功した場合にコミット
+                if like_back_success or comment_success:
+                    logger.debug(f"  -> アクションをコミットします。")
+                    commit_user_actions(user_ids=[user_id], is_comment_posted=bool(comment_text and comment_success), post_url=page.url if (comment_text and comment_success) else None)
+
             except Exception as e:
                 logger.error(f"ユーザー「{user_name}」の処理中にエラーが発生しました: {e}", exc_info=True)
                 self._take_screenshot_on_error(prefix=f"engage_error_{user_id}")
             finally:
                 if page:
                     page.close()
-
-        logger.info(f"[Action Summary] name=ユーザーエンゲージメント, count={processed_count}")
+        
+        logger.info(f"[Action Summary] name=いいね返し, count={like_back_processed_count}")
+        logger.info(f"[Action Summary] name=コメント返し, count={comment_processed_count}")
         return True
 
 def run_engage_user(users: list[dict]):
