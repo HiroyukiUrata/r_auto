@@ -72,6 +72,7 @@ python run_task.py check-login-status
 
 `PWDEBUG=1` 環境変数を付けて実行すると、Playwright Inspectorが起動し、さらに強力なデバッグが可能になります。
 
+**Linux / macOS:**
 ```bash
 PWDEBUG=1 python run_task.py manual-test --script "test_scripts/highlight_first_card.py"
 ```
