@@ -2,6 +2,15 @@ import logging
 import os
 import re
 
+# --- TRACEログレベルの追加 ---
+TRACE_LEVEL_NUM = 5
+logging.addLevelName(TRACE_LEVEL_NUM, "TRACE")
+def trace(self, message, *args, **kws):
+    if self.isEnabledFor(TRACE_LEVEL_NUM):
+        self._log(TRACE_LEVEL_NUM, message, args, **kws)
+logging.Logger.trace = trace
+# --- ここまで ---
+
 class EndpointFilter(logging.Filter):
     """特定のパスへのアクセスログをフィルタリングするクラス"""
     def __init__(self, path: str):
@@ -39,7 +48,11 @@ def setup_logging():
     """
     # 環境変数からログレベルを取得
     log_level_str = os.getenv('LOG_LEVEL', 'INFO').upper()
-    log_level = getattr(logging, log_level_str, logging.INFO)
+    # 新しく追加したTRACEレベルに対応
+    if log_level_str == 'TRACE':
+        log_level = TRACE_LEVEL_NUM
+    else:
+        log_level = getattr(logging, log_level_str, logging.INFO)
 
     # 環境変数からログフォーマットタイプを取得 (detailed / simple)
     log_format_type = os.getenv('LOG_FORMAT', 'detailed').lower()

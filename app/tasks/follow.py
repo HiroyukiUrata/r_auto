@@ -7,6 +7,7 @@ import re
 from playwright.sync_api import expect, Locator, Error
 # BaseTaskのインポート
 from app.core.base_task import BaseTask
+from app.utils.selector_utils import convert_to_robust_selector
 # selector_utilsからconvert_to_robust_selectorをインポート
 from app.utils.selector_utils import convert_to_robust_selector
 
@@ -121,14 +122,10 @@ class FollowTask(BaseTask):
 
         # 4. モーダル内の最初のユーザーのプロフィール名をクリックし、そのユーザーのルームへ遷移
         first_user_in_modal = page.locator(self.list_container_selector).first
-        
-        # 動的なクラス名を含むセレクタを堅牢なものに変換
-        robust_profile_link_selector = convert_to_robust_selector('a.profile-name-content--iyogY')
-        first_user_profile_link = first_user_in_modal.locator(robust_profile_link_selector).first
+        first_user_profile_link = first_user_in_modal.locator(convert_to_robust_selector('a.profile-name-content--iyogY')).first
         try:
-            # 動的なクラス名を含むセレクタを堅牢なものに変換
-            robust_profile_name_selector = convert_to_robust_selector('span.profile-name--2Hsi5')
-            user_name = first_user_profile_link.locator(robust_profile_name_selector).first.inner_text().strip()
+            user_name_selector = convert_to_robust_selector('span.profile-name--2Hsi5')
+            user_name = first_user_profile_link.locator(user_name_selector).first.inner_text().strip()
         except Exception:
             user_name = "（ユーザー名取得失敗）"
         
@@ -186,8 +183,9 @@ class FollowTask(BaseTask):
                 
                 try:
                     user_row = button.locator('xpath=ancestor::div[contains(@class, "profile-wrapper")]').first
-                    name_element = user_row.locator('span[class*="profile-name"]').first
-                    
+                    # ユーザー名を正確に特定するためのセレクタ
+                    name_element = user_row.locator(convert_to_robust_selector('span.profile-name--2Hsi5')).first
+
                     if name_element.count() > 0:
                         user_name_found = name_element.inner_text().strip()
                         if user_name_found and user_name_found not in self.target_users:

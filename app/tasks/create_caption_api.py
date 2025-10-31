@@ -7,9 +7,9 @@ from app.core.database import get_products_for_caption_creation, update_ai_capti
 from google import genai
 
 PROMPT_FILE = "app/prompts/caption_prompt.txt"
-class GeminiTestTask(BaseTask):
+class CreateCaptionApiTask(BaseTask):
     """
-    Gemini APIの動作をテストするためのタスク。
+    Gemini APIを使用して商品の投稿文を生成するタスク。
     """
     def __init__(self, count: int = 5):
         super().__init__()
@@ -88,7 +88,7 @@ class GeminiTestTask(BaseTask):
             logging.error(f"Gemini APIの呼び出し中にエラーが発生しました: {e}", exc_info=True)
             return False
 
-def run_gemini_test_task(count: int = 5):
+def run_create_caption_api(count: int = 5):
     """ラッパー関数"""
-    task = GeminiTestTask(count=count)
+    task = CreateCaptionApiTask(count=count)
     return task.run()

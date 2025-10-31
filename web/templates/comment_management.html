@@ -1,0 +1,497 @@
+{% extends "base.html" %}
+
+{% block title %}コメント投稿管理 - R-Auto Control Panel{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">💬 コメント投稿管理</h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <div class="btn-group me-2" id="bulk-action-buttons">
+            <button type="button" class="btn btn-sm btn-outline-primary" id="bulk-execute-btn" onclick="bulkExecute()" disabled>
+                <i class="bi bi-send-fill me-1"></i>選択したユーザーに投稿
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="bulk-skip-btn" onclick="bulkSkip()" disabled>
+                <i class="bi bi-skip-forward-fill me-1"></i>選択したユーザーをスキップ
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="select-all-toggle-btn" onclick="toggleSelectAll()">
+                <i class="bi bi-check-square me-1"></i>すべて選択
+            </button>
+        </div>
+        <div class="form-check form-switch ms-3">
+            <input class="form-check-input" type="checkbox" role="switch" id="show-all-users-switch" onchange="updateViewOptions(); fetchUsers();">
+            <label class="form-check-label small" for="show-all-users-switch">
+                全ユーザー表示
+                <i class="bi bi-info-circle" data-bs-toggle="tooltip" title="ONにすると、DBに存在する全ユーザーを最新アクション順に表示します（デバッグ用）"></i>
+            </label>
+        </div>
+        <div class="ms-2" id="sort-options-container" style="display: none;">
+            <select class="form-select form-select-sm" id="sort-select" onchange="fetchUsers()">
+                <option value="recent_action" selected>最新アクション順</option>
+                <option value="commented">投稿済ユーザー</option>
+                <option value="like_count_desc">いいね数が多い順</option>
+                <option value="commented_at_desc">最終コメントが新しい順</option>
+                <option value="commented_at_asc">最終コメントが古い順</option>
+            </select>
+        </div>
+    </div>
+</div>
+
+<div class="table-responsive">
+    <table class="table table-striped table-sm align-middle" style="table-layout: fixed; width: 100%;">
+        <thead>
+            <tr>
+                <th scope="col" style="width: 70px;">アイコン</th>
+                <th scope="col" style="width: 60%;">ユーザー情報</th>
+                <th scope="col" style="width: 20%;">アクション</th>
+                <th scope="col" style="width: 10%;">詳細</th>
+            </tr>
+        </thead>
+        <tbody id="user-table-body">
+            <!-- データはJavaScriptでここに挿入されます -->
+        </tbody>
+    </table>
+</div>
+
+<!-- ユーザー情報詳細モーダル -->
+<div class="modal fade" id="infoModal" tabindex="-1" aria-labelledby="infoModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="infoModalLabel">ユーザー詳細</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <h6 class="fw-bold">ユーザー名</h6>
+        <p id="modal-user-name"></p>
+        <h6 class="fw-bold mt-3">生成済みコメント</h6>
+        <textarea class="form-control" id="modal-comment-text" rows="6" style="white-space: pre-wrap;"></textarea>
+        <h6 class="fw-bold mt-3">
+            <a class="text-decoration-none text-dark" data-bs-toggle="collapse" href="#collapseFullData" role="button" aria-expanded="false" aria-controls="collapseFullData">
+                全データ <i class="bi bi-chevron-down small"></i>
+            </a>
+        </h6>
+        <div class="collapse" id="collapseFullData">
+            <pre><code id="modal-full-data" class="bg-light p-2 rounded" style="font-size: 0.8rem; display: block; min-height: 100px;"></code></pre>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-success me-auto" id="modal-save-comment-btn" onclick="updateComment()"><i class="bi bi-save-fill me-1"></i>コメントを保存</button>
+        <a href="#" id="modal-profile-link" class="btn btn-primary" target="_blank" rel="noopener noreferrer" style="display: none;"><i class="bi bi-box-arrow-up-right me-1"></i>プロフィールを開く</a>
+        <a href="#" id="modal-last-comment-link" class="btn btn-info" target="_blank" rel="noopener noreferrer" style="display: none;"><i class="bi bi-chat-left-text-fill me-1"></i>投稿済ページへ</a>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">閉じる</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block styles %}
+<style>
+    .truncate-cell {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    tbody tr {
+        cursor: pointer;
+    }
+    /* 行の背景色ハイライトは使わず、透明にする */
+    tr.selected {
+        background-color: transparent !important;
+    }
+    /* 選択された行のアイコン枠線を強調 */
+    tr.selected .img-thumbnail {
+        border: 3px solid #0d6efd; /* プライマリカラーで枠線を太く */
+        padding: 1px; /* 枠線の太さが増えた分、パディングを調整 */
+    }
+    .user-icon {
+        width: 50px;
+        height: 50px;
+        aspect-ratio: 1 / 1;
+        object-fit: cover;
+        border-radius: 50%;
+    }
+    .icon-container {
+        position: relative;
+        display: inline-block; /* or block, depending on layout */
+    }
+    .status-icons {
+        position: absolute;
+        top: -8px;
+        left: -2px;
+        display: flex;
+        gap: 2px;
+        z-index: 1; /* アイコンの枠線より手前に表示する */
+    }
+    .priority-icon {
+        position: absolute;
+        bottom: -5px;
+        left: -8px;
+        z-index: 1;
+        font-size: 1.2rem; /* アイコンサイズを少し大きく */
+    }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let infoModalInstance = null;
+    let lastSelectedRowIndex = null;
+
+    // モーダルが閉じた後に実行するコールバックを保持する変数
+    let onModalHiddenCallback = null;
+
+    function showInfoModal(element) {
+        event.stopPropagation();
+        const user = JSON.parse(element.closest('tr').dataset.user);
+        document.getElementById('modal-user-name').textContent = user.name;
+        // <textarea> に値を設定するために .value を使用
+        document.getElementById('modal-comment-text').value = user.comment_text || ''; // 値をセット
+        document.getElementById('modal-full-data').textContent = JSON.stringify(user, null, 2);
+        // 保存ボタンにユーザーIDをセット
+        document.getElementById('modal-save-comment-btn').dataset.userId = user.id;
+
+        // プロフィールページへのリンク
+        const profileLink = document.getElementById('modal-profile-link');
+        if (user.profile_page_url && user.profile_page_url !== '取得失敗') {
+            profileLink.href = user.profile_page_url;
+            profileLink.style.display = 'inline-block';
+        } else {
+            profileLink.style.display = 'none';
+        }
+
+        // 最後にコメントした投稿へのリンク
+        const lastCommentLink = document.getElementById('modal-last-comment-link');
+        if (user.last_commented_post_url) {
+            lastCommentLink.href = user.last_commented_post_url;
+            lastCommentLink.style.display = 'inline-block';
+        } else {
+            lastCommentLink.style.display = 'none';
+        }
+
+        infoModalInstance.show();
+    }
+
+    async function updateComment() {
+        const saveBtn = document.getElementById('modal-save-comment-btn');
+        const userId = saveBtn.dataset.userId;
+        const newComment = document.getElementById('modal-comment-text').value;
+
+        if (!userId) {
+            alert('ユーザーIDが取得できませんでした。');
+            return;
+        }
+
+        // ボタンをローディング状態にする
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 保存中...';
+
+        try {
+            const response = await fetch('/api/users/update-comment', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_id: userId, comment_text: newComment })
+            });
+
+            const result = await response.json();
+            if (!response.ok) {
+                throw new Error(result.detail || 'コメントの更新に失敗しました。');
+            }
+
+            // モーダルが完全に閉じた後にテーブルを更新するためのコールバック関数を設定
+            onModalHiddenCallback = () => {
+                const row = document.getElementById(`user-row-${userId}`);
+                if (row) {
+                    let user = JSON.parse(row.dataset.user);
+                    user.comment_text = newComment;
+                    // 修正: JSON文字列をエスケープせずにそのまま設定する
+                    row.dataset.user = JSON.stringify(user);
+                    row.querySelector('.text-muted.small').textContent = newComment;
+                    row.querySelector('.text-muted.small').title = newComment;
+                }
+                onModalHiddenCallback = null; // 一度実行したらコールバックをリセット
+            };
+            infoModalInstance.hide();
+        } catch (error) {
+            alert(`エラー: ${error.message}`);
+        } finally {
+            // ボタンの状態を元に戻す
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = '<i class="bi bi-save-fill me-1"></i>コメントを保存';
+        }
+    }
+
+    function getSelectedUserIds() {
+        return Array.from(document.querySelectorAll('#user-table-body tr.selected')).map(row => {
+            return row.id.replace('user-row-', '');
+        });
+    }
+
+    function updateBulkActionButtons() {
+        const selectedIds = getSelectedUserIds();
+        const disabled = selectedIds.length === 0;
+        document.getElementById('bulk-execute-btn').disabled = disabled;
+        document.getElementById('bulk-skip-btn').disabled = disabled;
+    }
+
+    function toggleSelectAll() {
+        const allRows = document.querySelectorAll('#user-table-body tr');
+        const isAllSelected = getSelectedUserIds().length === allRows.length;
+
+        allRows.forEach(row => {
+            row.classList.toggle('selected', !isAllSelected);
+        });
+        updateBulkActionButtons();
+    }
+
+    function getSelectedUsers() {
+        return Array.from(document.querySelectorAll('#user-table-body tr.selected')).map(row => {
+            return JSON.parse(row.dataset.user.replace(/&quot;/g, '"').replace(/&apos;/g, "'"));
+        });
+    }
+
+    async function bulkExecute() {
+        const selectedUsers = getSelectedUsers();
+        const selectedRows = Array.from(document.querySelectorAll('#user-table-body tr.selected'));
+        if (selectedUsers.length === 0) return;
+        if (!confirm(`${selectedUsers.length}件のユーザーに「いいねバック＆コメント投稿」を実行しますか？`)) return;
+
+        // 先にUIから行を削除し、ボタンの状態を更新
+        selectedRows.forEach(row => row.remove());
+        updateBulkActionButtons();
+
+        try {
+            const response = await fetch('/api/users/bulk-engage', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ users: selectedUsers })
+            });
+            if (!response.ok) {
+                const result = await response.json();
+                throw new Error(result.detail || 'エンゲージメントタスクの開始に失敗しました。');
+            }
+            // 成功メッセージはバックグラウンドで処理されるため、ここでは表示しないか、コンソールに出力する程度に留める
+            console.log('エンゲージメントタスクを開始しました。');
+        } catch (error) {
+            alert(`エラー: ${error.message}`);
+        }
+    }
+
+    async function bulkSkip() {
+        const userIds = getSelectedUserIds();
+        if (userIds.length === 0) return;
+        if (!confirm(`${userIds.length}件のユーザーへのコメント投稿をスキップしますか？`)) return;
+
+        // 先にUIから行を削除し、ボタンの状態を更新
+        const selectedRows = userIds.map(id => document.getElementById(`user-row-${id}`));
+        selectedRows.forEach(row => { if(row) row.remove(); });
+        updateBulkActionButtons();
+
+        try {
+            const response = await fetch('/api/users/bulk-skip', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_ids: userIds })
+            });
+            const result = await response.json();
+            if (!response.ok) {
+                throw new Error(result.detail || 'スキップ処理に失敗しました。');
+            }
+            // 成功メッセージは不要なため削除
+            console.log(result.message);
+        } catch (error) {
+            alert(`エラー: ${error.message}`);
+        }
+    }
+
+    function updateViewOptions() {
+        const showAll = document.getElementById('show-all-users-switch').checked;
+        const sortContainer = document.getElementById('sort-options-container');
+        const bulkActionButtons = document.getElementById('bulk-action-buttons');
+
+        sortContainer.style.display = showAll ? 'block' : 'none';
+        bulkActionButtons.style.display = showAll ? 'none' : 'inline-flex';
+    }
+
+    function fetchUsers() {
+        const showAll = document.getElementById('show-all-users-switch').checked;
+        let apiUrl = '/api/comment-targets';
+        if (showAll) {
+            const sortBy = document.getElementById('sort-select').value;
+            apiUrl = `/api/comment-targets?all=true&sort=${sortBy}`;
+        }
+
+        // テーブルをローディング状態にする
+        const tableBody = document.getElementById('user-table-body');
+        tableBody.innerHTML = '<tr><td colspan="4" class="text-center"><div class="spinner-border spinner-border-sm" role="status"><span class="visually-hidden">Loading...</span></div></td></tr>';
+
+        // モーダルのインスタンスがなければ初期化し、イベントリスナーを設定
+        if (!infoModalInstance) {
+            const modalElement = document.getElementById('infoModal');
+            infoModalInstance = new bootstrap.Modal(modalElement);
+            // モーダルが完全に閉じた後に発火するイベントを捕捉
+            modalElement.addEventListener('hidden.bs.modal', function () {
+                if (onModalHiddenCallback) onModalHiddenCallback();
+            });
+        }
+
+        fetch(apiUrl)
+            .then(response => {
+                if (!response.ok) {
+                    if (response.status === 404) return []; // 404の場合は空の配列を返す
+                    throw new Error('APIからのデータ取得に失敗しました。');
+                }
+                return response.json();
+            })
+            .then(data => {
+                tableBody.innerHTML = '';
+                if (data.length === 0) {
+                    tableBody.innerHTML = '<tr><td colspan="4" class="text-center">コメント投稿対象のユーザーはいません。</td></tr>';
+                    return;
+                }
+                data.forEach(user => {
+                    // HTML属性に設定するため、JSON文字列内のシングルクォートをエスケープする
+                    const escapedUserJson = JSON.stringify(user).replace(/'/g, '&#39;');
+
+                    const lastCommented = user.last_commented_at ? new Date(user.last_commented_at).toLocaleDateString('ja-JP') : 'なし';
+                    
+                    // フォロー状態のアイコンを決定
+                    // 自分がフォローしているか (is_following)
+                    const isFollowingIcon = user.is_following ? '<i class="bi bi-person-check-fill text-success" title="あなたがフォローしています"></i>' : '';
+                    // 相手がフォローしてくれたか (follow_count)
+                    const followedByIcon = user.follow_count > 0 ? '<i class="bi bi-person-heart text-danger" title="相手からフォローされました"></i>' : '';
+
+                    // --- アクション数の表示ロジック ---
+                    let likeDisplay;
+                    if (showAll) {
+                        // 全ユーザー表示の場合: 累計 + 今セッションの合計値を表示
+                        likeDisplay = (user.like_count || 0) + (user.recent_like_count || 0);
+                    } else {
+                        // 通常表示の場合: 今セッションのいいね数を表示（累計があれば `+` を付ける）
+                        const recentLikes = user.recent_like_count || 0;
+                        const totalLikes = user.like_count || 0;
+                        likeDisplay = recentLikes < totalLikes ? `${recentLikes}+` : recentLikes;
+                    }
+
+
+                    // --- 最終アクション時刻を相対表記にフォーマット ---
+                    let recentActionTime, timeIcon;
+                    if (user.recent_action_timestamp) {
+                        const now = new Date();
+                        const actionDate = new Date(user.recent_action_timestamp);
+                        const diffMinutes = Math.floor((now - actionDate) / (1000 * 60));
+                        const diffHours = Math.floor(diffMinutes / 60);
+                        const diffDays = Math.floor(diffHours / 24);
+
+                        if (diffMinutes < 60) {
+                            recentActionTime = `${diffMinutes}分前`;
+                        } else if (diffHours < 24) {
+                            recentActionTime = `${diffHours}時間前`;
+                        } else {
+                            recentActionTime = `${diffDays}日前`;
+                        }
+                        timeIcon = '<i class="bi bi-clock me-1"></i>';
+                    } else {
+                        recentActionTime = 'N/A';
+                        timeIcon = '<i class="bi bi-clock me-1"></i>';
+                    }
+                    // スマホ表示ではアイコンを非表示にする
+                    if (window.innerWidth < 768) {
+                        timeIcon = '';
+                    }
+
+                    // 3日以上経過 & 5いいね以上の優先ユーザーにアイコンを追加
+                    let priorityIcon = '';
+                    const threeDaysAgo = new Date();
+                    threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+                    if ((user.last_commented_at && new Date(user.last_commented_at) < threeDaysAgo && user.recent_like_count >= 5)) {
+                        priorityIcon = '<div class="priority-icon" title="再コメント対象の優先ユーザーです（最終コメントから3日以上経過 ＆ 今回5いいね以上）">🔥</div>';
+                    }
+
+                    const row = `
+                        <tr id="user-row-${user.id}" data-user='${escapedUserJson}'>
+                            <td class="align-middle text-center">
+                                <div class="icon-container">
+                                    <a href="${user.profile_page_url || '#'}" target="_blank" rel="noopener noreferrer">
+                                        <img src="${user.profile_image_url || 'https://via.placeholder.com/50'}" alt="${user.name}" class="user-icon img-thumbnail">
+                                    </a>
+                                    <div class="status-icons">${isFollowingIcon} ${followedByIcon}</div>${priorityIcon}
+                                </div>
+                            </td>
+                            <td class="text-start" style="min-width: 0;">
+                                <div class="fw-bold truncate-cell" title="${user.name || ''}">${user.name || ''}</div>
+                                <div class="text-muted small truncate-cell" title="${user.comment_text || ''}">${user.comment_text || ''}</div>
+                            </td>
+                            <td class="small text-muted" style="min-width: 0;">
+                                <div class="d-flex flex-wrap align-items-center gap-2">
+                                    <span class="text-nowrap">❤️ ${likeDisplay}</span>
+                                    <span title="最終アクション日時">${timeIcon}${recentActionTime}</span>
+                                </div>
+                            </td>
+                            <td class="text-center">
+                                <div class="d-flex justify-content-center align-items-center h-100">
+                                    <button type="button" class="btn btn-link p-0 text-secondary" onclick="showInfoModal(this.closest('tr'))" title="詳細情報を表示"><i class="bi bi-info-circle fs-4"></i></button>
+                                </div>
+                            </td>
+                        </tr>
+                    `;
+                    tableBody.innerHTML += row;
+                });
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                const tableBody = document.getElementById('user-table-body');
+                tableBody.innerHTML = `<tr><td colspan="4" class="text-center text-danger">${error.message}</td></tr>`;
+            });
+
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        // Tooltipの初期化
+        const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]');
+        const tooltipList = [...tooltipTriggerList].map(tooltipTriggerEl => new bootstrap.Tooltip(tooltipTriggerEl));
+
+        // ページ読み込み時にモーダルインスタンスを初期化
+        // この時点ではまだ表示しない
+        // infoModalInstance = new bootstrap.Modal(document.getElementById('infoModal'));
+
+        updateViewOptions(); // 初期表示時のUI状態を設定
+        fetchUsers();
+        const tableBody = document.getElementById('user-table-body');
+        tableBody.addEventListener('click', function (e) {
+            const rows = Array.from(tableBody.querySelectorAll('tr'));
+            const row = e.target.closest('tr');
+            if (!row) return;
+
+            // 詳細ボタン列(4番目)またはリンクのクリックは無視
+            const cell = e.target.closest('td');
+            if (e.target.closest('a') || (cell && cell.cellIndex === 3)) {
+                return;
+            }
+
+            const currentIndex = rows.indexOf(row);
+
+            if (e.shiftKey && lastSelectedRowIndex !== null) {
+                // Shift + Click: 範囲選択
+                const start = Math.min(currentIndex, lastSelectedRowIndex);
+                const end = Math.max(currentIndex, lastSelectedRowIndex);
+                rows.forEach((r, index) => {
+                    if (index >= start && index <= end) {
+                        r.classList.add('selected');
+                    }
+                });
+                lastSelectedRowIndex = currentIndex; // Shift選択後もlastSelectedを更新
+            } else if (e.ctrlKey || e.metaKey) {
+                // Ctrl/Cmd + Click: 個別選択/選択解除
+                row.classList.toggle('selected');
+                lastSelectedRowIndex = currentIndex;
+            } else {
+                // 通常のクリック: チェックボックスのように選択/選択解除をトグルする
+                row.classList.toggle('selected');
+                lastSelectedRowIndex = currentIndex;
+            }
+            updateBulkActionButtons();
+        });
+    });
+</script>
+{% endblock %}

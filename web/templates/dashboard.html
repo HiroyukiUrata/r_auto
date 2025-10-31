@@ -90,7 +90,7 @@ document.addEventListener('DOMContentLoaded', function () {
         '次の予定': { icon: 'bi-alarm', color: 'warning' }
     }
     const inventoryMapping = {
-        'エラー': { icon: 'bi-exclamation-triangle-fill', color: 'danger' },
+        'エラー商品': { icon: 'bi-exclamation-triangle-fill', color: 'danger' },
         '投稿準備完了': { icon: 'bi-check2-circle', color: 'primary' },
         'URL取得済': { icon: 'bi-link-45deg', color: 'info' },
         '生情報取得': { icon: 'bi-cloud-arrow-down', color: 'secondary' }
@@ -212,10 +212,11 @@ document.addEventListener('DOMContentLoaded', function () {
             console.log("[DASHBOARD_JS] APIから受け取った在庫データ:", inventoryData);
             inventoryContainer.innerHTML = '';
             // 在庫状況の表示順を定義
-            const desiredStatusOrder = ['エラー', '投稿準備完了', 'URL取得済', '生情報取得'];
+            const desiredStatusOrder = ['投稿準備完了', 'URL取得済', '生情報取得'];
 
             // 定義した順序でカードを生成
             desiredStatusOrder.forEach(status => {
+                // エラーは別途表示するので、ここではスキップ
                 if (inventoryData.hasOwnProperty(status)) {
                     inventoryContainer.innerHTML += createCard(status, inventoryData[status], 0);
                     delete inventoryData[status]; // 処理済みのステータスを削除
@@ -223,15 +224,27 @@ document.addEventListener('DOMContentLoaded', function () {
             });
             // 定義外のステータスがあれば末尾に追加
             for (const [status, count] of Object.entries(inventoryData)) {
+                // 'エラー' ステータスはすでに 'エラー商品' として別途表示しているので、ここではスキップする
+                if (status === 'エラー') continue;
+
                 inventoryContainer.innerHTML += createCard(status, count, 0);
             }
+            // 24時間以内のエラー件数を先頭に表示
+            const errorCardHtml = createCard('エラー商品', summaryData.error_product_count_24h, 0);
+            inventoryContainer.insertAdjacentHTML('afterbegin', errorCardHtml);
 
             // 最近使ったキーワードを表示
             console.log("[DASHBOARD_JS] APIから受け取ったキーワードデータ:", keywordsData);
             keywordsContainer.innerHTML = '';
             if (keywordsData && keywordsData.length > 0) {
-                keywordsData.slice(0, 3).forEach(keyword => {
-                    keywordsContainer.innerHTML += `<a href="https://search.rakuten.co.jp/search/mall/${encodeURIComponent(keyword)}/" target="_blank" class="btn btn-outline-secondary btn-sm me-2 mb-2">${keyword}</a>`;
+                keywordsData.slice(0, 5).forEach(kw_obj => {
+                    // キーワードオブジェクトが有効（keywordとgenre_idが存在する）な場合のみカードを生成
+                    if (kw_obj && kw_obj.keyword && kw_obj.genre_id) {
+                        const url = `https://search.rakuten.co.jp/search/mall/${encodeURIComponent(kw_obj.keyword)}/${kw_obj.genre_id}/`;
+                        // genre_nameがない場合も考慮してフォールバックを追加
+                        const displayText = `${kw_obj.keyword} (${kw_obj.genre_name || 'ジャンル不明'})`;
+                        keywordsContainer.innerHTML += `<a href="${url}" target="_blank" class="btn btn-outline-secondary btn-sm me-2 mb-2">${displayText}</a>`;
+                    }
                 });
             } else {
                 keywordsContainer.innerHTML = '<p class="text-muted">最近使用したキーワードはありません。</p>';

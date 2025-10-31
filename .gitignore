@@ -20,3 +20,5 @@ docker-compose.override.yml
 # Ignore all contents of the db directory, as they are user-specific or generated at runtime.
 db/
 docker-compose.override.yml
+
+test/

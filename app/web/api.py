@@ -8,12 +8,15 @@ import os
 import json
 from pydantic import BaseModel
 from pathlib import Path
+from fastapi import BackgroundTasks
 
 # タスク定義を一元的にインポート
+from app.core.task_manager import TaskManager
 from app.core.task_definitions import TASK_DEFINITIONS
 from app.core.database import (get_all_inventory_products, update_product_status, delete_all_products, init_db, 
-                               delete_product, update_status_for_multiple_products, delete_multiple_products, get_product_count_by_status, 
-                               get_error_products_in_last_24h, update_product_priority, update_product_order, bulk_update_products_from_data)
+                               delete_product, update_status_for_multiple_products, delete_multiple_products, get_product_count_by_status,
+                               get_error_products_in_last_24h, update_product_priority, update_product_order, bulk_update_products_from_data, commit_user_actions, get_all_user_engagements,
+                               get_users_for_commenting, update_user_comment)
 from app.tasks.posting import run_posting
 from app.tasks.get_post_url import run_get_post_url
 from app.tasks.import_products import process_and_import_products
@@ -58,6 +61,12 @@ class JsonImportRequest(BaseModel):
 class BulkUpdateRequest(BaseModel):
     product_ids: list[int]
 
+class UserIdsRequest(BaseModel):
+    user_ids: list[str]
+
+class BulkEngagePayload(BaseModel):
+    users: list[dict]
+
 class BulkStatusUpdateRequest(BaseModel):
     product_ids: list[int]
     status: str
@@ -65,6 +74,10 @@ class BulkStatusUpdateRequest(BaseModel):
 class KeywordsUpdateRequest(BaseModel):
     keywords_a: list[str]
     keywords_b: list[str]
+
+class CommentUpdateRequest(BaseModel):
+    user_id: str
+    comment_text: str
 
 
 # --- HTML Routes ---
@@ -112,12 +125,19 @@ async def read_dashboard(request: Request):
     """ダッシュボードページを表示する"""
     return request.app.state.templates.TemplateResponse("dashboard.html", {"request": request})
 
+@router.get("/comment-management", response_class=HTMLResponse)
+async def read_comment_management(request: Request):
+    """コメント投稿管理ページを表示する"""
+    return request.app.state.templates.TemplateResponse("comment_management.html", {"request": request})
+
 @router.get("/error-management", response_class=HTMLResponse)
 async def read_error_management(request: Request):
     """エラー管理ページを表示する"""
-    # ファイル名を解析するための正規表現パターン
-    # 例: error_いいね_20231027-103045.png
-    filename_pattern = re.compile(r'^(?P<prefix>[^_]+)_(?P<action_name>.+)_(?P<timestamp>\d{8}-\d{6})\.png$')
+    # ファイル名を解析するための正規表現パターンを修正
+    # 例: url_error_my_user_id_通知分析_20231027-103045.png
+    # 末尾からタイムスタンプとアクション名を特定するように変更し、プレフィックスにアンダースコアが含まれても対応できるようにする
+    # アクション名はタイムスタンプの直前にあるアンダースコアで区切られた部分と仮定
+    filename_pattern = re.compile(r'^(?P<prefix>.+?)_(?P<action_name>[^_]+)_(?P<timestamp>\d{8}-\d{6})\.png$')
     
     files = []
     file_details = {}
@@ -395,6 +415,10 @@ async def get_dashboard_summary(request: Request):
         period = request.query_params.get('period', '24h') # クエリパラメータから期間を取得
         log_summary = get_log_summary(period=period)
 
+        # 24時間以内のエラー商品数を取得
+        error_products_24h = get_error_products_in_last_24h()
+        error_product_count_24h = len(error_products_24h)
+
         # 次のスケジュール情報を最大3件取得
         all_jobs = schedule.get_jobs()
         # 実行予定時刻があるジョブのみを抽出し、時刻順にソート
@@ -434,7 +458,11 @@ async def get_dashboard_summary(request: Request):
                 next_schedules_info.append(schedule_info)
 
         # レスポンスのキーを複数形に変更
-        summary = {**log_summary, "next_schedules": next_schedules_info}
+        summary = {
+            **log_summary,
+            "next_schedules": next_schedules_info,
+            "error_product_count_24h": error_product_count_24h
+        }
         # logging.debug(f"[DASHBOARD_API] 処理成功。フロントエンドに返すデータ: {summary}")
         return JSONResponse(content=summary)
     except Exception as e:
@@ -448,7 +476,7 @@ async def get_recent_keywords():
     try:
         if os.path.exists(RECENT_KEYWORDS_FILE):
             with open(RECENT_KEYWORDS_FILE, "r", encoding="utf-8") as f:
-                keywords = json.load(f)
+                keywords = json.load(f) # これはオブジェクトのリスト [{keyword: "...", genre_name: "...", genre_id: "..."}, ...]
             return JSONResponse(content=keywords)
         return JSONResponse(content=[])
     except Exception as e:
@@ -594,6 +622,73 @@ async def bulk_status_update_products(request: BulkStatusUpdateRequest):
         logging.error(f"商品の一括ステータス更新中にエラーが発生しました: {e}")
         return JSONResponse(status_code=500, content={"status": "error", "message": "一括更新に失敗しました。"})
 
+@router.get("/api/comment-targets")
+async def get_comment_targets(request: Request):
+    """コメント投稿対象のユーザーリストを返す"""
+    try:
+        show_all = request.query_params.get('all', 'false').lower() == 'true'
+        
+        if show_all:
+            # 全ユーザー表示モード。ソート順をクエリパラメータから取得
+            sort_by = request.query_params.get('sort', 'recent_action')
+            users = get_all_user_engagements(sort_by=sort_by, limit=200)
+        else:
+            # 通常のコメント対象ユーザー表示モード
+            users = get_users_for_commenting(limit=50)
+        return JSONResponse(content=users)    
+    except Exception as e:
+        logging.error(f"コメント対象ユーザーの取得中にエラーが発生しました: {e}", exc_info=True)
+        return JSONResponse(status_code=500, content={"status": "error", "message": "ユーザーリストの取得に失敗しました。"})
+
+@router.post("/api/users/bulk-skip")
+async def bulk_skip_users(request: UserIdsRequest):
+    """
+    複数のユーザーのアクションをコミットし、コメント対象から除外（スキップ）する。
+    コメントは投稿しないため、last_commented_at は更新しない。
+    """
+    user_ids = request.user_ids
+    if not user_ids:
+        raise HTTPException(status_code=400, detail="ユーザーIDが指定されていません。")
+
+    try:
+        # is_comment_posted=False で呼び出し、アクションのコミットのみ行う
+        updated_count = commit_user_actions(user_ids=user_ids, is_comment_posted=False)
+        return JSONResponse(content={"message": f"{updated_count}件のユーザーをスキップしました。", "count": updated_count})
+    except Exception as e:
+        logging.error(f"ユーザーの一括スキップ処理中にエラーが発生しました: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="サーバーエラーが発生しました。")
+
+@router.post("/api/users/bulk-engage", summary="選択した複数のユーザーにエンゲージメントタスクを実行")
+async def engage_with_multiple_users(payload: BulkEngagePayload, background_tasks: BackgroundTasks):
+    """
+    選択された複数のユーザーに対して、いいねバックとコメント投稿のタスクを非同期で実行する。
+    """
+    if not payload.users:
+        raise HTTPException(status_code=400, detail="対象ユーザーが指定されていません。")
+
+    task_manager = TaskManager()
+    # ユーザーリスト全体を1つのタスクとしてスケジュール
+    background_tasks.add_task(task_manager.run_task_by_tag, "engage-user", users=payload.users)
+
+    return {"message": f"{len(payload.users)}件のユーザーへのエンゲージメントタスクを開始しました。"}
+
+@router.patch("/api/users/update-comment", summary="指定されたユーザーのコメントを更新")
+async def patch_user_comment(request: CommentUpdateRequest):
+    """
+    指定されたユーザーIDのコメントテキストを更新する。
+    """
+    try:
+        update_user_comment(
+            user_id=request.user_id,
+            comment_text=request.comment_text
+        )
+        return JSONResponse(content={"status": "success", "message": "コメントを更新しました。"})
+    except Exception as e:
+        logging.error(f"ユーザー(ID: {request.user_id})のコメント更新中にエラーが発生しました: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="サーバーエラーによりコメントの更新に失敗しました。")
+
+
+
 @router.post("/api/products/bulk-update-from-json")
 async def bulk_update_from_json(request: JsonImportRequest):
     """
@@ -728,13 +823,19 @@ async def update_schedule(update_request: ScheduleUpdateRequest):
     return {"status": "success", "message": f"Task '{tag}' schedule updated."}
 
 @router.post("/api/tasks/{tag}/run")
-async def run_task_now(tag: str):
+async def run_task_now(tag: str, request: Request):
     """
     指定されたタスクを即時実行する。
     フローの起点となるタスクとして実行される。
+    リクエストボディで引数を渡すことができる。
     """
-    return _run_task_internal(tag, is_part_of_flow=False)
-
+    try:
+        # リクエストボディからJSON形式の引数を取得。ボディが空なら空の辞書。
+        extra_kwargs = await request.json() if request.headers.get('content-length') != '0' else {}
+    except json.JSONDecodeError:
+        extra_kwargs = {} # JSONデコードに失敗した場合も空の辞書
+    return _run_task_internal(tag, is_part_of_flow=False, **extra_kwargs)
+ 
 @router.get("/api/logs", response_class=PlainTextResponse)
 async def get_logs():
     """ログファイルの内容をテキスト形式で返します。"""
@@ -749,7 +850,6 @@ async def get_logs():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"ログの読み込みに失敗しました: {str(e)}")
 
-
 def _run_task_internal(tag: str, is_part_of_flow: bool, **kwargs):
     """
     タスクを実行する内部関数。フローの一部かどうかもハンドリングする。
@@ -759,8 +859,6 @@ def _run_task_internal(tag: str, is_part_of_flow: bool, **kwargs):
     """
     # スケジュールライブラリが内部的に渡す可能性のある引数を除外
     flow_run_kwargs = {k: v for k, v in kwargs.items() if k != 'job_func'}
-
-    logging.debug(f"[_run_task_internal] tag={tag}, is_part_of_flow={is_part_of_flow}, kwargs={flow_run_kwargs}")
 
     definition = TASK_DEFINITIONS.get(tag)
 
@@ -837,6 +935,9 @@ def _run_task_internal(tag: str, is_part_of_flow: bool, **kwargs):
                     for key, value in sub_task_args.items():
                         if value == "flow_count":
                             final_kwargs[key] = flow_kwargs.get('count')
+                        elif value == "flow_hours_ago":
+                            final_kwargs[key] = flow_kwargs.get('hours_ago')
+
                     # フロー全体に渡された引数で、個別のタスクの引数を上書きする
                     final_kwargs.update(flow_kwargs)
                     

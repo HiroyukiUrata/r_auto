@@ -129,12 +129,12 @@
 
             schedules.forEach(job => {
                 // 件数設定が可能なタスクのタグリスト
-                const isCountableTask = !['backup-database'].includes(job.tag);
+                const isCountableTask = !['backup-database', 'notification-analyzer'].includes(job.tag);
 
                 const timesHtml = job.times.map(entry => `
                     <div class="time-entry d-flex justify-content-between align-items-center p-2 border-bottom">
-                        <span class="time-display" onclick="editTime(this, ${isCountableTask})">${entry.time}<span class="badge bg-secondary ms-2 count-display" data-count="${entry.count}">${isCountableTask ? `${entry.count}件` : ''}</span></span>
-                        <button type="button" class="btn btn-sm btn-danger py-0 px-1" aria-label="削除" onclick="markCardAsDirty(this); this.parentElement.remove();"><i class="bi bi-x-lg"></i></button>
+                        <span class="time-display" onclick="editTime(this, ${isCountableTask})">${entry.time}<span class="badge bg-secondary ms-2 count-display" data-count="${entry.count}">${isCountableTask ? (entry.count > 0 ? `${entry.count}件` : '0件') : ''}</span></span>
+                        <button type="button" class="btn btn-sm btn-danger py-0 px-1" aria-label="削除" onclick="removeTime(this)"><i class="bi bi-x-lg"></i></button>
                     </div>
                 `).join('');
 
@@ -352,12 +352,21 @@
             scheduleChartInstance.update();
         }
         // --- ここまで追加 ---
-
+        
         function addTime(button, tag, hasCount) {
             const cardBody = button.closest('.card-body');
             const timeInput = cardBody.querySelector(`#time-input-${tag}`);
             const newTime = timeInput.value;
+
+            // ★変更点: 先に値のチェックを行い、空なら何もせずに終了
             if (!newTime) return;
+
+            // 1. 変更前に元の状態を保存し、UIをDirty状態にする
+            const card = button.closest('.card');
+            if (!card.dataset.isDirty) {
+                card.dataset.originalTimesHtml = card.querySelector('.time-list-container').innerHTML;
+            }
+            markCardAsDirty(button); // UIを「要保存」に変更
 
             let newCount = 1;
             const countInput = cardBody.querySelector(`#count-input-${tag}`);
@@ -381,14 +390,29 @@
             timeEntry.className = 'time-entry d-flex justify-content-between align-items-center p-2 border-bottom';
             timeEntry.innerHTML = `
                 <span class="time-display" onclick="editTime(this, ${hasCount})">${newTime}${countBadge}</span>
-                <button type="button" class="btn btn-sm btn-danger py-0 px-1" aria-label="削除" onclick="this.parentElement.remove(); markCardAsDirty(this);"><i class="bi bi-x-lg"></i></button>
+                <button type="button" class="btn btn-sm btn-danger py-0 px-1" aria-label="削除" onclick="removeTime(this)"><i class="bi bi-x-lg"></i></button>
             `;
             timesContainer.appendChild(timeEntry);
             timeInput.value = '';
-            markCardAsDirty(button); // 保存ボタンの状態を変更
+        }
+
+        function removeTime(button) {
+            // 1. 変更前に元の状態を保存し、UIをDirty状態にする
+            const card = button.closest('.card');
+            if (!card.dataset.isDirty) {
+                card.dataset.originalTimesHtml = card.querySelector('.time-list-container').innerHTML;
+            }
+            markCardAsDirty(button); // UIを「要保存」に変更
+            // 2. 要素を削除
+            button.parentElement.remove();
         }
 
         function editTime(spanElement, hasCount) {
+            // ★変更点: 編集開始時に元の状態を保存するが、UIはまだ変更しない
+            const card = spanElement.closest('.card');
+            if (!card.dataset.isDirty) {
+                card.dataset.originalTimesHtml = card.querySelector('.time-list-container').innerHTML;
+            }
             // 他の編集中の入力があれば、先にそれを確定させる
             const existingInput = spanElement.closest('.time-list-container').querySelector('input[type="time"].time-edit-input');
             if (existingInput) {
@@ -398,7 +422,9 @@
             // 時刻のテキスト部分（例: "10:00"）を正確に取得
             const originalTime = spanElement.childNodes[0].nodeValue.trim();
             const countBadge = spanElement.querySelector('.count-display');
-            const originalCount = countBadge ? parseInt(countBadge.dataset.count, 10) : 1;
+            // ★変更点: hasCountがfalseの場合、countは常に1として扱い、変更判定に影響させない
+            const originalCount = hasCount && countBadge ? parseInt(countBadge.dataset.count, 10) : 1;
+
             const timeEntryDiv = spanElement.parentElement;
 
             const inputGroup = document.createElement('div');
@@ -415,28 +441,29 @@
             timeInput.focus();
 
             const updateHandler = () => {
+                // 1. 新しい値を取得 (inputGroupがDOMに存在するうちに)
                 const newTime = timeInput.value;
                 const countInput = inputGroup.querySelector('.count-edit-input');
-                let newCount = 1;
+                // ★変更点: hasCountがfalseの場合、countは常に1として扱う
+                let newCount = hasCount ? 1 : 1;
                 if (countInput) {
                     const parsedCount = parseInt(countInput.value, 10);
                     newCount = isNaN(parsedCount) ? 0 : parsedCount;
                 }
-
-                const timesContainer = inputGroup.closest('.time-list-container');
-                const existingTimes = Array.from(timesContainer.querySelectorAll('.time-display')).map(s => s.textContent.split('<')[0]);
                 
-                // 自分以外の時刻と重複チェック（時刻が空でない場合のみ）
+                // 2. 重複チェック (spanElementがDOMに存在するうちに)
+                const timesContainer = spanElement.closest('.time-list-container');
+                const existingTimes = Array.from(timesContainer.querySelectorAll('.time-display')).map(s => s.textContent.split('<')[0]);
                 if (newTime && newTime !== originalTime && existingTimes.includes(newTime)) {
                     alert('この時刻は既に追加されています。');
-                    // 値を変更せずに編集モードを終了
                 } else if (newTime && (newTime !== originalTime || newCount != originalCount)) {
+                    // 3. 値が変更されていれば、表示を更新
                     const newCountBadge = hasCount ? `<span class="badge bg-secondary ms-2 count-display" data-count="${newCount}">${newCount > 0 ? `${newCount}件` : '0件'}</span>` : '';
                     spanElement.innerHTML = `${newTime}${newCountBadge}`;
-                    markCardAsDirty(inputGroup);
+                    markCardAsDirty(spanElement); // ★変更点: 値が実際に変更されたここで初めてUIを「要保存」状態にする
                 }
 
-                // inputを削除し、spanを再表示
+                // 4. 最後に、入力欄を削除して元のテキストを表示
                 inputGroup.remove();
                 spanElement.style.display = '';
             };
@@ -450,27 +477,6 @@
                     timeInput.blur();
                 }
             });
-        }
-
-        async function handleSave(tag) {
-            const card = document.getElementById(`task-card-${tag}`);
-            const timeEntries = card.querySelectorAll('.time-entry');
-            const isEnabled = card.querySelector(`#master-toggle-${tag}`).checked;
-
-            const newTimes = Array.from(timeEntries).map(entry => {
-                // .time-display の最初の子要素（テキストノード）から時刻を取得し、前後の空白を削除
-                const timeDisplaySpan = entry.querySelector('.time-display');
-                const time = timeDisplaySpan.childNodes[0].nodeValue.trim();
-                const countBadge = entry.querySelector('.count-display');
-                const count = countBadge ? parseInt(countBadge.dataset.count, 10) : 1;
-                return { time, count };
-            });
-
-            const success = await saveSchedule(tag, isEnabled, newTimes);
-            if (success) {
-                alert('スケジュールを保存しました。');
-                await fetchSchedules();
-            }
         }
 
         async function fetchGlobalConfig() {
@@ -523,18 +529,28 @@
             if (!confirm(`タスク「${name_ja}」を今すぐ実行しますか？`)) {
                 return;
             }
+
+            // APIリクエストのオプションを準備
+            const fetchOptions = {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            };
+
+            // 'notification-analyzer' タスクの場合、特別な引数をボディに含める
+            if (tag === 'notification-analyzer') {
+                fetchOptions.body = JSON.stringify({ hours_ago: 0.5 });
+            }
+
             try {
-                const response = await fetch(`/api/tasks/${tag}/run`, {
-                    method: 'POST'
-                });
+                const response = await fetch(`/api/tasks/${tag}/run`, fetchOptions);
                 const result = await response.json();
                 if (!response.ok) {
                     throw new Error(result.message || 'タスクの実行開始に失敗しました。');
                 }
-            showToast('タスク開始', result.message);
+                showToast('タスク開始', result.message);
             } catch (error) {
                 console.error('Error running task:', error);
-            showToast('エラー', error.message, true);
+                showToast('エラー', error.message, true);
             }
         }
 
@@ -552,10 +568,9 @@
             
             // 既に編集モードでなければ、元の状態を保存し、キャンセルボタンを追加
             if (!currentCard.dataset.isDirty) {
+                // ★変更点: 元のHTMLの保存は各編集アクションの開始時に行うため、ここではUIの変更のみ
                 currentCard.dataset.isDirty = 'true';
-                const timesContainer = currentCard.querySelector('.time-list-container');
-                currentCard.dataset.originalTimesHtml = timesContainer.innerHTML;
-
+                
                 const cancelButton = document.createElement('button');
                 cancelButton.className = 'btn btn-secondary btn-sm me-2';
                 cancelButton.innerHTML = '<i class="bi bi-x-circle"></i> キャンセル';
@@ -578,6 +593,36 @@
                     card.classList.add('disabled');
                 }
             });
+        }
+
+        async function handleSave(tag) {
+            // 編集中の入力があれば、先にそれを確定させる
+            const activeInput = document.querySelector('.time-edit-input');
+            if (activeInput) { activeInput.blur(); }
+
+            const card = document.getElementById(`task-card-${tag}`);
+            const timeEntries = card.querySelectorAll('.time-entry');
+            const isEnabled = card.querySelector(`#master-toggle-${tag}`).checked;
+
+            const newTimes = Array.from(timeEntries).map(entry => {
+                const timeDisplaySpan = entry.querySelector('.time-display');
+                const time = timeDisplaySpan.childNodes[0].nodeValue.trim();
+                const countBadge = entry.querySelector('.count-display');
+                const count = countBadge ? parseInt(countBadge.dataset.count, 10) : 1;
+                return { time, count };
+            });
+
+            const success = await saveSchedule(tag, isEnabled, newTimes);
+            if (success) {
+                // 現在のスクロール位置を記憶
+                const scrollY = window.scrollY;
+
+                showToast('保存完了', 'スケジュールを保存しました。');
+                // 画面を再描画
+                await fetchSchedules();
+                // 記憶したスクロール位置に戻す
+                window.scrollTo(0, scrollY);
+            }
         }
 
         function cancelChanges(cardElement) {

@@ -9,9 +9,15 @@ from app.tasks import (
     run_backup_database,
     run_restore_auth_state,
 )
-from app.tasks.gemini_test_task import run_gemini_test_task
+from app.tasks.manual_test import run_manual_test
+
+from app.tasks.commit_stale_actions import run_commit_stale_actions
 from app.tasks.rakuten_search_procure import search_and_procure_from_rakuten
+from app.tasks.notification_analyzer import run_notification_analyzer
 from app.tasks.rakuten_api_procure import procure_from_rakuten_api
+from app.tasks.create_ai_comment import run_create_ai_comment
+from app.tasks.create_caption_api import run_create_caption_api
+from app.tasks.engage_user import run_engage_user
 
 """
 システム内の全タスクの定義を一元管理する。
@@ -145,7 +151,7 @@ TASK_DEFINITIONS = {
         "name_ja": "フォロー活動",
         "function": None, # フローなので直接の関数はなし
         "is_debug": False,
-        "default_kwargs": {"count": 10}, # フロー全体に渡す引数
+        "default_kwargs": {"count": 3}, # フロー全体に渡す引数
         "description": "ログイン状態を確認後、設定されたキーワードに基づいて「フォロー」アクションを実行します。",
         "order": 70,
         "flow": "check-login-status | _internal-follow-action"
@@ -223,7 +229,7 @@ TASK_DEFINITIONS = {
     },
     "create-caption-gemini": {
         "name_ja": "投稿文作成 (Gemini API)",
-        "function": run_gemini_test_task,
+        "function": run_create_caption_api,
         "is_debug": False,
         "show_in_schedule": False,
         "description": "【新方式】Gemini APIを直接呼び出して投稿文を作成します。",
@@ -235,5 +241,57 @@ TASK_DEFINITIONS = {
         "is_debug": True,
         "description": "設定画面で選択された方法（ブラウザ or API）で投稿文を作成します。",
         "order": 35,
+    },
+    "_internal-notification-analyzer": {
+        "name_ja": "（内部処理）通知分析実行",
+        "function": run_notification_analyzer,
+        "is_debug": False,
+        "default_kwargs": {"hours_ago": 12},
+        "show_in_schedule": False,
+        "description": "楽天ROOMのお知らせページからユーザーのエンゲージメント情報を分析し、DBに保存します。",
+        "order": 9999,
+    },
+    "notification-analyzer": {
+        "name_ja": "返信コメント生成",
+        "function": None, # フローなので直接の関数はなし
+        "default_kwargs": {"hours_ago": 12}, # スケジュール実行時のデフォルト値
+        "is_debug": False, # 即時実行にも表示する
+        "show_in_schedule": True,
+        "description": "通知を分析しコメントを生成します。スケジュール実行時は12時間、即時実行時は30分(hours_ago=0.5)が推奨です。",
+        "order": 80,
+        "flow": [ ("check-login-status",{}), ("_internal-notification-analyzer", {"hours_ago": "flow_hours_ago"}), ("commit-stale-actions", {}), ("create-ai-comment", {})]
+    },
+    "create-ai-comment": {
+        "name_ja": "AIコメント作成",
+        "function": run_create_ai_comment,
+        "is_debug": False,
+        "show_in_schedule": False,
+        "description": "分析結果を元に、ユーザーへの返信コメントをAIで生成します。",
+        "order": 85,
+    },
+    "commit-stale-actions": {
+        "name_ja": "古いアクションの自動コミット",
+        "function": run_commit_stale_actions,
+        "is_debug": False,
+        "show_in_schedule": False,
+        "description": "24時間以上放置されている未処理のアクションを自動的にスキップ扱いとしてコミットします。",
+        "order": 90,
+    },
+    "engage-user": {
+        "name_ja": "ユーザーエンゲージメント実行",
+        "function": run_engage_user,
+        "is_debug": False,
+        "show_in_schedule": False, # APIからのみ呼び出す
+        "description": "指定された複数のユーザーにいいねバックとコメント投稿を行います。",
+        "order": 9999,
+    },
+    "manual-test": {
+        "name_ja": "手動テスト",
+        "function": run_manual_test,
+        "is_debug": True,
+        "show_in_schedule": False,
+        "description": "指定したURLを開き、ブラウザが閉じるまで待機します。デバッグやセレクタの調査に利用します。",
+        "order": 100,
+        "default_kwargs": {"script": "test_scripts/example.py"},
     },
 }

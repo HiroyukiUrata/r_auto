@@ -1,6 +1,7 @@
 import logging
 import os
 import time
+import sys
 from abc import ABC, abstractmethod
 from typing import Optional
 
@@ -56,6 +57,8 @@ class BaseTask(ABC):
             self.context = browser.new_context(locale="ja-JP")
 
         self.page = self.context.new_page()
+        # ビューポートサイズを固定して、ヘッドレスモードと通常モードの挙動の差をなくす
+        self.page.set_viewport_size({"width": 1920, "height": 1080})
 
     def _teardown_browser(self):
         """ブラウザコンテキストを閉じる"""
@@ -128,3 +131,31 @@ class BaseTask(ABC):
         サブクラスで必ず実装する必要がある。
         """
         pass
+
+    def _print_progress_bar(self, iteration, total, prefix='Progress', suffix='Complete', length=50, fill='■'):
+        """
+        コンソールにプログレスバーを表示する。
+        loggingとは独立してsys.stdoutに直接書き込むことで、ログ出力と共存させる。
+        """
+        try:
+            # ターミナルの幅を取得しようと試みる（失敗してもデフォルト値で動作）
+            try:
+                import os
+                terminal_width = os.get_terminal_size().columns
+                # プレフィックス、サフィックス、パーセンテージ表示などの長さを考慮
+                bar_length = terminal_width - len(prefix) - len(suffix) - 20
+                length = max(10, bar_length) # 最低10は確保
+            except (ImportError, OSError):
+                pass # ターミナルサイズが取得できない環境でも動作
+
+            percent = ("{0:.1f}").format(100 * (iteration / float(total)))
+            filled_length = int(length * iteration // total)
+            bar = fill * filled_length + '-' * (length - filled_length)
+            # Uvicornなどのバッファリング環境でもリアルタイムに表示させるため、
+            # \nで改行して一度フラッシュさせ、次の行でカーソルを上に戻す
+            # \033[F はカーソルを前の行の先頭に移動するANSIエスケープシーケンス
+            line_to_print = f'{prefix} |{bar}| {percent}% ({iteration}/{total}) {suffix}'
+            # ターミナルの幅に合わせて余分なスペースで上書きし、前の行の残骸を消す
+            sys.stdout.write(f"\033[F{line_to_print.ljust(length + 30)}\n")
+        except Exception:
+            pass # プログレスバー表示でエラーが起きても本体処理には影響させない

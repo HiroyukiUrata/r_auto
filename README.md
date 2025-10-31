@@ -1,126 +1,80 @@
-# R-Auto Control Panel v.1.0.3
+# R-Auto: 楽天ROOM自動化ツール
 
-某SNSの自動化タスクを管理・実行するためのWebアプリケーションです。
+（ここにプロジェクトの概要説明など）
 
-## 主な機能
+## ローカル環境でのタスク実行とデバッグ
 
-- **タスクのスケジュール実行**: 「いいね」「フォロー」「商品調達」「記事投稿」などのタスクを、指定した時刻に自動で実行します。
-- **Web UIによる管理**: ブラウザから簡単にスケジュールの設定や変更、タスクの即時実行が可能です。
-- **在庫管理**: 調達した商品を一覧で確認し、手動でステータスを変更したり、投稿したりできます。
-- **ログ確認**: 実行されたタスクのログをリアルタイムで確認できます。
-- **VNC連携**: デバッグモードでは、実行中のブラウザ操作をVNCクライアント経由で視覚的に確認できます。
+このプロジェクトはDockerコンテナでの実行を基本としていますが、開発やデバッグの効率を向上させるために、ローカルPCで直接タスクを実行する機能を提供しています。
 
-## 技術スタック
+`run_task.py` を使用することで、コンテナやVNCを起動することなく、使い慣れたローカル環境でブラウザを操作し、タスクの動作を確認できます。
 
-- **バックエンド**: Python, FastAPI
-- **フロントエンド**: HTML, CSS, JavaScript, Bootstrap
-- **スケジューラ**: schedule
-- **ブラウザ自動化**: Playwright
-- **コンテナ化**: Docker, Docker Compose
+### 初期セットアップ
 
-## ディレクトリ構成
+ローカルでPlaywrightタスクを実行するには、操作対象のブラウザが必要です。以下のコマンドを一度だけ実行してください。
 
-```
-.
-├── app/
-│   ├── core/         # アプリケーションの中核機能（DB, スケジューラ, タスク定義など）
-│   ├── tasks/        # 各自動化タスクのロジック
-│   ├── web/          # FastAPIのAPIエンドポイントとWebサーバー関連
-│   ├── locators/     # (削除済み) Playwrightのセレクタ管理
-│   ├── prompts/      # AI用のプロンプトファイル
-│   ├── Dockerfile
-│   └── main.py       # アプリケーションのエントリポイント
-├── db/               # データベースファイル、プロファイル、キーワード、スケジュール設定
-├── web/
-│   └── templates/    # HTMLテンプレート
-├── docker-compose.yml
-└── README.md
+```bash
+playwright install
 ```
 
-## セットアップと実行
+### 基本的な使い方
 
-1.  **Dockerのインストール**: DockerとDocker Composeがインストールされていることを確認してください。
-2.  **環境変数の設定**: `.env.sample` を参考に `.env` ファイルを作成し、必要な環境変数を設定します。
-3.  **コンテナのビルドと起動**:
+プロジェクトのルートディレクトリで、以下の形式でコマンドを実行します。
 
-    ```bash
-    docker-compose up --build -d
-    ```
-
-4.  **Web UIへのアクセス**:
-    ブラウザで `http://localhost:8000` にアクセスします。
-
-5.  **VNCでの動作確認**:
-    VNCクライアントで `localhost:5900` に接続します。（パスワードは `.env` で設定）
-
-## タスクとフローの仕組み
-
-このアプリケーションのタスク実行は、`app/core/task_definitions.py` で一元管理されています。
-
-### タスク定義
-
-個々のタスクは、以下のような辞書形式で定義されます。
-
-```python
-# "タスクID": {
-#     "name_ja": "UIに表示される日本語名",
-#     "function": 実行される関数オブジェクト,
-#     "is_debug": Trueにするとシステムコンフィグのデバッグ用タスク一覧に表示される,
-#     "show_in_schedule": Falseにするとスケジュール設定画面に表示されなくなる,
-#     "description": "UIに表示されるタスクの説明文",
-#     "order": UIでの表示順（小さいほど上）,
-#     "default_kwargs": {"引数名": デフォルト値}, # タスク実行時のデフォルト引数
-# }
+```bash
+python run_task.py [タスク名] --[引数名1] [値1] --[引数名2] [値2] ...
 ```
 
-### フロー定義
-
-複数のタスクを順番に実行する「フロー」も同様に定義できます。
-
-```python
-# "フローID": {
-#     "name_ja": "フローの日本語名",
-#     "function": None, # フロー自体は関数を持たない
-#     "flow": [ ... ], # フローの内容を定義
-#     ...
-# }
+**例：ログイン状態を確認する**
+```bash
+python run_task.py check-login-status
 ```
-
-#### `flow` キーの設定方法
-
-1.  **シンプルな文字列形式（引数なし）**
-
-    ```python
-    "flow": "task-a | task-b | task-c"
-    ```
-
-2.  **引数を指定できるリスト形式**
-
-    ```python
-    "flow": [
-        ("task-a", {"arg1": "value1"}),  # task-a を arg1="value1" で実行
-        ("task-b", {}),                  # task-b を引数なしで実行
-    ]
-    ```
-
-#### フローからタスクへの引数引き渡し
-
-フロー全体に渡された引数を、フロー内の特定のタスクに引き渡すことができます。
-
-```python
-# "default_kwargs": {"count": 25},
-# "flow": [
-#     ("some-task", {"count": "flow_count"})
-# ]
-```
-
--   `"flow_count"` という特別なキーワードを指定すると、フローに渡された `'count'` 引数（この場合は25）が `some-task` の `'count'` 引数として渡されます。
--   このキーワードは `app/web/api.py` で解釈される固定値です。
 
 ---
 
-## 開発者向け情報
+## 手動テスト用フレームワーク (`manual-test`)
 
-- 新しいタスクを追加する場合は、`app/tasks` にファイルを作成し、`app/core/task_definitions.py` に定義を追加してください。
-- UIの変更は `web/templates` 内のHTMLファイルを編集します。
-- APIエンドポイントの追加・変更は `app/web/api.py` を編集します。
+`manual-test` は、新しい自動化ロジックを開発・実験するための非常に強力なフレームワークです。指定したPythonスクリプトをPlaywrightのブラウザ環境内で実行し、処理が完了した後もブラウザを開いたままにすることができます。
+
+### 主な用途
+
+- **セレクタの調査**: 開発者ツールやPlaywright Inspectorを使い、操作したい要素の最適なセレクタをインタラクティブに探せます。
+- **自動化ロジックの試作**: 小さなスクリプトを書いて、特定の操作（クリック、入力、待機など）が期待通りに動作するかを素早くテストできます。
+- **手動での動作確認**: スクリプト実行後のページの状態を目で見て確認したり、手動で操作を続けたりできます。
+
+### 使い方
+
+1.  **実験用スクリプトの作成**
+    `test_scripts` フォルダ内に、実行したい操作を記述したPythonファイルを作成します。
+    このスクリプト内では、Playwrightの `page` と `context` オブジェクトを直接利用できます。
+
+    **例: `test_scripts/highlight_first_card.py`**
+    ```python
+    # page と context は自動的に利用可能です
+
+    # 1. ページにアクセス
+    page.goto("https://room.rakuten.co.jp/room_be5dbb53b7/items")
+
+    # 2. 最初のカード要素を特定
+    first_card = page.locator('div[class*="item-card--root--"]').first
+
+    # 3. 見つけたカードを赤い枠線でハイライト
+    first_card.evaluate("node => { node.style.border = '3px solid red'; }")
+    ```
+
+2.  **コマンドラインから実行**
+    `run_task.py` を使って、`--script` 引数で作成したスクリプトファイルを指定します。
+
+    ```bash
+    python run_task.py manual-test --script "test_scripts/highlight_first_card.py"
+    ```
+
+### Playwright Inspectorとの連携
+
+`PWDEBUG=1` 環境変数を付けて実行すると、Playwright Inspectorが起動し、さらに強力なデバッグが可能になります。
+
+**Linux / macOS:**
+```bash
+PWDEBUG=1 python run_task.py manual-test --script "test_scripts/highlight_first_card.py"
+```
+
+Inspectorの「Record」機能で操作を記録したり、「Explore」機能でセレクタを調査したりすることで、開発効率が飛躍的に向上します。

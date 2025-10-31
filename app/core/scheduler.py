@@ -63,12 +63,14 @@ def load_schedules_from_file():
                     # タスク定義からのデフォルト引数を取得し、スケジュール固有の引数で上書き
                     job_kwargs = definition.get("default_kwargs", {}).copy()
                     job_kwargs['count'] = entry.get('count', 1)
+                    logging.debug(f"  [Scheduler] Preparing job for '{tag}' at {entry['time']} with kwargs: {job_kwargs}")
 
                     task_func = definition.get("function")
                     if task_func:
                         if tag == "backup-database":
                             # バックアップタスクは引数を取らないので、直接呼び出す
                             schedule.every().day.at(entry['time']).do(run_threaded, task_func).tag(tag)
+                            logging.debug(f"    -> Registered backup task.")
                         else:
                             # その他の通常のタスクの場合
                             job_kwargs['task_to_run'] = task_func
@@ -78,6 +80,7 @@ def load_schedules_from_file():
                         # _run_task_internal を直接呼び出す
                         # is_part_of_flow=False を明示的に渡す
                         schedule.every().day.at(entry['time']).do(run_threaded, _run_task_internal, tag=tag, is_part_of_flow=False, **job_kwargs).tag(tag)
+                        logging.debug(f"    -> Registered flow task '{tag}' with kwargs: {job_kwargs}")
                     else:
                         logging.warning(f"タスク '{tag}' には実行可能な関数またはフローが定義されていません。")
 
