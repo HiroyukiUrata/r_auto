@@ -80,7 +80,7 @@ class EngageUserTask(BaseTask):
                 liked_count += 1
 
             
-                time.sleep(30)#めちゃめちゃ待ったら連続クリックできるはず。たぶｎ
+                time.sleep(20)#めちゃめちゃ待ったら連続クリックできるはず。たぶｎ
                 target_card.evaluate("node => { node.style.display = 'none'; }")
 
         except Exception as e:
@@ -100,7 +100,7 @@ class EngageUserTask(BaseTask):
         logger.debug(f"  -> 最新投稿にコメントします。")
         # ページを一番上までスクロール
         page.evaluate("window.scrollTo(0, 0)")
-        time.sleep(1)
+        time.sleep(20)#ページ読み込みをしっかり待つ
 
         try:
             # --- 1. コメント数が最も多い投稿を探す ---
@@ -145,16 +145,24 @@ class EngageUserTask(BaseTask):
             logger.debug(f"  -> 投稿詳細ページに遷移しました: {page.url}")
 
             # --- 3. コメントボタンをクリック ---
+            logger.debug(f"  -> コメントボタンをクリックしてコメント画面を開きます")
             comment_button_selector = convert_to_robust_selector('div.pointer--3rZ2h:has-text("コメント")')
             page.locator(comment_button_selector).click()
+            time.sleep(3)#ページ読み込みをしっかり待つ
 
-            # --- 4. コメントを入力して投稿 ---
+            # --- 4. コメントを入力 ---
+            logger.debug(f"  -> コメント入力欄にコメントを挿入します")
             comment_textarea = page.locator('textarea[placeholder="コメントを書いてください"]')
             comment_textarea.wait_for(state="visible", timeout=15000)
             comment_textarea.fill(comment_text)
-            time.sleep(random.uniform(0.5, 1))
+            time.sleep(3)#ページ読み込みをしっかり待つ
+            #time.sleep(random.uniform(0.5, 1))
 
-            page.get_by_role("button", name="送信").click()
+
+           # --- 5. 送信ボタンをクリック ---
+            logger.debug(f"  -> 送信ボタンをクリックします")
+            if True :
+                page.get_by_role("button", name="送信").click()
 
             # 投稿完了を待機
             time.sleep(3)
@@ -191,9 +199,10 @@ class EngageUserTask(BaseTask):
 
 
                 # 1. いいね返し
-                like_back_success = self._like_back(page, user_name, user.get("recent_like_count", 0))
-                if like_back_success:
-                    like_back_processed_count += 1
+                if True :
+                    like_back_success = self._like_back(page, user_name, user.get("recent_like_count", 0))
+                    if like_back_success:
+                        like_back_processed_count += 1
 
                 # 2. コメント返し
                 comment_text = user.get("comment_text")
@@ -203,9 +212,10 @@ class EngageUserTask(BaseTask):
 
                 # 3. アクションのコミット
                 # いいね返しまたはコメント返しのどちらかが成功した場合にコミット
-                if like_back_success or comment_success:
-                    logger.debug(f"  -> アクションをコミットします。")
-                    commit_user_actions(user_ids=[user_id], is_comment_posted=bool(comment_text and comment_success), post_url=page.url if (comment_text and comment_success) else None)
+                if True :
+                    if like_back_success or comment_success:
+                        logger.debug(f"  -> アクションをコミットします。")
+                        commit_user_actions(user_ids=[user_id], is_comment_posted=bool(comment_text and comment_success), post_url=page.url if (comment_text and comment_success) else None)
 
             except Exception as e:
                 logger.error(f"ユーザー「{user_name}」の処理中にエラーが発生しました: {e}", exc_info=True)

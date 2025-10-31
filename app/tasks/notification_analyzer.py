@@ -238,6 +238,11 @@ class NotificationAnalyzerTask(BaseTask):
                         continue
 
                     action_text = item.locator("div.right-text > p").first.inner_text()
+
+                    # ユーザーからのリクエスト: 「あなたがコメントした商品に〜」という通知は集計対象外とする
+                    if "あなたがコメントした商品に" in action_text:
+                        continue
+
                     action_timestamp_str = item.locator("span.notice-time").first.get_attribute("title")
 
                     # --- タイムスタンプによる足切り処理 ---
