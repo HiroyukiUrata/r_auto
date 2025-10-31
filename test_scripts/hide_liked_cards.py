@@ -46,10 +46,18 @@ try:
     
     # 【修正】:visibleセレクタを追加し、非表示になっていないカードの中から最初のものを選択します。
     for _ in range(3):
+        time.sleep(1)
         card_selector_str = convert_to_robust_selector('div[class*="container--JAywt"]')
         visible_card_locator = page.locator(f"{card_selector_str}:visible")
         visible_card_locator.first.evaluate("node => { node.style.border = '5px solid orange'; }")
-        #ここに未いいねボタンをハイライトする処理
+        
+        # ハイライトしたカードの中から「未いいね」ボタンを探してハイライトする
+        unliked_icon_selector = convert_to_robust_selector("div.rex-favorite-outline--n4SWN")
+        unliked_button_locator = visible_card_locator.first.locator(f'button:has({unliked_icon_selector})')
+        unliked_button_locator.evaluate("node => { node.style.border = '3px solid limegreen'; }")
+        
+        # 「未いいね」ボタンをクリックします。
+        unliked_button_locator.click()
         time.sleep(5)
         visible_card_locator.first.evaluate("node => { node.style.display = 'none'; }")
 
