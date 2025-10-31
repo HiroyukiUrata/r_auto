@@ -1,3 +1,4 @@
+import time
 from app.utils.selector_utils import convert_to_robust_selector
 # このスクリプトファイルの中では、'page' と 'context' という変数が自動的に使えます。
 
@@ -31,12 +32,30 @@ try:
 
     if count > 0:
         # Step 4: 絞り込んだカードを一括で非表示にします。
-        print("「いいね済み」カードを非表示にします...")
         liked_cards_locator.evaluate_all("nodes => nodes.forEach(n => n.style.display = 'none')")
         print(f"合計 {count} 件のカードを非表示にしました。")
-    else:
-        print("非表示にする「いいね済み」カードはありませんでした。")
 
+    time.sleep(1) # 視覚的な確認のための待機
+
+    # --- Part 2: 最初の5件の未いいねカードのコメントを表示 ---
+    print("\n--- Part 2: 最初の5件の未いいねカードのコメントを表示 ---")
+
+    # デバッグのため、Part2の開始時点で最初のカードをハイライトして確認
+    print("デバッグ: Part2で認識している最初のカードをハイライトします。")
+    #all_cards_locator.first.wait_for(state="visible", timeout=10000)
+    
+    # 【修正】:visibleセレクタを追加し、非表示になっていないカードの中から最初のものを選択します。
+    for _ in range(3):
+        card_selector_str = convert_to_robust_selector('div[class*="container--JAywt"]')
+        visible_card_locator = page.locator(f"{card_selector_str}:visible")
+        visible_card_locator.first.evaluate("node => { node.style.border = '5px solid orange'; }")
+        #ここに未いいねボタンをハイライトする処理
+        time.sleep(5)
+        visible_card_locator.first.evaluate("node => { node.style.display = 'none'; }")
+
+    # page.locator(convert_to_robust_selector('div[class*="container--JAywt"]')).nth(1).evaluate("node => { node.style.border = '5px solid orange'; }") 
+
+   
 except Exception as e:
     print(f"エラー: 「いいね済み」の処理中に問題が発生しました。タイムアウトしたか、セレクタが古い可能性があります。")
     print(f"詳細: {e}") # 詳細なエラーメッセージを出力
