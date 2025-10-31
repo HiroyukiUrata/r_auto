@@ -1,7 +1,7 @@
 import logging
 import random
 import time
-from playwright.sync_api import Page, Error as PlaywrightError
+from playwright.sync_api import Page, Error as PlaywrightError, expect
 from app.utils.selector_utils import convert_to_robust_selector
 from app.core.base_task import BaseTask
 from app.core.database import get_product_by_id, commit_user_actions
@@ -32,49 +32,60 @@ class EngageUserTask(BaseTask):
 
         logger.debug(f"ユーザー「{user_name}」に{target_like_count}件のいいねバックを開始します。")
 
-        # ユーザーページでは、いいね済みの状態をクラスで判別できないため、クリック後に要素ごと非表示にする戦略を取る
+        # 「いいね済み」のカードを特定して非表示にする
+
+        all_cards_locator = page.locator(convert_to_robust_selector('div[class*="container--JAywt"]'))
+        liked_button_selector = convert_to_robust_selector('button:has(div[class*="rex-favorite-filled--2MJip"])')
+        liked_button_locator = page.locator(liked_button_selector)
+        try:
+            # ページ上のカードが読み込まれるのを待ちます。
+            all_cards_locator.first.wait_for(state="visible", timeout=30000)
+            
+            # 全カードの中から、「いいね済み」ボタンを持つカードだけを絞り込みます。
+            liked_cards_locator = all_cards_locator.filter(has=liked_button_locator)
+            count = liked_cards_locator.count()
+            print(f"{count} 件の「いいね済み」カードが見つかりました。")
+
+            if count > 0:
+                #  絞り込んだカードを一括で非表示にします。
+                liked_cards_locator.evaluate_all("nodes => nodes.forEach(n => n.style.display = 'none')")
+                print(f"合計 {count} 件のカードを非表示にしました。")
+
+            time.sleep(3) # 視覚的な確認のための待機
+        
+        except Exception as e:
+            print(f"エラー: 「いいね済み」の処理中に問題が発生しました。タイムアウトしたか、セレクタが古い可能性があります。")
+            print(f"詳細: {e}") # 詳細なエラーメッセージを出力
 
         liked_count = 0
-        for _ in range(7): # 最大20回スクロールして探す
-            if liked_count >= target_like_count:
-                break
 
-            # ヘッドレスモードでの描画遅延を考慮し、ボタンを探す前に少し待機する
-            time.sleep(3)
-
-            # ユーザーページの「未いいね」ボタンを探す
-            # 動的クラス名に対応するため、安定した部分クラス名で検索
-            image_icon_selector = convert_to_robust_selector("button.image-icon--2vI3U")
-            outline_icon_selector = convert_to_robust_selector("div.rex-favorite-outline--n4SWN")
-            like_buttons = page.locator(f"{image_icon_selector}:has({outline_icon_selector}):visible").all()
-
-
-            if not like_buttons:
-                logger.debug(f"  -> いいね可能なボタンが見つかりません。ページをスクロールします... ")
-                page.evaluate("window.scrollBy(0, 500)")
-                time.sleep(2)
-                continue
-
-            # ページに表示されているボタンをシャッフルして、毎回同じものから「いいね」するのを防ぐ
-            random.shuffle(like_buttons)
-            for button in like_buttons[:target_like_count - liked_count]: # 残りの必要数だけ処理
+        try:
+            for _ in range(10):
                 if liked_count >= target_like_count:
                     break
-                # このtryブロックはボタン1回のクリック処理を囲む
-                try:
-                    # ボタンの祖先要素である投稿アイテム全体(カード)を探す
-                    # 正しいXPathを使用して、動的クラス名を持つ祖先div要素を特定する
-                    item_container = button.locator('xpath=ancestor::div[contains(@class, "vertical-space--")]')
-                    button.click()
-                    # 「いいね」した投稿をその場で非表示にして、次のループで見つけないようにする
-                    item_container.evaluate("node => node.style.display = 'none'")
-                    liked_count += 1
-                    logger.debug(f"  -> いいねバック成功 ({liked_count}/{target_like_count})")
-                    time.sleep(random.uniform(1.5, 2.5))
-                except Exception as e:
-                    logger.error(f"いいねクリック中にエラーが発生しました。このユーザーのいいねバック処理を中断します: {e}")
-                    # エラーが発生したら、このユーザーのいいねバック処理を終了するために外側のループを抜ける
-                    return # _like_backメソッド自体を終了させる
+                
+                time.sleep(1)
+                card_selector_str = convert_to_robust_selector('div[class*="container--JAywt"]')
+                target_card = page.locator(f"{card_selector_str}:visible").first
+                target_card.evaluate("node => { node.style.border = '5px solid orange'; }")
+                
+                # ハイライトしたカードの中から「未いいね」ボタンを探してハイライトする
+                unliked_icon_selector = convert_to_robust_selector("div.rex-favorite-outline--n4SWN")
+                unliked_button_locator = target_card.locator(f'button:has({unliked_icon_selector})')
+                unliked_button_locator.evaluate("node => { node.style.border = '3px solid limegreen'; }")
+                
+                # 「未いいね」ボタンをクリックします。
+                expect(unliked_button_locator).to_be_enabled(timeout=5000)
+                unliked_button_locator.click()
+                liked_count += 1
+
+            
+                time.sleep(30)#めちゃめちゃ待ったら連続クリックできるはず。たぶｎ
+                target_card.evaluate("node => { node.style.display = 'none'; }")
+
+        except Exception as e:
+            logger.error(f"いいねバック中にエラーが発生しました: {e}")
+            return # _like_backメソッド自体を終了させる
 
         logger.debug(f"  -> いいねバック完了。合計{liked_count}件実行しました。")
 
@@ -174,14 +185,15 @@ class EngageUserTask(BaseTask):
                 # 1. いいねバック
                 self._like_back(page, user_name, user.get("recent_like_count", 0))
 
-                # 2. コメント投稿
-                comment_text = user.get("comment_text")
-                self._post_comment(page, user_id, comment_text)
+                if True: 
+                    # 2. コメント投稿
+                    comment_text = user.get("comment_text")
+                    self._post_comment(page, user_id, comment_text)
 
-                # 3. アクションのコミット
-                logger.debug(f"  -> アクションをコミットします。(現在はログ出力のみ)")
-                commit_user_actions(user_ids=[user_id], is_comment_posted=bool(comment_text), post_url=page.url if comment_text else None)
-                
+                    # 3. アクションのコミット
+                    logger.debug(f"  -> アクションをコミットします。(現在はログ出力のみ)")
+                    commit_user_actions(user_ids=[user_id], is_comment_posted=bool(comment_text), post_url=page.url if comment_text else None)
+                    
                 processed_count += 1
             except Exception as e:
                 logger.error(f"ユーザー「{user_name}」の処理中にエラーが発生しました: {e}", exc_info=True)
