@@ -415,6 +415,10 @@ async def get_dashboard_summary(request: Request):
         period = request.query_params.get('period', '24h') # クエリパラメータから期間を取得
         log_summary = get_log_summary(period=period)
 
+        # 24時間以内のエラー商品数を取得
+        error_products_24h = get_error_products_in_last_24h()
+        error_product_count_24h = len(error_products_24h)
+
         # 次のスケジュール情報を最大3件取得
         all_jobs = schedule.get_jobs()
         # 実行予定時刻があるジョブのみを抽出し、時刻順にソート
@@ -454,7 +458,11 @@ async def get_dashboard_summary(request: Request):
                 next_schedules_info.append(schedule_info)
 
         # レスポンスのキーを複数形に変更
-        summary = {**log_summary, "next_schedules": next_schedules_info}
+        summary = {
+            **log_summary,
+            "next_schedules": next_schedules_info,
+            "error_product_count_24h": error_product_count_24h
+        }
         # logging.debug(f"[DASHBOARD_API] 処理成功。フロントエンドに返すデータ: {summary}")
         return JSONResponse(content=summary)
     except Exception as e:
