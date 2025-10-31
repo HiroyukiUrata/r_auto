@@ -867,16 +867,40 @@ def get_users_for_ai_comment_creation() -> list[dict]:
     finally:
         conn.close()
 
-def get_all_user_engagements(limit: int = 100) -> list[dict]:
+def get_all_user_engagements(sort_by: str = 'recent_action', limit: int = 100) -> list[dict]:
     """
-    user_engagementテーブルからすべてのユーザーデータを取得する（デバッグ用）。
-    最新アクション日時の降順でソートする。
+    user_engagementテーブルからすべてのユーザーデータを、指定された条件でソートして取得する。
+
+    :param sort_by: ソート条件のキー。
+        - 'recent_action': 最新アクション日時順（デフォルト）
+        - 'commented': 投稿済ユーザー（最終コメント日時が新しい順）
+        - 'like_count_desc': 累計いいね数が多い順
+        - 'commented_at_desc': 最終コメント日時が新しい順
+        - 'commented_at_asc': 最終コメント日時が古い順
+    :param limit: 取得する最大件数。
+    :return: ユーザーデータの辞書のリスト。
     """
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
-        # 最新のアクションがあったユーザーを優先して表示
-        query = "SELECT * FROM user_engagement ORDER BY recent_action_timestamp DESC, latest_action_timestamp DESC LIMIT ?"
+
+        # ソート条件に応じてORDER BY句とWHERE句を決定
+        where_clause = ""
+        order_by_clause = "ORDER BY recent_action_timestamp DESC, latest_action_timestamp DESC" # デフォルト
+
+        if sort_by == 'commented':
+            where_clause = "WHERE last_commented_at IS NOT NULL"
+            order_by_clause = "ORDER BY last_commented_at DESC"
+        elif sort_by == 'like_count_desc':
+            order_by_clause = "ORDER BY (like_count + recent_like_count) DESC"
+        elif sort_by == 'commented_at_desc':
+            where_clause = "WHERE last_commented_at IS NOT NULL"
+            order_by_clause = "ORDER BY last_commented_at DESC"
+        elif sort_by == 'commented_at_asc':
+            where_clause = "WHERE last_commented_at IS NOT NULL"
+            order_by_clause = "ORDER BY last_commented_at ASC"
+
+        query = f"SELECT * FROM user_engagement {where_clause} {order_by_clause} LIMIT ?"
         cursor.execute(query, (limit,))
         users = [dict(row) for row in cursor.fetchall()]
         return users

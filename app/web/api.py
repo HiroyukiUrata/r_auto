@@ -621,8 +621,9 @@ async def get_comment_targets(request: Request):
         show_all = request.query_params.get('all', 'false').lower() == 'true'
         
         if show_all:
-            # 全ユーザー表示モード（デバッグ用）
-            users = get_all_user_engagements(limit=200)
+            # 全ユーザー表示モード。ソート順をクエリパラメータから取得
+            sort_by = request.query_params.get('sort', 'recent_action')
+            users = get_all_user_engagements(sort_by=sort_by, limit=200)
         else:
             # 通常のコメント対象ユーザー表示モード
             users = get_users_for_commenting(limit=50)

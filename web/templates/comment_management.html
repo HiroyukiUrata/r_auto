@@ -6,7 +6,7 @@
 <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
     <h1 class="h2">💬 コメント投稿管理</h1>
     <div class="btn-toolbar mb-2 mb-md-0">
-        <div class="btn-group me-2">
+        <div class="btn-group me-2" id="bulk-action-buttons">
             <button type="button" class="btn btn-sm btn-outline-primary" id="bulk-execute-btn" onclick="bulkExecute()" disabled>
                 <i class="bi bi-send-fill me-1"></i>選択したユーザーに投稿
             </button>
@@ -18,11 +18,20 @@
             </button>
         </div>
         <div class="form-check form-switch ms-3">
-            <input class="form-check-input" type="checkbox" role="switch" id="show-all-users-switch" onchange="fetchUsers()">
+            <input class="form-check-input" type="checkbox" role="switch" id="show-all-users-switch" onchange="updateViewOptions(); fetchUsers();">
             <label class="form-check-label small" for="show-all-users-switch">
                 全ユーザー表示
                 <i class="bi bi-info-circle" data-bs-toggle="tooltip" title="ONにすると、DBに存在する全ユーザーを最新アクション順に表示します（デバッグ用）"></i>
             </label>
+        </div>
+        <div class="ms-2" id="sort-options-container" style="display: none;">
+            <select class="form-select form-select-sm" id="sort-select" onchange="fetchUsers()">
+                <option value="recent_action" selected>最新アクション順</option>
+                <option value="commented">投稿済ユーザー</option>
+                <option value="like_count_desc">いいね数が多い順</option>
+                <option value="commented_at_desc">最終コメントが新しい順</option>
+                <option value="commented_at_asc">最終コメントが古い順</option>
+            </select>
         </div>
     </div>
 </div>
@@ -295,9 +304,22 @@
         }
     }
 
+    function updateViewOptions() {
+        const showAll = document.getElementById('show-all-users-switch').checked;
+        const sortContainer = document.getElementById('sort-options-container');
+        const bulkActionButtons = document.getElementById('bulk-action-buttons');
+
+        sortContainer.style.display = showAll ? 'block' : 'none';
+        bulkActionButtons.style.display = showAll ? 'none' : 'inline-flex';
+    }
+
     function fetchUsers() {
         const showAll = document.getElementById('show-all-users-switch').checked;
-        const apiUrl = showAll ? '/api/comment-targets?all=true' : '/api/comment-targets';
+        let apiUrl = '/api/comment-targets';
+        if (showAll) {
+            const sortBy = document.getElementById('sort-select').value;
+            apiUrl = `/api/comment-targets?all=true&sort=${sortBy}`;
+        }
 
         // テーブルをローディング状態にする
         const tableBody = document.getElementById('user-table-body');
@@ -339,14 +361,18 @@
                     // 相手がフォローしてくれたか (follow_count)
                     const followedByIcon = user.follow_count > 0 ? '<i class="bi bi-person-heart text-danger" title="相手からフォローされました"></i>' : '';
 
-                    // アクション数の表示ロジック
-                    const recentLikes = user.recent_like_count || 0;
-                    const totalLikes = user.like_count || 0;
-                    const likeDisplay = recentLikes < totalLikes ? `${recentLikes}+` : recentLikes;
+                    // --- アクション数の表示ロジック ---
+                    let likeDisplay;
+                    if (showAll) {
+                        // 全ユーザー表示の場合: 累計 + 今セッションの合計値を表示
+                        likeDisplay = (user.like_count || 0) + (user.recent_like_count || 0);
+                    } else {
+                        // 通常表示の場合: 今セッションのいいね数を表示（累計があれば `+` を付ける）
+                        const recentLikes = user.recent_like_count || 0;
+                        const totalLikes = user.like_count || 0;
+                        likeDisplay = recentLikes < totalLikes ? `${recentLikes}+` : recentLikes;
+                    }
 
-                    const recentCollects = user.recent_collect_count || 0;
-                    const totalCollects = user.collect_count || 0;
-                    const collectDisplay = recentCollects < totalCollects ? `${recentCollects}+` : recentCollects;
 
                     // --- 最終アクション時刻を相対表記にフォーマット ---
                     let recentActionTime, timeIcon;
@@ -429,6 +455,7 @@
         // この時点ではまだ表示しない
         // infoModalInstance = new bootstrap.Modal(document.getElementById('infoModal'));
 
+        updateViewOptions(); // 初期表示時のUI状態を設定
         fetchUsers();
         const tableBody = document.getElementById('user-table-body');
         tableBody.addEventListener('click', function (e) {
