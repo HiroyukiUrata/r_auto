@@ -728,12 +728,11 @@ def cleanup_old_user_engagements(days: int = 30):
     logging.info(f"{cursor.rowcount}件の古いエンゲージメントデータを削除しました（{days}日以上経過）。")
     conn.close()
 
-def commit_user_actions(user_id: str, is_comment_posted: bool, post_url: str | None = None):
+def commit_user_actions(user_ids: list[str], is_comment_posted: bool, post_url: str | None = None):
     """
     指定されたユーザーのrecentアクションを累計に加算し、recentをリセットする。
     コメントが投稿された場合はlast_commented_atとlast_commented_post_urlも更新する。
     """
-    user_ids = [user_id] # 将来的に複数対応もできるようリストで扱う
     if not user_ids:
         return 0
     

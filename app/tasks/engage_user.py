@@ -180,7 +180,7 @@ class EngageUserTask(BaseTask):
 
                 # 3. アクションのコミット
                 logger.debug(f"  -> アクションをコミットします。(現在はログ出力のみ)")
-                commit_user_actions(user_id=user_id, is_comment_posted=bool(comment_text), post_url=page.url if comment_text else None)
+                commit_user_actions(user_ids=[user_id], is_comment_posted=bool(comment_text), post_url=page.url if comment_text else None)
                 
                 processed_count += 1
             except Exception as e:

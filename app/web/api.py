@@ -643,7 +643,7 @@ async def bulk_skip_users(request: UserIdsRequest):
 
     try:
         # is_comment_posted=False で呼び出し、アクションのコミットのみ行う
-        updated_count = commit_user_actions(user_ids, is_comment_posted=False)
+        updated_count = commit_user_actions(user_ids=user_ids, is_comment_posted=False)
         return JSONResponse(content={"message": f"{updated_count}件のユーザーをスキップしました。", "count": updated_count})
     except Exception as e:
         logging.error(f"ユーザーの一括スキップ処理中にエラーが発生しました: {e}", exc_info=True)
