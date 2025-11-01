@@ -123,6 +123,13 @@
     .list-group-item.selected {
         background-color: #e9ecef; /* 選択時の背景色 */
     }
+    /* スクリーンショットプレビューの画像スタイル */
+    #preview-image-wrapper {
+        height: 30vh; /* ビューポートの高さの30%を最大高とする */
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    }
 </style>
 {% endblock %}
 
@@ -274,7 +281,9 @@
                     <button class="btn btn-outline-secondary" id="next-preview-btn">次へ <i class="bi bi-arrow-right"></i></button>
                 </div>
                 <a id="preview-image-link" href="/api/screenshots/{{ files[0] }}" target="_blank" title="新しいタブで画像を開く">
-                    <img id="preview-image" src="/api/screenshots/{{ files[0] }}" class="img-fluid rounded" alt="スクリーンショットプレビュー">
+                    <div id="preview-image-wrapper">
+                        <img id="preview-image" src="/api/screenshots/{{ files[0] }}" class="img-fluid rounded" alt="スクリーンショットプレビュー" style="max-height: 100%; object-fit: contain;">
+                    </div>
                 </a>
             </div>
         </div>
