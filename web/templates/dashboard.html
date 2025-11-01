@@ -218,11 +218,6 @@ document.addEventListener('DOMContentLoaded', function () {
                 activityContainer.innerHTML += createCard(action, data.count, data.errors);
             }
 
-            // エンゲージメントサマリーカードを追加
-            activityContainer.innerHTML += createCard('いいね返し対象', engagementData.like_back_target_count, 0);
-            activityContainer.innerHTML += createCard('コメント返し対象', engagementData.comment_target_count, 0);
-
-
             console.log("[DASHBOARD_JS] APIから受け取った在庫データ:", inventoryData);
             inventoryContainer.innerHTML = '';
             // 在庫状況の表示順を定義
@@ -246,6 +241,11 @@ document.addEventListener('DOMContentLoaded', function () {
             // 24時間以内のエラー件数を先頭に表示
             const errorCardHtml = createCard('エラー商品', summaryData.error_product_count_24h, 0);
             inventoryContainer.insertAdjacentHTML('afterbegin', errorCardHtml);
+
+            // エンゲージメントサマリーカードを在庫状況セクションに追加
+            inventoryContainer.insertAdjacentHTML('beforeend', createCard('いいね返し対象', engagementData.like_back_target_count, 0));
+            inventoryContainer.insertAdjacentHTML('beforeend', createCard('コメント返し対象', engagementData.comment_target_count, 0));
+
 
             // 最近使ったキーワードを表示
             console.log("[DASHBOARD_JS] APIから受け取ったキーワードデータ:", keywordsData);
