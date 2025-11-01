@@ -856,17 +856,7 @@ def get_users_for_commenting(limit: int = 10) -> list[dict]:
                     -- パターンC: いいね返しのみ対象ユーザー
                     (last_commented_at IS NOT NULL AND last_commented_at >= '{three_days_ago}' AND recent_like_count >= 3)
                 )
-            ORDER BY
-                CASE
-                    WHEN recent_like_count >= 5 AND ai_prompt_message LIKE '%過去にも%' THEN 0 -- 最優先: 今回5いいね以上 & 過去にもアクションあり
-                    WHEN ai_prompt_message LIKE '%新規にフォローしてくれました%' AND ai_prompt_message LIKE '%いいね%' THEN 1
-                    WHEN ai_prompt_message LIKE '%新規にフォローしてくれました%' THEN 2
-                    WHEN ai_prompt_message LIKE '%常連の方です%' THEN 3
-                    WHEN ai_prompt_message LIKE '%過去にも「いいね」をしてくれたことがあります%' THEN 4
-                    WHEN ai_prompt_message LIKE '%今回も%' THEN 5
-                    ELSE 6
-                END,
-                like_count DESC
+            ORDER BY recent_action_timestamp DESC
             LIMIT ?
         """
         cursor.execute(query, (limit,))
