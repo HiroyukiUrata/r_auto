@@ -87,7 +87,7 @@ class EngageUserTask(BaseTask):
             logger.error(f"いいね返し中にエラーが発生しました: {e}")
             return False # _like_backメソッド自体を終了させる
 
-        logger.debug(f"  -> いいね返し完了。合計{liked_count}件実行しました。")
+        logger.info(f"  -> いいね返し完了。合計{liked_count}件実行しました。")
         # 1件でもいいねできていれば成功とみなす
         return liked_count > 0
 
@@ -102,6 +102,11 @@ class EngageUserTask(BaseTask):
         logger.debug(f"  -> 最新投稿にコメントします。")
         page.evaluate("window.scrollTo(0, 0)")
         time.sleep(20)#ページ読み込みをしっかり待つ
+
+        # いいね返し処理で非表示にされたカードを再表示させるため、ページをリロードする
+        logger.info("  -> ページをリロードして全投稿を再表示します。")
+        page.reload(wait_until="domcontentloaded")
+        time.sleep(3) # リロード後の描画を待つ
 
         try:
             logger.info("  -> 投稿カードが表示されるのを待ちます。")
