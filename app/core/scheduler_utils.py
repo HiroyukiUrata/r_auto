@@ -132,6 +132,8 @@ def get_log_summary(period='24h'):
         'いいね活動': {'count': 0, 'errors': 0},
         'フォロー活動': {'count': 0, 'errors': 0},
         '返信コメント生成': {'count': 0, 'errors': 0},
+        'いいね返し': {'count': 0, 'errors': 0},
+        'コメント返し': {'count': 0, 'errors': 0},
     }
     
     # ログ名とUI表示名をマッピング
@@ -144,7 +146,7 @@ def get_log_summary(period='24h'):
 
     # ログから情報を抽出する正規表現パターン
     # [I] または INFO の両方に対応
-    summary_pattern = re.compile(r"(?:\[I\]|INFO).*\[Action Summary\]\s*name=(?P<name>[^,]+),\s*count=(?P<count>\d+)")
+    summary_pattern = re.compile(r"(?:\[I\]|INFO).*\[Action Summary\]\s*name=(?P<name>[^,]+),\s*count=(?P<count>\d+)(?:,\s*errors=(?P<errors>\d+))?")
     # [E] または ERROR の両方に対応
     # TimeoutErrorを含む、より広範なエラーパターンを追加
     generic_error_pattern = re.compile(r"(?:\[E\]|ERROR|\[W\]|WARNING).*「(?P<name>[^」]+)」(?:アクション中に|クリック中に|実行中に|が失敗しました|タスクの実行中にエラーが発生しました).*")
@@ -196,14 +198,17 @@ def get_log_summary(period='24h'):
                     data = summary_match.groupdict()
                     log_name = data['name'].strip()
                     count = int(data['count'])
+                    errors = int(data.get('errors') or 0)
                     
                     # まずマッピングを試す
                     ui_name = log_name_to_ui_name.get(log_name)
                     if ui_name and ui_name in actions:
                         actions[ui_name]["count"] += count
+                        actions[ui_name]["errors"] += errors
                     # マッピングにないが、actionsのキーと直接一致する場合
                     elif log_name in actions:
                         actions[log_name]["count"] += count
+                        actions[log_name]["errors"] += errors
                     continue
 
                 # エラーの集計

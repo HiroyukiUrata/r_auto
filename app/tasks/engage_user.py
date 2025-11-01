@@ -102,12 +102,12 @@ class EngageUserTask(BaseTask):
         # ページを一番上までスクロール
         logger.debug(f"  -> 最新投稿にコメントします。")
         page.evaluate("window.scrollTo(0, 0)")
-        time.sleep(20)#ページ読み込みをしっかり待つ
+        time.sleep(10)#ページ読み込みをしっかり待つ
 
         # いいね返し処理で非表示にされたカードを再表示させるため、ページをリロードする
         logger.info("  -> ページをリロードして全投稿を再表示します。")
         page.reload(wait_until="domcontentloaded")
-        time.sleep(3) # リロード後の描画を待つ
+        time.sleep(30) # リロード後の描画を待つ
 
         try:
             logger.info("  -> 投稿カードが表示されるのを待ちます。")

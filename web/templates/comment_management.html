@@ -103,6 +103,9 @@
         <div class="collapse" id="collapseFullData">
             <pre><code id="modal-full-data" class="bg-light p-2 rounded" style="font-size: 0.8rem; display: block; min-height: 100px;"></code></pre>
         </div>
+        <button class="btn btn-sm btn-outline-secondary mt-2" onclick="copyFullData('modal-full-data')">
+            <i class="bi bi-clipboard me-1"></i>クリップボードにコピー
+        </button>
       </div>
       <div class="modal-footer">
         <div class="dropdown me-auto">
@@ -204,6 +207,20 @@
 
     // モーダルが閉じた後に実行するコールバックを保持する変数
     let onModalHiddenCallback = null;
+
+    function copyFullData(elementId) {
+        const dataText = document.getElementById(elementId).textContent;
+        navigator.clipboard.writeText(dataText).then(() => {
+            // トースト通知を表示する (base.htmlにshowToast関数があると仮定)
+            if (typeof showToast === 'function') {
+                showToast('コピー完了', '全データがクリップボードにコピーされました。');
+            } else {
+                alert('クリップボードにコピーしました。');
+            }
+        }).catch(err => {
+            console.error('クリップボードへのコピーに失敗しました: ', err);
+        });
+    }
 
     function showInfoModal(element) {
         event.stopPropagation();
