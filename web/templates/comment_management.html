@@ -349,6 +349,7 @@
                     tableBody.innerHTML = '<tr><td colspan="4" class="text-center">コメント投稿対象のユーザーはいません。</td></tr>';
                     return;
                 }
+                let allRowsHtml = '';
                 data.forEach(user => {
                     // HTML属性に設定するため、JSON文字列内のシングルクォートをエスケープする
                     const escapedUserJson = JSON.stringify(user).replace(/'/g, '&#39;');
@@ -435,8 +436,10 @@
                             </td>
                         </tr>
                     `;
-                    tableBody.innerHTML += row;
+                    allRowsHtml += row;
                 });
+                // 生成したすべての行HTMLを一度にテーブルに挿入する
+                tableBody.innerHTML = allRowsHtml;
             })
             .catch(error => {
                 console.error('Error:', error);
