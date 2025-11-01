@@ -1,6 +1,7 @@
 import logging
 import random
 import time
+from datetime import datetime, timedelta
 from playwright.sync_api import Page, Error as PlaywrightError, expect
 from app.utils.selector_utils import convert_to_robust_selector
 from app.core.base_task import BaseTask
@@ -185,6 +186,8 @@ class EngageUserTask(BaseTask):
         total_users = len(self.users)
         like_back_processed_count = 0
         comment_processed_count = 0
+        like_back_error_count = 0
+        comment_error_count = 0
         
         for i, user in enumerate(self.users):
             user_id = user.get("id")
@@ -210,18 +213,44 @@ class EngageUserTask(BaseTask):
                     like_back_success = self._like_back(page, user_name, user.get("recent_like_count", 0))
                     if like_back_success:
                         like_back_processed_count += 1
+                    elif user.get("recent_like_count", 0) > 0: # いいね対象があったのに失敗した場合
+                        like_back_error_count += 1
 
-                # 2. コメント返し
+                # 2. コメント返しの実行可否を判定
                 comment_text = user.get("comment_text")
-                comment_success = self._post_comment(page, user_id, user_name, comment_text)
-                if comment_success:
-                    comment_processed_count += 1
+                last_commented_at = user.get("last_commented_at")
+                comment_generated_at = user.get("comment_generated_at")
+
+                can_comment = False
+                if comment_text:
+                    # パターン1: 新規コメント (last_commented_at がない)
+                    if not last_commented_at:
+                        can_comment = True
+                        logger.info("  -> 新規ユーザーのため、コメント投稿を実行します。")
+                    # パターン2: 再コメント (最終コメント日時とコメント生成日時を比較)
+                    elif comment_generated_at and last_commented_at:
+                        # コメント生成日時が最終コメント日時より新しい場合のみ投稿
+                        if datetime.fromisoformat(comment_generated_at) > datetime.fromisoformat(last_commented_at):
+                            can_comment = True
+                            logger.info("  -> 新しいコメントが生成されているため、再コメントを実行します。")
+                        else:
+                            logger.info("  -> 投稿済みのコメントのため、再コメントはスキップします。")
+                    else:
+                        logger.info("  -> コメント投稿に必要な日時情報が不足しているため、スキップします。")
+
+                comment_success = False
+                if can_comment:
+                    comment_success = self._post_comment(page, user_id, user_name, comment_text)
+                    if comment_success:
+                        comment_processed_count += 1
+                    else:
+                        comment_error_count += 1
 
                 # 3. アクションのコミット
                 # いいね返しまたはコメント返しのどちらかが成功した場合にコミット
                 if True :
                     if like_back_success or comment_success:
-                        logger.debug(f"  -> アクションをコミットします。")
+                        logger.info(f"  -> アクションをコミットします。")
                         commit_user_actions(user_ids=[user_id], is_comment_posted=bool(comment_text and comment_success), post_url=page.url if (comment_text and comment_success) else None)
 
             except Exception as e:
@@ -231,8 +260,12 @@ class EngageUserTask(BaseTask):
                 if page:
                     page.close()
         
-        logger.info(f"[Action Summary] name=いいね返し, count={like_back_processed_count}")
-        logger.info(f"[Action Summary] name=コメント返し, count={comment_processed_count}")
+        if like_back_processed_count > 0 or like_back_error_count > 0:
+            logger.info(f"[Action Summary] name=いいね返し, count={like_back_processed_count}, errors={like_back_error_count}")
+        
+        if comment_processed_count > 0 or comment_error_count > 0:
+            logger.info(f"[Action Summary] name=コメント返し, count={comment_processed_count}, errors={comment_error_count}")
+
         return True
 
 def run_engage_user(users: list[dict]):

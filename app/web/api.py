@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, FileResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
+from fastapi.templating import Jinja2Templates 
 import schedule
 import re
 import logging
@@ -15,7 +15,7 @@ from app.core.task_manager import TaskManager
 from app.core.task_definitions import TASK_DEFINITIONS
 from app.core.database import (get_all_inventory_products, update_product_status, delete_all_products, init_db, 
                                delete_product, update_status_for_multiple_products, delete_multiple_products, get_product_count_by_status,
-                               get_error_products_in_last_24h, update_product_priority, update_product_order, bulk_update_products_from_data, commit_user_actions, get_all_user_engagements,
+                               get_error_products_in_last_24h, update_product_priority, update_product_order, bulk_update_products_from_data, commit_user_actions, get_all_user_engagements, 
                                get_users_for_commenting, update_user_comment)
 from app.tasks.posting import run_posting
 from app.tasks.get_post_url import run_get_post_url
@@ -469,6 +469,24 @@ async def get_dashboard_summary(request: Request):
         # エラー発生時に詳細なトレースバックをログに出力
         logging.error(f"ダッシュボードサマリーの取得中に予期せぬエラーが発生しました。", exc_info=True)
         return JSONResponse(status_code=500, content={"status": "error", "message": "サマリーデータの取得に失敗しました。"})
+
+@router.get("/api/engagement-summary")
+async def get_engagement_summary():
+    """いいね返し・コメント返し対象のユーザー数を返す"""
+    try:
+        users = get_users_for_commenting(limit=100) # 十分な数を取得
+        like_only_count = 0
+        comment_target_count = 0
+        for user in users:
+            if user.get('engagement_type') == 'comment':
+                comment_target_count += 1
+            elif user.get('engagement_type') == 'like_only':
+                like_only_count += 1
+        
+        return JSONResponse(content={"like_back_target_count": like_only_count, "comment_target_count": comment_target_count})
+    except Exception as e:
+        logging.error(f"エンゲージメントサマリーの取得中にエラー: {e}", exc_info=True)
+        return JSONResponse(status_code=500, content={"like_back_target_count": 0, "comment_target_count": 0})
 
 @router.get("/api/dashboard/recent-keywords")
 async def get_recent_keywords():

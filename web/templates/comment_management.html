@@ -409,6 +409,26 @@
                         priorityIcon = '<div class="priority-icon" title="再コメント対象の優先ユーザーです（最終コメントから3日以上経過 ＆ 今回5いいね以上）">🔥</div>';
                     }
 
+                    // --- エンゲージメントタイプとコメントの状態に応じた表示 ---
+                    let engagementIcon = '';
+                    let commentClass = 'text-muted small truncate-cell';
+                    let commentTitle = user.comment_text || '';
+
+                    if (user.engagement_type === 'comment') {
+                        engagementIcon = '<span title="コメント投稿対象" class="me-1">💬</span>';
+                    } else if (user.engagement_type === 'like_only') {
+                        engagementIcon = '<span title="いいね返しのみ対象" class="me-1">❤️</span>';
+                    }
+
+                    // コメントが投稿済み（古い）かどうかを判定
+                    const isCommentOld = user.last_commented_at && user.comment_generated_at &&
+                                         new Date(user.comment_generated_at) <= new Date(user.last_commented_at);
+
+                    if (isCommentOld) {
+                        commentClass += ' text-opacity-50'; // 古いコメントを半透明にする
+                        commentTitle = `（投稿済み）${commentTitle}`;
+                    }
+
                     const row = `
                         <tr id="user-row-${user.id}" data-user='${escapedUserJson}'>
                             <td class="align-middle text-center">
@@ -420,8 +440,8 @@
                                 </div>
                             </td>
                             <td class="text-start" style="min-width: 0;">
-                                <div class="fw-bold truncate-cell" title="${user.name || ''}">${user.name || ''}</div>
-                                <div class="text-muted small truncate-cell" title="${user.comment_text || ''}">${user.comment_text || ''}</div>
+                                <div class="fw-bold truncate-cell" title="${user.name || ''}">${engagementIcon}${user.name || ''}</div>
+                                <div class="${commentClass}" title="${commentTitle}">${user.comment_text || ''}</div>
                             </td>
                             <td class="small text-muted" style="min-width: 0;">
                                 <div class="d-flex flex-wrap align-items-center gap-2">

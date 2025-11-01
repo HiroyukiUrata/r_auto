@@ -127,7 +127,7 @@ def init_db():
                 last_commented_at TEXT,
                 ai_prompt_message TEXT,
                 ai_prompt_updated_at TEXT,
-                comment_generated_at TEXT
+                comment_generated_at TEXT,
                 last_commented_post_url TEXT
             )
         ''')
@@ -793,12 +793,38 @@ def get_stale_user_ids_for_commit(hours: int = 24) -> list[str]:
     finally:
         conn.close()
 
+def _add_engagement_type_to_users(users: list[dict]) -> list[dict]:
+    """ユーザーデータのリストにエンゲージメントタイプを追加するヘルパー関数"""
+    three_days_ago = datetime.now() - timedelta(days=3)
+    for user in users:
+        user['engagement_type'] = 'none' # デフォルト
+        last_commented_at_str = user.get('last_commented_at')
+        recent_like_count = user.get('recent_like_count', 0)
+
+        # 新規コメント対象か？
+        if not last_commented_at_str and recent_like_count >= 3:
+            user['engagement_type'] = 'comment'
+            continue
+
+        if last_commented_at_str:
+            last_commented_at = datetime.fromisoformat(last_commented_at_str)
+            # 再コメント対象か？
+            if last_commented_at < three_days_ago and recent_like_count >= 5:
+                user['engagement_type'] = 'comment'
+            # いいね返しのみ対象か？
+            elif recent_like_count >= 3:
+                user['engagement_type'] = 'like_only'
+    return users
+
 def get_users_for_commenting(limit: int = 10) -> list[dict]:
     """
     コメント投稿対象のユーザーを優先度順に取得する。
 
-    - 基本: 24時間以内のアクションがあり、未コメントのユーザー
-    - 例外: 最終コメントから3日以上経過し、かつ今セッションで5件以上のいいねがあるユーザー
+    - **コメント対象**:
+        - 新規: 未コメントで、今回3いいね以上
+        - 再コメント: 最終コメントから3日以上経過し、今回5いいね以上
+    - **いいね返しのみ対象**:
+        - コメント済みだが、再コメント条件を満たさず、今回3いいね以上
 
     :param limit: 取得するユーザーの最大数
     :return: ユーザーデータの辞書のリスト
@@ -814,17 +840,20 @@ def get_users_for_commenting(limit: int = 10) -> list[dict]:
                 -- 必須条件: 未処理のアクションがあり、タイムスタンプが存在する
                 (recent_like_count > 0 OR recent_collect_count > 0 OR recent_comment_count > 0)
                 AND recent_action_timestamp IS NOT NULL AND (
-                    -- パターンA: コメント生成済みで、以下のいずれかに合致
+                    -- パターンA: コメント対象ユーザー（コメント生成済み）
                     (comment_text IS NOT NULL AND comment_text != '' AND (
-                        -- 基本条件: 24時間以内のアクションがあり、未コメント
+                        -- A-1: 新規コメント対象 (24時間以内のアクション)
                         (last_commented_at IS NULL AND recent_action_timestamp >= '{twenty_four_hours_ago}')
                         OR
-                        -- 例外条件: 3日以上経過し、今セッションでいいね5件以上
+                        -- A-2: 再コメント対象 (3日以上経過 & 5いいね以上)
                         (last_commented_at IS NOT NULL AND last_commented_at < '{three_days_ago}' AND recent_like_count >= 5)
                     ))
                     OR
-                    -- パターンB: 未コメントで、今セッションでいいね3件以上（コメント未生成でもOK）
+                    -- パターンB: コメント対象ユーザー（コメント未生成でもOK）
                     (last_commented_at IS NULL AND recent_like_count >= 3)
+                    OR
+                    -- パターンC: いいね返しのみ対象ユーザー
+                    (last_commented_at IS NOT NULL AND last_commented_at >= '{three_days_ago}' AND recent_like_count >= 3)
                 )
             ORDER BY
                 CASE
@@ -841,6 +870,7 @@ def get_users_for_commenting(limit: int = 10) -> list[dict]:
         """
         cursor.execute(query, (limit,))
         users = [dict(row) for row in cursor.fetchall()]
+        users = _add_engagement_type_to_users(users)
         return users
     finally:
         conn.close()
@@ -908,6 +938,7 @@ def get_all_user_engagements(sort_by: str = 'recent_action', limit: int = 100) -
         query = f"SELECT * FROM user_engagement {where_clause} {order_by_clause} LIMIT ?"
         cursor.execute(query, (limit,))
         users = [dict(row) for row in cursor.fetchall()]
+        users = _add_engagement_type_to_users(users)
         return users
     finally:
         conn.close()
