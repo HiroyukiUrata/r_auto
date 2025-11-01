@@ -3,18 +3,29 @@
 {% block title %}ダッシュボード{% endblock %}
 
 {% block head %}
+{% endblock %}
+
+{% block styles %}
 <style>
     .card-title {
-        font-size: 1.1rem;
+        font-size: 0.9rem; /* 少し小さく */
         font-weight: 600;
     }
     .stat-value {
-        font-size: 2rem;
+        font-size: 1.75rem; /* 少し小さく */
         font-weight: 700;
     }
     .stat-label {
-        font-size: 0.9rem;
+        font-size: 0.8rem; /* 少し小さく */
         color: #6c757d;
+    }
+    /* カード内の余白を少し詰める */
+    .card-body {
+        padding: 0.8rem;
+    }
+    /* アイコンのサイズを調整 */
+    .card-body .fs-2 {
+        font-size: 1.75rem !important;
     }
     .error-count {
         color: #dc3545;
@@ -55,9 +66,8 @@
         </ul>
     </div>
 </div>
-<div class="row row-cols-1 row-cols-md-2 row-cols-lg-4 g-4 mb-4" id="activity-summary">
-    <!-- Cards will be inserted here by JavaScript -->
-</div>
+
+<div class="row row-cols-2 row-cols-md-3 g-3 mb-4" id="activity-summary"></div>
 
 <h4 id="recent-keywords-title">最近使ったキーワード</h4>
 <div class="mb-4" id="recent-keywords-container">
@@ -66,7 +76,7 @@
 
 
 <h4 id="inventory-title">現在の在庫状況</h4>
-<div class="row row-cols-1 row-cols-md-2 row-cols-lg-4 g-4" id="inventory-summary">
+<div class="row row-cols-2 row-cols-md-4 row-cols-lg-5 g-3" id="inventory-summary">
     <!-- Inventory cards will be inserted here -->
 </div>
 
@@ -109,7 +119,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const errorHtml = errors > 0 ? `<div class="mt-2"><span class="error-count">エラー: ${errors}件</span></div>` : '';
         const valueHtml = value !== null ? `<span class="stat-value">${value}</span><span class="stat-label"> 件</span>` : '';
 
-        return `<div class="col"><div class="card h-100"><div class="card-body"><div class="d-flex justify-content-between align-items-start"><div><h5 class="card-title text-${mapping.color}">${title}</h5>${valueHtml}</div><i class="${mapping.icon} fs-2 text-muted"></i></div>${errorHtml}</div></div></div>`;
+        return `<div class="col col-lg-2"><div class="card h-100"><div class="card-body"><div class="d-flex justify-content-between align-items-start"><div><h5 class="card-title text-${mapping.color}">${title}</h5>${valueHtml}</div><i class="${mapping.icon} fs-2 text-muted"></i></div>${errorHtml}</div></div></div>`;
     }
 
     function createNextSchedulesSummaryCard(schedules) {
@@ -117,8 +127,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
         if (!schedules || schedules.length === 0) {
             // 予定がない場合は、特別なカードを返す
-            return `
-            <div class="col">
+            return `<div class="col col-12 col-lg-4">
                 <div class="card h-100 border-warning">
                     <div class="card-body">
                         <div class="d-flex justify-content-between align-items-start">
@@ -136,9 +145,8 @@ document.addEventListener('DOMContentLoaded', function () {
         let scheduleItemsHtml = '';
         schedules.forEach(schedule => {
             const datePrefix = schedule.date_prefix ? `(${schedule.date_prefix}) ` : '';
-            // ★★★ 修正点: 「返信コメント生成」タスクでは件数を表示しない ★★★
-            const isCommentGenerationTask = schedule.name === 'お知らせ解析';
-            const countText = !isCommentGenerationTask && schedule.count > 0 ? ` (${schedule.count}件)` : '';
+            // ★★★ 修正点: APIから受け取ったフラグで件数表示を制御 ★★★
+            const countText = schedule.show_count && schedule.count > 0 ? ` (${schedule.count}件)` : '';
 
             scheduleItemsHtml += `
                 <li class="list-group-item d-flex justify-content-between align-items-center px-0 py-1">
@@ -147,8 +155,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 </li>`;
         });
 
-        return `
-        <div class="col">
+        return `<div class="col col-12 col-lg-4">
             <div class="card h-100 border-warning">
                 <div class="card-body">
                     <div class="d-flex justify-content-between align-items-start">
@@ -197,13 +204,16 @@ document.addEventListener('DOMContentLoaded', function () {
                 recentActivitiesData.forEach(activity => {
                     const statusClass = activity.status === 'error' ? 'text-danger' : 'text-success';
                     const statusIcon = activity.status === 'error' ? 'bi-x-circle-fill' : 'bi-check-circle-fill';
-                    const formattedTime = new Date(activity.timestamp).toLocaleString();
+                    const activityDate = new Date(activity.timestamp);
+                    const formattedTimeFull = activityDate.toLocaleString('ja-JP'); // PC用の詳細な日時
+                    const formattedTimeShort = activityDate.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }); // スマホ用の簡易的な時間
 
                     lastActivityContainer.innerHTML += `
                     <div class="card mb-2">
-                        <div class="card-body d-flex justify-content-between align-items-center">
-                            <div><i class="${statusIcon} ${statusClass} me-2"></i><strong>${activity.name}</strong>: ${activity.message}</div>
-                            <div class="text-muted small text-nowrap">${formattedTime}</div>
+                        <div class="card-body d-flex justify-content-between align-items-center flex-wrap flex-md-nowrap gap-2">
+                            <div style="min-width: 0;"><i class="${statusIcon} ${statusClass} me-2"></i><strong>${activity.name}</strong>: ${activity.message}</div>
+                            <div class="text-muted small text-nowrap ms-md-auto">
+                                <span class="d-none d-md-inline">${formattedTimeFull}</span><span class="d-inline d-md-none">${formattedTimeShort}</span></div>
                         </div>
                     </div>`;
                 });
@@ -215,7 +225,6 @@ document.addEventListener('DOMContentLoaded', function () {
             activityContainer.innerHTML = '';
             // 次の予定を1つのカードにまとめて追加
             activityContainer.innerHTML += createNextSchedulesSummaryCard(summaryData.next_schedules);
-
             for (const [action, data] of Object.entries(summaryData.actions)) {
                 activityContainer.innerHTML += createCard(action, data.count, data.errors);
             }

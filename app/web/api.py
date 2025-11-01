@@ -453,7 +453,8 @@ async def get_dashboard_summary(request: Request):
                     "name": definition.get("name_ja", "不明なタスク"),
                     "time": next_job.next_run.strftime('%H:%M'),
                     "date_prefix": day_prefix,
-                    "count": job_kwargs.get('count', 0)
+                    "count": job_kwargs.get('count', 0),
+                    "show_count": definition.get("show_count_in_dashboard", True) # ★フラグを追加
                 }
                 next_schedules_info.append(schedule_info)
 

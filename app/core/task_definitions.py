@@ -256,6 +256,7 @@ TASK_DEFINITIONS = {
         "function": None, # フローなので直接の関数はなし
         "default_kwargs": {"hours_ago": 12}, # スケジュール実行時のデフォルト値
         "is_debug": False, # 即時実行にも表示する
+        "show_count_in_dashboard": False, # ダッシュボードの「次の予定」に件数を表示しない
         "show_in_schedule": True,
         "description": "通知を分析しコメントを生成します。スケジュール実行時は12時間、即時実行時は30分(hours_ago=0.5)が推奨です。",
         "order": 80,
