@@ -376,24 +376,24 @@
 
 
                     // --- 最終アクション時刻を相対表記にフォーマット ---
-                    let recentActionTime, timeIcon;
-                    if (user.recent_action_timestamp) {
+                    let latestActionTime, timeIcon;
+                    if (user.latest_action_timestamp) {
                         const now = new Date();
-                        const actionDate = new Date(user.recent_action_timestamp);
+                        const actionDate = new Date(user.latest_action_timestamp);
                         const diffMinutes = Math.floor((now - actionDate) / (1000 * 60));
                         const diffHours = Math.floor(diffMinutes / 60);
                         const diffDays = Math.floor(diffHours / 24);
 
                         if (diffMinutes < 60) {
-                            recentActionTime = `${diffMinutes}分前`;
+                            latestActionTime = `${diffMinutes}分前`;
                         } else if (diffHours < 24) {
-                            recentActionTime = `${diffHours}時間前`;
+                            latestActionTime = `${diffHours}時間前`;
                         } else {
-                            recentActionTime = `${diffDays}日前`;
+                            latestActionTime = `${diffDays}日前`;
                         }
                         timeIcon = '<i class="bi bi-clock me-1"></i>';
                     } else {
-                        recentActionTime = 'N/A';
+                        latestActionTime = 'N/A';
                         timeIcon = '<i class="bi bi-clock me-1"></i>';
                     }
                     // スマホ表示ではアイコンを非表示にする
@@ -426,7 +426,7 @@
                             <td class="small text-muted" style="min-width: 0;">
                                 <div class="d-flex flex-wrap align-items-center gap-2">
                                     <span class="text-nowrap">❤️ ${likeDisplay}</span>
-                                    <span title="最終アクション日時">${timeIcon}${recentActionTime}</span>
+                                    <span title="最終アクション日時">${timeIcon}${latestActionTime}</span>
                                 </div>
                             </td>
                             <td class="text-center">

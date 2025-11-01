@@ -666,6 +666,11 @@ def bulk_upsert_user_engagements(users_data: list[dict]):
                 profile_page_url = COALESCE(excluded.profile_page_url, profile_page_url),
                 profile_image_url = excluded.profile_image_url,
                 -- 常に新しいタイムスタンプで上書きする (recent_action_timestamp を考慮)
+                recent_action_timestamp = CASE
+                    WHEN excluded.recent_action_timestamp > COALESCE(recent_action_timestamp, '') THEN excluded.recent_action_timestamp
+                    ELSE COALESCE(recent_action_timestamp, excluded.recent_action_timestamp)
+                END,
+                -- 常に新しいタイムスタンプで上書きする (recent_action_timestamp を考慮)
                 latest_action_timestamp = CASE
                     WHEN excluded.recent_action_timestamp > COALESCE(latest_action_timestamp, '') THEN excluded.recent_action_timestamp
                     ELSE COALESCE(latest_action_timestamp, excluded.recent_action_timestamp)
@@ -886,7 +891,7 @@ def get_all_user_engagements(sort_by: str = 'recent_action', limit: int = 100) -
 
         # ソート条件に応じてORDER BY句とWHERE句を決定
         where_clause = ""
-        order_by_clause = "ORDER BY recent_action_timestamp DESC, latest_action_timestamp DESC" # デフォルト
+        order_by_clause = "ORDER BY latest_action_timestamp DESC" # デフォルト
 
         if sort_by == 'commented':
             where_clause = "WHERE last_commented_at IS NOT NULL"
