@@ -61,8 +61,10 @@
             <i class="bi bi-calendar3-range"></i> 期間選択
         </button>
         <ul class="dropdown-menu" aria-labelledby="period-selector">
-            <li><a class="dropdown-item" href="#" data-period="24h">直近24時間</a></li>
             <li><a class="dropdown-item" href="#" data-period="today">今日 (00:00〜)</a></li>
+            <li><a class="dropdown-item" href="#" data-period="24h">直近24時間</a></li>
+            <li><a class="dropdown-item" href="#" data-period="yesterday">昨日</a></li>
+            <li><a class="dropdown-item" href="#" data-period="day_before_yesterday">一昨日</a></li>
         </ul>
     </div>
 </div>
@@ -177,11 +179,15 @@ document.addEventListener('DOMContentLoaded', function () {
     async function fetchData() {
         try {
             // タイトルを更新
-            if (currentPeriod === 'today') {
-                activityTitle.textContent = '今日のアクティビティ';
-            } else {
-                activityTitle.textContent = '直近24時間のアクティビティ';
-            }
+            const periodTextMap = {
+                'today': '今日のアクティビティ',
+                '24h': '直近24時間のアクティビティ',
+                'yesterday': '昨日のアクティビティ',
+                'day_before_yesterday': '一昨日のアクティビティ'
+            };
+            activityTitle.textContent = periodTextMap[currentPeriod] || 'アクティビティ';
+            // ドロップダウンボタンのテキストも更新
+            document.querySelector('#period-selector').textContent = document.querySelector(`.dropdown-item[data-period="${currentPeriod}"]`).textContent;
 
             const [activityRes, inventoryRes, keywordsRes, recentActivitiesRes, engagementRes] = await Promise.all([
                 fetch(`/api/dashboard/summary?period=${currentPeriod}`),

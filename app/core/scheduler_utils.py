@@ -125,7 +125,7 @@ def get_recent_activities_from_log(limit=5, max_lines=1000):
         logger.error(f"直近のアクティビティログ解析中にエラー: {e}", exc_info=True)
         return []
 
-def get_log_summary(period='24h'):
+def get_log_summary(period='24h', max_lines_to_scan=20000):
     """
     ログファイルからアクションサマリーを抽出し、集計して返す。
     """
@@ -163,14 +163,26 @@ def get_log_summary(period='24h'):
                                            r"^(?P<ts_simple>\d{2}-\d{2} \d{2}:\d{2}:\d{2})")
 
     now = datetime.now(timezone.utc)
-    if period == 'today':
-        start_time = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
-    else: # '24h'
+    today_start_local = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+
+    if period == 'yesterday':
+        start_time = (today_start_local - timedelta(days=1)).astimezone(timezone.utc)
+        end_time = today_start_local.astimezone(timezone.utc)
+    elif period == 'day_before_yesterday':
+        start_time = (today_start_local - timedelta(days=2)).astimezone(timezone.utc)
+        end_time = (today_start_local - timedelta(days=1)).astimezone(timezone.utc)
+    elif period == 'today':
+        start_time = today_start_local.astimezone(timezone.utc)
+        end_time = None # 終わりは無制限
+    else: # '24h' or default
         start_time = now - timedelta(hours=24)
+        end_time = None # 終わりは無制限
 
     try:
         with open(LOG_FILE, "r", encoding="utf-8") as f:
-            for line in f:
+            # ファイルの末尾から最大N行を読み込むことでパフォーマンスを改善
+            lines = f.readlines()
+            for line in reversed(lines[-max_lines_to_scan:]):
                 log_time = None
                 try:
                     ts_match = timestamp_capture_pattern.match(line)
@@ -188,8 +200,12 @@ def get_log_summary(period='24h'):
 
                     if log_time:
                         log_time = log_time.astimezone().astimezone(timezone.utc)
+                        # 期間外のログはスキップ
                         if log_time < start_time:
-                            continue
+                            # ファイルを逆順に読んでいるので、期間より古くなったらループを抜ける
+                            break
+                        if end_time and log_time >= end_time:
+                            continue # 期間の終わりより新しいログはスキップ
                     else:
                         # タイムスタンプに一致しない行はスキップ
                         continue

@@ -412,7 +412,12 @@ async def get_dashboard_summary(request: Request):
     """ダッシュボード用のサマリーデータを返す"""
     # logging.debug("[DASHBOARD_API] /api/dashboard/summary の処理を開始します。")
     try:
-        period = request.query_params.get('period', '24h') # クエリパラメータから期間を取得
+        period = request.query_params.get('period', 'today') # クエリパラメータから期間を取得, デフォルトを 'today' に変更
+        
+        # period パラメータのバリデーション
+        allowed_periods = ['today', '24h', 'yesterday', 'day_before_yesterday']
+        if period not in allowed_periods:
+            period = 'today'
         log_summary = get_log_summary(period=period)
 
         # 24時間以内のエラー商品数を取得
