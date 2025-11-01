@@ -257,6 +257,31 @@
     </div>
 {% endif %}
 
+{% if files %}
+<hr class="my-5">
+<div class="row">
+    <div class="col-12">
+        <h2 class="h3 mb-3">スクリーンショットプレビュー</h2>
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center" id="preview-card-header">
+                <span class="text-muted small" id="preview-filename"></span>
+                <span class="text-muted small" id="preview-timestamp"></span>
+            </div>
+            <div class="card-body text-center">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <button class="btn btn-outline-secondary" id="prev-preview-btn"><i class="bi bi-arrow-left"></i> 前へ</button>
+                    <span class="text-muted" id="preview-counter">1 / {{ files|length }}</span>
+                    <button class="btn btn-outline-secondary" id="next-preview-btn">次へ <i class="bi bi-arrow-right"></i></button>
+                </div>
+                <a id="preview-image-link" href="/api/screenshots/{{ files[0] }}" target="_blank" title="新しいタブで画像を開く">
+                    <img id="preview-image" src="/api/screenshots/{{ files[0] }}" class="img-fluid rounded" alt="スクリーンショットプレビュー">
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
 <!-- 商品情報詳細モーダル -->
 <div class="modal fade" id="infoModal" tabindex="-1" aria-labelledby="infoModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered modal-lg">
@@ -714,6 +739,62 @@
             const checkbox = row.querySelector('.product-checkbox');
             if (checkbox) checkbox.click();
         });
+
+        // --- Screenshot Previewer ---
+        const allPreviewFiles = {{ files | tojson }};
+        const allFileDetails = {{ file_details | tojson }};
+        const totalFiles = allPreviewFiles.length;
+        let currentPreviewIndex = 0;
+
+        if (totalFiles > 0) {
+            const previewImage = document.getElementById('preview-image'); 
+            const previewImageLink = document.getElementById('preview-image-link');
+            const previewCounter = document.getElementById('preview-counter');
+            const prevBtn = document.getElementById('prev-preview-btn');
+            const nextBtn = document.getElementById('next-preview-btn');
+
+            function updatePreviewer() {
+                const fullFilename = allPreviewFiles[currentPreviewIndex];
+                const details = allFileDetails[fullFilename];
+                const imageUrl = `/api/screenshots/${fullFilename}`;
+
+                // リストと同じ省略表記を生成
+                let displayFilename = details.action_name;
+                if (details.details) {
+                    const truncatedDetails = details.details.length > 12 ? details.details.substring(0, 12) + '...' : details.details;
+                    displayFilename += ` (${truncatedDetails})`;
+                }
+
+                previewImage.src = imageUrl;
+                previewImageLink.href = imageUrl;
+                // ファイル名、タイムスタンプ、カウンターを個別に更新
+                const filenameSpan = document.getElementById('preview-filename'); 
+                if (filenameSpan) filenameSpan.textContent = displayFilename;
+                document.getElementById('preview-timestamp').textContent = `発生日時: ${details.timestamp}`;
+                previewCounter.textContent = `${currentPreviewIndex + 1} / ${totalFiles}`;
+
+                prevBtn.disabled = (currentPreviewIndex === 0);
+                nextBtn.disabled = (currentPreviewIndex === totalFiles - 1);
+            }
+
+            prevBtn.addEventListener('click', () => {
+                if (currentPreviewIndex > 0) {
+                    currentPreviewIndex--;
+                    updatePreviewer();
+                }
+            });
+
+            nextBtn.addEventListener('click', () => {
+                if (currentPreviewIndex < totalFiles - 1) {
+                    currentPreviewIndex++;
+                    updatePreviewer();
+                }
+            });
+
+            // 初期状態のボタンを更新
+            updatePreviewer();
+        }
+        // --- End Screenshot Previewer ---
     });
 </script>
 {% endblock %}
