@@ -229,7 +229,7 @@ class CreateAiCommentTask(BaseTask):
 
             logger.debug(f"--- AIコメント作成完了。{updated_count}件のコメントを更新しました。 ---")
             if updated_count > 0:
-                logger.info(f"[Action Summary] name=返信コメント生成, count={updated_count}")
+                logger.info(f"[Action Summary] name=お知らせ解析, count={updated_count}")
             return True
 
         except Exception as e:

@@ -17,7 +17,7 @@ class ManualTestTask(BaseTask):
     def __init__(self, script: str = None):
         # --- ここで手動テストの挙動を切り替えます ---
         # True: GUIなし / False: GUIあり
-        self.headless_mode = False
+        self.headless_mode = True
         # True: ログイン情報を引き継ぐ / False: 新規セッションで起動
         self.use_auth = True
         # -----------------------------------------
@@ -66,6 +66,11 @@ class ManualTestTask(BaseTask):
         self.page = self.context.new_page()
 
     def _execute_main_logic(self):
+        # --- ★★★ 修正点: manual-test実行時のみデバッグログを有効化 ★★★ ---
+        # このタスクはデバッグが主目的のため、DEBUGレベルのログを強制的に表示する
+        logging.getLogger().setLevel(logging.DEBUG)
+        logger.debug("manual-testタスクのため、デバッグログを有効にしました。")
+
         page = self.page
         logger.debug("ブラウザの準備が完了しました。外部スクリプトを実行します。")
         
@@ -82,14 +87,15 @@ class ManualTestTask(BaseTask):
             exec(script_code, {'page': page, 'context': self.context})
             logger.info(f"スクリプト '{self.script_path}' の実行が完了しました。")
 
-        logger.info("ブラウザは起動したままです。")
-        logger.info("手動での確認や操作、またはスクリプト実行後の状態確認が完了したら、ブラウザウィンドウを閉じてください。")
-        logger.info("ブラウザが閉じられるのを待機しています...")
-        
-        # ユーザーがブラウザを閉じるまで無期限に待機する
-        self.context.wait_for_event("close", timeout=0)
-        
-        logger.info("ブラウザが閉じられたため、タスクを正常に終了します。")
+        if self.headless_mode:
+            logger.info("ヘッドレスモードのため、処理完了後に自動でブラウザを閉じます。")
+        else:
+            logger.info("ブラウザは起動したままです。")
+            logger.info("手動での確認や操作、またはスクリプト実行後の状態確認が完了したら、ブラウザウィンドウを閉じてください。")
+            logger.info("ブラウザが閉じられるのを待機しています...")
+            # ユーザーがブラウザを閉じるまで無期限に待機する
+            self.context.wait_for_event("close", timeout=0)
+            logger.info("ブラウザが閉じられたため、タスクを正常に終了します。")
         return True
 
 def run_manual_test(script: str = None):

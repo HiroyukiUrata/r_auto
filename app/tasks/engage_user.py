@@ -30,7 +30,7 @@ class EngageUserTask(BaseTask):
             logger.debug(f"いいね返しの対象件数が0のため、スキップします。")
             return False
 
-        logger.debug(f"ユーザー「{user_name}」に{target_like_count}件のいいね返しを開始します。")
+        logger.info(f"ユーザー「{user_name}」に{target_like_count}件のいいね返しを開始します。")
 
         # 「いいね済み」のカードを特定して非表示にする
 
@@ -91,19 +91,21 @@ class EngageUserTask(BaseTask):
         # 1件でもいいねできていれば成功とみなす
         return liked_count > 0
 
-    def _post_comment(self, page: Page, user_id: str, comment_text: str):
+    def _post_comment(self, page: Page, user_id: str, user_name: str, comment_text: str):
         """コメント返し処理"""
         if not comment_text:
             logger.debug("投稿するコメントがないため、スキップします。")
             return False
 
-        logger.debug(f"  -> 最新投稿にコメントします。")
+        logger.info(f"ユーザー「{user_name}」にコメント返しを開始します。")
         # ページを一番上までスクロール
+        logger.debug(f"  -> 最新投稿にコメントします。")
         page.evaluate("window.scrollTo(0, 0)")
         time.sleep(20)#ページ読み込みをしっかり待つ
 
         try:
-            # --- 1. コメント数が最も多い投稿を探す ---
+            logger.info("  -> 投稿カードが表示されるのを待ちます。")
+           # --- 1. コメント数が最も多い投稿を探す ---
             # 参考スクリプトに合わせて、より内側のコンテナをカードとして特定する
             post_card_selector = convert_to_robust_selector("div.container--JAywt")
             post_cards_locator = page.locator(post_card_selector)
@@ -131,9 +133,9 @@ class EngageUserTask(BaseTask):
                     continue
             
             if max_comments < 1:
-                logger.debug("  -> コメントが1件以上の投稿が見つからなかったため、最初の投稿を対象とします。")
+                logger.info("  -> コメントが1件以上の投稿が見つからなかったため、最初の投稿を対象とします。")
             else:
-                logger.debug(f"  -> コメント数が最も多い投稿が見つかりました (コメント数: {max_comments})。")
+                logger.info(f"  -> コメント数が最も多い投稿が見つかりました (コメント数: {max_comments})。")
 
             # --- 2. 投稿の詳細ページに遷移 ---
             image_link_selector = convert_to_robust_selector("a.link-image--15_8Q")
@@ -142,16 +144,16 @@ class EngageUserTask(BaseTask):
             time.sleep(0.5) # スクロール後の描画を少し待つ
             target_post_card.locator(image_link_selector).click()
             page.wait_for_load_state("domcontentloaded", timeout=20000)
-            logger.debug(f"  -> 投稿詳細ページに遷移しました: {page.url}")
+            logger.info(f"  -> 投稿詳細ページに遷移しました: {page.url}")
 
             # --- 3. コメントボタンをクリック ---
-            logger.debug(f"  -> コメントボタンをクリックしてコメント画面を開きます")
+            logger.info(f"  -> コメントボタンをクリックしてコメント画面を開きます")
             comment_button_selector = convert_to_robust_selector('div.pointer--3rZ2h:has-text("コメント")')
             page.locator(comment_button_selector).click()
             time.sleep(3)#ページ読み込みをしっかり待つ
 
             # --- 4. コメントを入力 ---
-            logger.debug(f"  -> コメント入力欄にコメントを挿入します")
+            logger.info(f"  -> コメント入力欄にコメントを挿入します")
             comment_textarea = page.locator('textarea[placeholder="コメントを書いてください"]')
             comment_textarea.wait_for(state="visible", timeout=15000)
             comment_textarea.fill(comment_text)
@@ -160,13 +162,13 @@ class EngageUserTask(BaseTask):
 
 
            # --- 5. 送信ボタンをクリック ---
-            logger.debug(f"  -> 送信ボタンをクリックします")
+            logger.info(f"  -> 送信ボタンをクリックします")
             if True :
                 page.get_by_role("button", name="送信").click()
 
             # 投稿完了を待機
             time.sleep(3)
-            logger.debug(f"  -> コメント返しが完了しました。投稿URL: {page.url}")
+            logger.info(f"  -> コメント返しが完了しました。投稿URL: {page.url}")
             return True
 
         except PlaywrightError as e:
@@ -206,7 +208,7 @@ class EngageUserTask(BaseTask):
 
                 # 2. コメント返し
                 comment_text = user.get("comment_text")
-                comment_success = self._post_comment(page, user_id, comment_text)
+                comment_success = self._post_comment(page, user_id, user_name, comment_text)
                 if comment_success:
                     comment_processed_count += 1
 

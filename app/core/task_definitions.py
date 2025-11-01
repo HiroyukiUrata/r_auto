@@ -252,7 +252,7 @@ TASK_DEFINITIONS = {
         "order": 9999,
     },
     "notification-analyzer": {
-        "name_ja": "返信コメント生成",
+        "name_ja": "お知らせ解析",
         "function": None, # フローなので直接の関数はなし
         "default_kwargs": {"hours_ago": 12}, # スケジュール実行時のデフォルト値
         "is_debug": False, # 即時実行にも表示する
