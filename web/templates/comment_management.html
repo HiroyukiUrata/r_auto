@@ -105,7 +105,15 @@
         </div>
       </div>
       <div class="modal-footer">
-        <button type="button" class="btn btn-success me-auto" id="modal-save-comment-btn" onclick="updateComment()"><i class="bi bi-save-fill me-1"></i>コメントを保存</button>
+        <div class="dropdown me-auto">
+            <button class="btn btn-secondary dropdown-toggle" type="button" id="templateDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                <i class="bi bi-card-text me-1"></i>テンプレート
+            </button>
+            <ul class="dropdown-menu" aria-labelledby="templateDropdown" id="comment-template-list">
+                <!-- テンプレートはJSでここに挿入されます -->
+            </ul>
+        </div>
+        <button type="button" class="btn btn-success" id="modal-save-comment-btn" onclick="updateComment()"><i class="bi bi-save-fill me-1"></i>コメントを保存</button>
         <a href="#" id="modal-profile-link" class="btn btn-primary" target="_blank" rel="noopener noreferrer" style="display: none;"><i class="bi bi-box-arrow-up-right me-1"></i>プロフィールを開く</a>
         <a href="#" id="modal-last-comment-link" class="btn btn-info" target="_blank" rel="noopener noreferrer" style="display: none;"><i class="bi bi-chat-left-text-fill me-1"></i>投稿済ページへ</a>
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">閉じる</button>
@@ -164,6 +172,35 @@
 <script>
     let infoModalInstance = null;
     let lastSelectedRowIndex = null;
+
+    const commentTemplates = [
+        {
+            name: "テンプレート1 (基本)",
+            text: '👦「いいね！ありがとうございます😊」\n👸「また遊びに来ます🌼」\n👦👸「「今後ともよろしくお願いします💐」」'
+        },
+        {
+            name: "テンプレート2 (訪問感謝)",
+            text: '👸「遊びに来てくれて嬉しいです✨」\n👦「またいつでも来てくださいね！」\n👦👸「「お待ちしてます〜👋」」'
+        },
+        {
+            name: "テンプレート3 (シンプル感謝)",
+            text: '👸「いつも見てくれてありがとう💕」\n👦「応援、励みになりますっ！」\n👸👦「「これからも仲良くしてくださいね😊」」'
+        },
+        {
+            name: "テンプレート4 (商品フォーカス)",
+            text: '👦「素敵な商品、見つかりましたか？✨」\n👸「また新しいアイテム紹介しますね！」\n👦👸「「楽しんでいってくださいね〜🌸」」'
+        },
+        {
+            name: "テンプレート5 (汎用)",
+            text: '👸「アクションありがとうございます💐」\n👦「とっても嬉しいです〜！😆」\n👦👸「「またのお越しをお待ちしてます！」」'
+        }
+    ];
+
+    function applyTemplate(templateIndex) {
+        const template = commentTemplates[templateIndex];
+        const textarea = document.getElementById('modal-comment-text');
+        textarea.value = template.text;
+    }
 
     // モーダルが閉じた後に実行するコールバックを保持する変数
     let onModalHiddenCallback = null;
@@ -504,6 +541,19 @@
         // Tooltipの初期化
         const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]');
         const tooltipList = [...tooltipTriggerList].map(tooltipTriggerEl => new bootstrap.Tooltip(tooltipTriggerEl));
+
+        // コメントテンプレートのドロップダウンを生成
+        const templateList = document.getElementById('comment-template-list');
+        commentTemplates.forEach((template, index) => {
+            const li = document.createElement('li');
+            const a = document.createElement('a');
+            a.className = 'dropdown-item';
+            a.href = '#';
+            a.textContent = template.name;
+            a.onclick = (e) => { e.preventDefault(); applyTemplate(index); };
+            li.appendChild(a);
+            templateList.appendChild(li);
+        });
 
         // ページ読み込み時にモーダルインスタンスを初期化
         // この時点ではまだ表示しない
