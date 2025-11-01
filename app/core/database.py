@@ -902,7 +902,7 @@ def get_users_for_ai_comment_creation() -> list[dict]:
     finally:
         conn.close()
 
-def get_all_user_engagements(sort_by: str = 'recent_action', limit: int = 100) -> list[dict]:
+def get_all_user_engagements(sort_by: str = 'recent_action', limit: int = 100, search_keyword: str = '') -> list[dict]:
     """
     user_engagementテーブルからすべてのユーザーデータを、指定された条件でソートして取得する。
 
@@ -912,6 +912,7 @@ def get_all_user_engagements(sort_by: str = 'recent_action', limit: int = 100) -
         - 'like_count_desc': 累計いいね数が多い順
         - 'commented_at_desc': 最終コメント日時が新しい順
         - 'commented_at_asc': 最終コメント日時が古い順
+    :param search_keyword: ユーザー名で絞り込むための検索キーワード。
     :param limit: 取得する最大件数。
     :return: ユーザーデータの辞書のリスト。
     """
@@ -920,23 +921,32 @@ def get_all_user_engagements(sort_by: str = 'recent_action', limit: int = 100) -
         cursor = conn.cursor()
 
         # ソート条件に応じてORDER BY句とWHERE句を決定
-        where_clause = ""
+        where_clauses = []
         order_by_clause = "ORDER BY latest_action_timestamp DESC" # デフォルト
 
         if sort_by == 'commented':
-            where_clause = "WHERE last_commented_at IS NOT NULL"
+            where_clauses.append("last_commented_at IS NOT NULL")
             order_by_clause = "ORDER BY last_commented_at DESC"
         elif sort_by == 'like_count_desc':
             order_by_clause = "ORDER BY (like_count + recent_like_count) DESC"
         elif sort_by == 'commented_at_desc':
-            where_clause = "WHERE last_commented_at IS NOT NULL"
+            where_clauses.append("last_commented_at IS NOT NULL")
             order_by_clause = "ORDER BY last_commented_at DESC"
         elif sort_by == 'commented_at_asc':
-            where_clause = "WHERE last_commented_at IS NOT NULL"
+            where_clauses.append("last_commented_at IS NOT NULL")
             order_by_clause = "ORDER BY last_commented_at ASC"
 
-        query = f"SELECT * FROM user_engagement {where_clause} {order_by_clause} LIMIT ?"
-        cursor.execute(query, (limit,))
+        # 検索キーワードがあればWHERE句に追加
+        params = []
+        if search_keyword:
+            where_clauses.append("name LIKE ?")
+            params.append(f'%{search_keyword}%')
+
+        where_clause_str = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+        params.append(limit)
+
+        query = f"SELECT * FROM user_engagement {where_clause_str} {order_by_clause} LIMIT ?"
+        cursor.execute(query, params)
         users = [dict(row) for row in cursor.fetchall()]
         users = _add_engagement_type_to_users(users)
         return users

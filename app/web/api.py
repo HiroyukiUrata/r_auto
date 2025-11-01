@@ -645,11 +645,12 @@ async def get_comment_targets(request: Request):
     """コメント投稿対象のユーザーリストを返す"""
     try:
         show_all = request.query_params.get('all', 'false').lower() == 'true'
+        search_keyword = request.query_params.get('search', '')
         
         if show_all:
             # 全ユーザー表示モード。ソート順をクエリパラメータから取得
             sort_by = request.query_params.get('sort', 'recent_action')
-            users = get_all_user_engagements(sort_by=sort_by, limit=200)
+            users = get_all_user_engagements(sort_by=sort_by, limit=200, search_keyword=search_keyword)
         else:
             # 通常のコメント対象ユーザー表示モード
             users = get_users_for_commenting(limit=50)

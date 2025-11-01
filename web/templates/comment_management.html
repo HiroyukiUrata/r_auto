@@ -2,6 +2,25 @@
 
 {% block title %}コメント投稿管理 - R-Auto Control Panel{% endblock %}
 
+{% block styles %}
+<style>
+    /* 検索ボックスのアイコン */
+    .search-box {
+        position: relative;
+    }
+    .search-box .bi-search {
+        position: absolute;
+        left: 10px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #6c757d;
+    }
+    .search-box .form-control {
+        padding-left: 2.5rem;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
     <h1 class="h2">💬 コメント投稿管理</h1>
@@ -36,6 +55,17 @@
     </div>
 </div>
 
+<div id="search-container" style="display: none;">
+    <div class="row mb-3">
+        <div class="col-md-6">
+            <div class="search-box">
+                <i class="bi bi-search"></i>
+                <input type="search" id="user-search-input" class="form-control" placeholder="ユーザー名で検索...">
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="table-responsive">
     <table class="table table-striped table-sm align-middle" style="table-layout: fixed; width: 100%;">
         <thead>
@@ -53,7 +83,7 @@
 </div>
 
 <!-- ユーザー情報詳細モーダル -->
-<div class="modal fade" id="infoModal" tabindex="-1" aria-labelledby="infoModalLabel" aria-hidden="true">
+<div class="modal fade" id="infoModal" tabindex="-1" aria-labelledby="infoModalLabel" aria-hidden="true"> 
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
       <div class="modal-header">
@@ -85,7 +115,7 @@
 </div>
 {% endblock %}
 
-{% block styles %}
+{% block scripts %}
 <style>
     .truncate-cell {
         white-space: nowrap;
@@ -131,9 +161,6 @@
         font-size: 1.2rem; /* アイコンサイズを少し大きく */
     }
 </style>
-{% endblock %}
-
-{% block scripts %}
 <script>
     let infoModalInstance = null;
     let lastSelectedRowIndex = null;
@@ -307,18 +334,22 @@
     function updateViewOptions() {
         const showAll = document.getElementById('show-all-users-switch').checked;
         const sortContainer = document.getElementById('sort-options-container');
+        const searchContainer = document.getElementById('search-container');
         const bulkActionButtons = document.getElementById('bulk-action-buttons');
 
         sortContainer.style.display = showAll ? 'block' : 'none';
+        searchContainer.style.display = showAll ? 'block' : 'none';
         bulkActionButtons.style.display = showAll ? 'none' : 'inline-flex';
     }
 
     function fetchUsers() {
         const showAll = document.getElementById('show-all-users-switch').checked;
         let apiUrl = '/api/comment-targets';
+        const searchKeyword = document.getElementById('user-search-input').value;
+
         if (showAll) {
             const sortBy = document.getElementById('sort-select').value;
-            apiUrl = `/api/comment-targets?all=true&sort=${sortBy}`;
+            apiUrl = `/api/comment-targets?all=true&sort=${sortBy}&search=${encodeURIComponent(searchKeyword)}`;
         }
 
         // テーブルをローディング状態にする
@@ -515,6 +546,16 @@
             }
             updateBulkActionButtons();
         });
+    });
+
+    // 検索ボックスの入力イベントリスナー
+    let searchTimeout;
+    document.getElementById('user-search-input').addEventListener('input', function() {
+        clearTimeout(searchTimeout);
+        // ユーザーの入力を待つ（300ミリ秒）
+        searchTimeout = setTimeout(() => {
+            fetchUsers();
+        }, 300);
     });
 </script>
 {% endblock %}
