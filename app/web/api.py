@@ -23,7 +23,7 @@ from app.tasks.import_products import process_and_import_products
 from app.core.logging_config import LOG_FILE # ログファイルのパスをインポート
 from app.core.config_manager import get_config, save_config, SCREENSHOT_DIR, clear_config_cache
 from app.core.scheduler_utils import run_threaded, run_task_with_random_delay, get_log_summary
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime
 
 
 KEYWORDS_FILE = "db/keywords.json"
@@ -66,6 +66,7 @@ class UserIdsRequest(BaseModel):
 
 class BulkEngagePayload(BaseModel):
     users: list[dict]
+    dry_run: bool = False
 
 class BulkStatusUpdateRequest(BaseModel):
     product_ids: list[int]
@@ -133,13 +134,11 @@ async def read_comment_management(request: Request):
 @router.get("/error-management", response_class=HTMLResponse)
 async def read_error_management(request: Request):
     """エラー管理ページを表示する"""
-    # ファイル名を解析するための正規表現パターンを修正
-    # 例: url_error_my_user_id_通知分析_20231027-103045.png
-    # 末尾からタイムスタンプとアクション名を特定するように変更し、プレフィックスにアンダースコアが含まれても対応できるようにする
-    # アクション名はタイムスタンプの直前にあるアンダースコアで区切られた部分と仮定
-    filename_pattern = re.compile(r'^(?P<prefix>.+?)_(?P<action_name>[^_]+)_(?P<timestamp>\d{8}-\d{6})\.png$')
+    # ファイル名を解析するための正規表現パターンを更新
+    # 例: dry_run_post_comment_user123_複数ユーザーへのエンゲージメント (DRY RUN)_20231027-103000.png
+    filename_pattern = re.compile(r'^(?P<type>dry_run|error)_(?P<details>.+?)_(?P<action_name>[^_]+)_(?P<timestamp>\d{8}-\d{6})\.png$')
     
-    files = []
+    all_files = []
     file_details = {}
     
     screenshot_path = Path(SCREENSHOT_DIR)
@@ -157,27 +156,29 @@ async def read_error_management(request: Request):
         for f_path in sorted_paths:
             if f_path.is_file() and f_path.suffix.lower() == '.png':
                 filename = f_path.name
-                files.append(filename)
+                all_files.append(filename)
                 
                 action_name = "不明なアクション"
-                error_timestamp_display = "不明な日時"
+                timestamp_display = "不明な日時"
+                file_type = "unknown"
 
                 match = filename_pattern.match(filename)
                 if match:
                     parsed_data = match.groupdict()
+                    file_type = parsed_data.get('type', 'unknown')
                     action_name = parsed_data['action_name'].replace('_', ' ') # アンダースコアをスペースに
                     raw_timestamp = parsed_data['timestamp']
                     try:
                         from datetime import datetime
                         dt_obj = datetime.strptime(raw_timestamp, '%Y%m%d-%H%M%S')
-                        error_timestamp_display = dt_obj.strftime('%Y-%m-%d %H:%M')
+                        timestamp_display = dt_obj.strftime('%Y-%m-%d %H:%M')
                     except ValueError:
-                        error_timestamp_display = f"不正な日時 ({raw_timestamp})"
+                        timestamp_display = f"不正な日時 ({raw_timestamp})"
                 
-                file_details[filename] = {'action_name': action_name, 'error_timestamp': error_timestamp_display}
+                file_details[filename] = {'action_name': action_name, 'timestamp': timestamp_display, 'type': file_type}
 
     # 既存のエラー商品表示機能はそのままに、スクリーンショットの情報を追加で渡す
-    return request.app.state.templates.TemplateResponse("error_management.html", {"request": request, "files": files, "file_details": file_details})
+    return request.app.state.templates.TemplateResponse("error_management.html", {"request": request, "files": all_files, "file_details": file_details})
 
 # --- API Routes ---
 @router.get("/api/schedules")
@@ -693,9 +694,9 @@ async def engage_with_multiple_users(payload: BulkEngagePayload, background_task
 
     task_manager = TaskManager()
     # ユーザーリスト全体を1つのタスクとしてスケジュール
-    background_tasks.add_task(task_manager.run_task_by_tag, "engage-user", users=payload.users)
+    background_tasks.add_task(task_manager.run_task_by_tag, "engage-user", users=payload.users, dry_run=payload.dry_run)
 
-    return {"message": f"{len(payload.users)}件のユーザーへのエンゲージメントタスクを開始しました。"}
+    return {"message": f"{len(payload.users)}件のユーザーへのエンゲージメントタスクを開始しました。(Dry Run: {payload.dry_run})"}
 
 @router.patch("/api/users/update-comment", summary="指定されたユーザーのコメントを更新")
 async def patch_user_comment(request: CommentUpdateRequest):

@@ -86,6 +86,17 @@ def init_db():
                 except sqlite3.Error as e:
                     logging.error(f"'{column_name}' カラムの追加に失敗しました: {e}")
 
+        # --- user_engagementテーブルのマイグレーション ---
+        def add_column_to_engagement_if_not_exists(cursor, column_name, column_type):
+            cursor.execute("PRAGMA table_info(user_engagement)")
+            columns = [row['name'] for row in cursor.fetchall()]
+            if column_name not in columns:
+                try:
+                    cursor.execute(f"ALTER TABLE user_engagement ADD COLUMN {column_name} {column_type}")
+                    logging.info(f"user_engagementテーブルに '{column_name}' カラムを追加しました。")
+                except sqlite3.Error as e:
+                    logging.error(f"'{column_name}' カラムの追加に失敗しました: {e}")
+
         # タイプミスを修正し、重複していた行を削除
         add_column_if_not_exists(cursor, 'post_url', 'TEXT')
 
@@ -131,18 +142,8 @@ def init_db():
                 last_commented_post_url TEXT
             )
         ''')
+        add_column_to_engagement_if_not_exists(cursor, 'last_engagement_error', 'TEXT')
         logging.info("user_engagementテーブルが正常に初期化されました。")
-
-        # --- user_engagementテーブルのマイグレーション ---
-        def add_column_to_engagement_if_not_exists(cursor, column_name, column_type):
-            cursor.execute("PRAGMA table_info(user_engagement)")
-            columns = [row['name'] for row in cursor.fetchall()]
-            if column_name not in columns:
-                try:
-                    cursor.execute(f"ALTER TABLE user_engagement ADD COLUMN {column_name} {column_type}")
-                    logging.info(f"user_engagementテーブルに '{column_name}' カラムを追加しました。")
-                except sqlite3.Error as e:
-                    logging.error(f"'{column_name}' カラムの追加に失敗しました: {e}")
 
         add_column_to_engagement_if_not_exists(cursor, 'ai_prompt_updated_at', 'TEXT')
         add_column_to_engagement_if_not_exists(cursor, 'comment_generated_at', 'TEXT')
@@ -619,6 +620,20 @@ def get_users_for_prompt_creation() -> list[dict]:
     finally:
         conn.close()
 
+def update_engagement_error(user_id: str, error_message: str):
+    """
+    指定されたユーザーのエンゲージメントエラーを記録する。
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE user_engagement SET last_engagement_error = ? WHERE id = ?", (error_message, user_id))
+        conn.commit()
+        logging.warning(f"ユーザーID: {user_id} のエンゲージメントエラーを記録しました: {error_message}")
+    except sqlite3.Error as e:
+        logging.error(f"ユーザーID: {user_id} のエンゲージメントエラー記録中にエラー: {e}")
+    finally:
+        conn.close()
 
 def get_all_user_engagements_map() -> dict:
     """

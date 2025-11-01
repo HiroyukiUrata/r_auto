@@ -4,25 +4,81 @@ import time
 import sys
 from abc import ABC, abstractmethod
 from typing import Optional
-
-from playwright.sync_api import sync_playwright, BrowserContext, Page
+from playwright.sync_api import sync_playwright, BrowserContext, Page, Locator
 from app.core.config_manager import is_headless, SCREENSHOT_DIR
 
 PROFILE_DIR = "db/playwright_profile"
 
 class BaseTask(ABC):
     """
-    Playwrightを使用する自動化タスクの基底クラス。
-    ブラウザのセットアップ、実行、ティアダウンの共通処理を管理する。
+    すべてのタスククラスが継承する基本クラス。
     """
-    def __init__(self, count: Optional[int] = None, max_duration_seconds: int = 600):
+    def __init__(self, count: Optional[int] = None, max_duration_seconds: int = 600, dry_run: bool = False):
         self.target_count = count
         self.max_duration_seconds = max_duration_seconds
         self.context: Optional[BrowserContext] = None
         self.page: Optional[Page] = None
-        self.action_name = "アクション" # サブクラスで上書きする
+        self.action_name = "アクション"  # サブクラスで上書きする
         self.needs_browser = True # デフォルトではブラウザを必要とする
         self.use_auth_profile = True # デフォルトでは認証プロファイルを使用する
+        self.dry_run = dry_run
+        if self.dry_run:
+            self.action_name += " (DRY RUN)"
+
+    def _execute_action(self, locator: Locator, action: str, *args, **kwargs):
+        """
+        Playwrightのアクションをドライランモードを考慮して実行する汎用ヘルパー。
+
+        使用例:
+        self._execute_action(page.get_by_role("button"), "click")
+        self._execute_action(page.locator("textarea"), "fill", "テキスト")
+        self._execute_action(page.locator("input"), "press", "Enter", action_name="submit_form")
+
+        :param locator: PlaywrightのLocatorオブジェクト
+        :param action: 実行するメソッド名 (例: "click", "fill", "press")
+        :param args: アクションメソッドに渡す位置引数
+        :param kwargs: アクションメソッドに渡すキーワード引数。'action_name'は特別で、SSのファイル名に使われる。
+        """
+        # スクリーンショット用の名前を取得（指定がなければ自動生成）
+        # スクリーンショット撮影用の別ロケーターが指定されていれば取得、なければ操作対象ロケーターを使う
+        screenshot_locator = kwargs.pop("screenshot_locator", locator)
+        screenshot_name = kwargs.pop("action_name", f"{action}_{time.time():.0f}")
+
+        if not self.dry_run:
+            # --- 通常実行 ---
+            method_to_call = getattr(locator, action)
+            method_to_call(*args, **kwargs)
+        else:
+            # --- ドライラン実行 ---
+            prefix = f"dry_run_{screenshot_name}"
+            logging.info(f"  -> [DRY RUN] '{action}' アクションをスキップし、対象要素のスクリーンショットを保存します。")
+            try:
+                os.makedirs(SCREENSHOT_DIR, exist_ok=True)
+                timestamp = time.strftime("%Y%m%d-%H%M%S")
+                screenshot_path = os.path.join(SCREENSHOT_DIR, f"{prefix}_{timestamp}.png")
+                screenshot_locator.screenshot(path=screenshot_path)
+                logging.info(f"要素のスクリーンショットを保存しました: {screenshot_path}")
+            except Exception as e:
+                logging.error(f"要素のスクリーンショット撮影に失敗しました: {e}")
+
+    def _execute_side_effect(self, func, *args, **kwargs):
+        """
+        DB更新など、副作用を伴うPython関数をドライランモードを考慮して実行する。
+
+        使用例:
+        self._execute_side_effect(commit_user_actions, user_ids=[...], is_comment_posted=False)
+
+        :param func: 実行する関数オブジェクト
+        :param args: 関数に渡す位置引数
+        :param kwargs: 関数に渡すキーワード引数。'action_name'はログ出力用に予約されている。
+        """
+        action_name = kwargs.pop("action_name", func.__name__)
+
+        if not self.dry_run:
+            return func(*args, **kwargs)
+        else:
+            logging.info(f"  -> [DRY RUN] 副作用のあるアクション '{action_name}' をスキップします。")
+            return None
 
     def _setup_browser(self):
         """ブラウザコンテキストをセットアップする"""
@@ -115,12 +171,13 @@ class BaseTask(ABC):
         if self.page:
             try:
                 os.makedirs(SCREENSHOT_DIR, exist_ok=True)
-                timestamp = time.strftime("%Y%m%d-%H%M%S")
-                safe_action_name = "".join(c for c in self.action_name if c.isalnum() or c in (' ', '_')).rstrip()
+                timestamp = time.strftime("%Y%m%d-%H%M%S") 
+                safe_action_name = "".join(c for c in self.action_name if c.isalnum() or c in (' ', '_')).rstrip() 
                 screenshot_path = os.path.join(SCREENSHOT_DIR, f"{prefix}_{safe_action_name}_{timestamp}.png")
+
+                # 当初のシンプルなスクリーンショット撮影処理に戻す
                 self.page.screenshot(path=screenshot_path)
-                logging.info(f"エラー発生時のスクリーンショットを保存しました。")
-                #logging.info(f"エラー発生時のスクリーンショットを {screenshot_path} に保存しました。")
+                logging.info(f"スクリーンショットを保存しました: {screenshot_path}")
             except Exception as ss_e:
                 logging.error(f"スクリーンショットの保存に失敗しました: {ss_e}")
 

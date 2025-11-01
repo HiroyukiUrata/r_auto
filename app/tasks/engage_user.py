@@ -3,7 +3,8 @@ import random
 import time
 from datetime import datetime, timedelta
 from playwright.sync_api import Page, Error as PlaywrightError, expect
-from app.utils.selector_utils import convert_to_robust_selector
+from app.utils.selector_utils import convert_to_robust_selector 
+from app.core.database import commit_user_actions, update_engagement_error
 from app.core.base_task import BaseTask
 
 logger = logging.getLogger(__name__)
@@ -12,8 +13,8 @@ class EngageUserTask(BaseTask):
     """
     指定されたユーザーに対して「いいねバック」と「コメント投稿」を行うタスク。
     """
-    def __init__(self, users: list[dict]):
-        super().__init__(count=None)
+    def __init__(self, users: list[dict], dry_run: bool = False):
+        super().__init__(count=None, dry_run=dry_run)
         self.action_name = f"複数ユーザーへのエンゲージメント ({len(users)}人)"
         self.needs_browser = True
         self.use_auth_profile = True
@@ -21,7 +22,7 @@ class EngageUserTask(BaseTask):
         # タスク実行に必要な引数を設定
         self.users = users
 
-    def _like_back(self, page: Page, user_name: str, like_back_count: int):
+    def _like_back(self, page: Page, user_id: str, user_name: str, like_back_count: int):
         """いいね返し処理"""
         # いいねのお返しは最大5件までとする
         target_like_count = min(like_back_count, 5)
@@ -75,12 +76,15 @@ class EngageUserTask(BaseTask):
                 unliked_button_locator.evaluate("node => { node.style.border = '3px solid limegreen'; }")
                 
                 # 「未いいね」ボタンをクリックします。
-                expect(unliked_button_locator).to_be_enabled(timeout=5000)
-                unliked_button_locator.click()
-                liked_count += 1
+                self._execute_action(unliked_button_locator, "click", action_name=f"like_back_{user_id}_{liked_count + 1}", screenshot_locator=target_card)
 
-            
-                time.sleep(20)#めちゃめちゃ待ったら連続クリックできるはず。たぶｎ
+                # ドライラン時もカウントは進める
+                liked_count += 1
+                # ドライランでない場合のみ待機を行う
+                if not self.dry_run:
+                    time.sleep(20) # 連続クリックを避けるための待機
+                
+                # 処理済みのカードは非表示にする（ドライランでも次のループのために非表示にする）
                 target_card.evaluate("node => { node.style.display = 'none'; }")
 
         except Exception as e:
@@ -88,13 +92,13 @@ class EngageUserTask(BaseTask):
             error_message = str(e).split("Call log:")[0].strip()
             log_message = f"「いいね返し」中にエラーが発生しました: {error_message}"
             logger.error(log_message)
-            from app.core.database import update_engagement_error
-            update_engagement_error(user_id, log_message) # DBにエラーを記録
+            update_engagement_error(user_id, log_message)
             return False # _like_backメソッド自体を終了させる
 
         logger.info(f"  -> いいね返し完了。合計{liked_count}件実行しました。")
         # 1件でもいいねできていれば成功とみなす
-        return liked_count > 0
+        # ドライラン時は常に成功とする
+        return True if self.dry_run else liked_count > 0
 
     def _post_comment(self, page: Page, user_id: str, user_name: str, comment_text: str):
         """コメント返し処理"""
@@ -109,7 +113,7 @@ class EngageUserTask(BaseTask):
         
         # いいね返し処理で非表示にされたカードを再表示させるため、ページをリロードする
         logger.info("  -> ページをリロードして全投稿を再表示します。")
-        page.reload(wait_until="domcontentloaded", timeout=20000)
+        page.reload(wait_until="domcontentloaded", timeout=40000)
         time.sleep(30) # リロード後の描画を少し待つ
         # 最初の投稿カードが表示されるのを待つことで、動的な描画完了を確実にする
         post_card_selector = convert_to_robust_selector("div.container--JAywt")
@@ -175,12 +179,14 @@ class EngageUserTask(BaseTask):
 
            # --- 5. 送信ボタンをクリック ---
             logger.info(f"  -> 送信ボタンをクリックします")
-            if True :
-                page.get_by_role("button", name="送信").click()
+            send_button = page.get_by_role("button", name="送信")
+            self._execute_action(send_button, "click", action_name=f"post_comment_{user_id}")
 
-            # 投稿完了を待機
-            time.sleep(3)
-            logger.info(f"  -> コメント返しが完了しました。投稿URL: {page.url}")
+            # ドライランでない場合のみ、投稿完了の待機とログ出力を行う
+            if not self.dry_run:
+                # 投稿完了を待機
+                time.sleep(3)
+                logger.info(f"  -> コメント返しが完了しました。投稿URL: {page.url}")
             return True
 
         except PlaywrightError as e:
@@ -188,8 +194,7 @@ class EngageUserTask(BaseTask):
             error_message = str(e).split("Call log:")[0].strip()
             log_message = f"「コメント返し」中にエラーが発生しました: {error_message}"
             logger.error(log_message)
-            from app.core.database import update_engagement_error
-            update_engagement_error(user_id, log_message) # DBにエラーを記録
+            update_engagement_error(user_id, log_message)
             self._take_screenshot_on_error(prefix=f"comment_error_{user_id}")
             return False
 
@@ -261,16 +266,25 @@ class EngageUserTask(BaseTask):
                 # いいね返しが成功した場合、いいね関連のアクションのみをコミット
                 if like_back_success:
                     logger.info(f"  -> いいね返しのアクションをコミットします。")
-                    from app.core.database import commit_user_actions
-                    # is_comment_posted=False で呼び出し、いいね数のみをリセット
-                    commit_user_actions(user_ids=[user_id], is_comment_posted=False)
+                    self._execute_side_effect(
+                        commit_user_actions,
+                        user_ids=[user_id],
+                        is_comment_posted=False,
+                        action_name="commit_like_back_action"
+                    )
                 
                 # コメント返しが成功した場合、コメント関連のアクションをコミット
                 if comment_success:
                     logger.info(f"  -> コメント返しのアクションをコミットします。")
-                    from app.core.database import commit_user_actions
-                    # is_comment_posted=True で呼び出し、最終コメント日時を更新
-                    commit_user_actions(user_ids=[user_id], is_comment_posted=True, post_url=page.url)
+                    # ドライラン時は page.url が存在しない可能性があるため、Noneを渡す
+                    post_url_for_commit = page.url if not self.dry_run else None
+                    self._execute_side_effect(
+                        commit_user_actions,
+                        user_ids=[user_id],
+                        is_comment_posted=True,
+                        post_url=post_url_for_commit,
+                        action_name="commit_comment_action"
+                    )
 
             except Exception as e:
                 logger.error(f"ユーザー「{user_name}」の処理中にエラーが発生しました: {e}", exc_info=True)
@@ -291,7 +305,7 @@ class EngageUserTask(BaseTask):
 
         return True
 
-def run_engage_user(users: list[dict]):
+def run_engage_user(users: list[dict], dry_run: bool = False):
     """ラッパー関数"""
-    task = EngageUserTask(users=users)
+    task = EngageUserTask(users=users, dry_run=dry_run)
     return task.run()
