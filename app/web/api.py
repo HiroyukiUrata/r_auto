@@ -135,9 +135,11 @@ async def read_comment_management(request: Request):
 async def read_error_management(request: Request):
     """エラー管理ページを表示する"""
     # ファイル名を解析するための正規表現パターンを更新
-    # 例: dry_run_post_comment_user123_複数ユーザーへのエンゲージメント (DRY RUN)_20231027-103000.png
-    filename_pattern = re.compile(r'^(?P<type>dry_run|error)_(?P<details>.+?)_(?P<action_name>[^_]+)_(?P<timestamp>\d{8}-\d{6})\.png$')
-    
+    # 例: error_post_comment_user123_20231027-103000.png
+    # 例: dry_run_engage-user_user123_20231027-103000.png
+    # グループ: 1:type, 2:action, 3:details, 4:timestamp
+    filename_pattern = re.compile(r'^(?P<type>dry_run|error)_(?P<action>[a-zA-Z0-9_-]+)_(?P<details>.+?)_(?P<timestamp>\d{8}-\d{6})\.png$')
+
     all_files = []
     file_details = {}
     
@@ -160,22 +162,29 @@ async def read_error_management(request: Request):
                 
                 action_name = "不明なアクション"
                 timestamp_display = "不明な日時"
+                details_display = ""
                 file_type = "unknown"
 
                 match = filename_pattern.match(filename)
                 if match:
                     parsed_data = match.groupdict()
                     file_type = parsed_data.get('type', 'unknown')
-                    action_name = parsed_data['action_name'].replace('_', ' ') # アンダースコアをスペースに
+                    # アクション名をTASK_DEFINITIONSから日本語名に変換
+                    action_tag = parsed_data.get('action')
+                    action_name = TASK_DEFINITIONS.get(action_tag, {}).get('name_ja', action_tag)
+
+                    details_display = parsed_data.get('details', '')
                     raw_timestamp = parsed_data['timestamp']
                     try:
-                        from datetime import datetime
                         dt_obj = datetime.strptime(raw_timestamp, '%Y%m%d-%H%M%S')
                         timestamp_display = dt_obj.strftime('%Y-%m-%d %H:%M')
                     except ValueError:
                         timestamp_display = f"不正な日時 ({raw_timestamp})"
-                
-                file_details[filename] = {'action_name': action_name, 'timestamp': timestamp_display, 'type': file_type}
+                else:
+                    # パース失敗時のフォールバック
+                    action_name = "不明なアクション"
+
+                file_details[filename] = {'action_name': action_name, 'timestamp': timestamp_display, 'type': file_type, 'details': details_display}
 
     # 既存のエラー商品表示機能はそのままに、スクリーンショットの情報を追加で渡す
     return request.app.state.templates.TemplateResponse("error_management.html", {"request": request, "files": all_files, "file_details": file_details})
