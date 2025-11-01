@@ -18,6 +18,7 @@ from app.core.database import (
     cleanup_old_user_engagements,
     get_users_for_url_acquisition,
     get_users_for_prompt_creation,
+    get_users_for_commenting,
 )
 
 # --- DB/出力ディレクトリの定義 ---
@@ -330,6 +331,7 @@ class NotificationAnalyzerTask(BaseTask):
         logger.debug(f"--- フェーズ4: DBからURL未取得のユーザーを対象にURLを取得します。 ---")
         users_for_url_fetch = get_users_for_url_acquisition()
         logger.debug(f"URL取得対象: {len(users_for_url_fetch)}人")
+        url_acquired_count = 0 # URL取得成功件数をカウントする変数を初期化
         last_scroll_position = 0  # スクロール位置を記憶する変数を初期化
 
         total_users = len(users_for_url_fetch)
@@ -375,6 +377,7 @@ class NotificationAnalyzerTask(BaseTask):
                 
                 page.go_back(wait_until="domcontentloaded")
                 # networkidleは不安定なため、固定時間待機に変更
+                url_acquired_count += 1 # 成功件数をインクリメント
                 page.wait_for_timeout(1000) # 軽く待つ
                 # ページが戻った後、リストが再描画されるのを待つ
                 page.locator("li[ng-repeat='notification in notifications.activityNotifications']").first.wait_for(state='visible', timeout=10000)
@@ -439,10 +442,17 @@ class NotificationAnalyzerTask(BaseTask):
         # --- フェーズ6: AIプロンプトメッセージをDBに保存 ---
         logger.debug(f"--- フェーズ6: {len(users_for_prompt_creation)}件のAIプロンプトメッセージをDBに保存します。 ---")
         try:
+            prompt_generated_count = 0 # プロンプト生成件数をカウント
             if users_for_prompt_creation:
                 upserted_count = bulk_update_user_profiles(users_for_prompt_creation)
+                prompt_generated_count = upserted_count
                 logger.debug(f"{upserted_count}件のAIプロンプトメッセージをDBに保存/更新しました。")
-            
+
+            # --- フェーズ7: 結果サマリーの生成 ---
+            # このタスク内で実際に処理した件数を元にメッセージを生成
+            summary_message = f"いいね待ち: {url_acquired_count}件, コメント待ち: {prompt_generated_count}件"
+            logger.info(f"[Action Summary] name=お知らせ解析, message='{summary_message}'")
+
             cleanup_old_user_engagements(days=30)
         except Exception as e:
             logger.error(f"データベースへの保存中にエラーが発生しました: {e}", exc_info=True)

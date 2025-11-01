@@ -89,10 +89,10 @@ document.addEventListener('DOMContentLoaded', function () {
         '記事投稿': { icon: 'bi-send', color: 'success' }, 
         'いいね活動': { icon: 'bi-heart', color: 'danger' }, 
         'フォロー活動': { icon: 'bi-person-plus', color: 'info' },
-        'いいね返し対象': { icon: 'bi-heart-fill', color: 'danger' },
+        'いいね待ち': { icon: 'bi-heart-fill', color: 'danger' },
         'いいね返し': { icon: 'bi-arrow-through-heart-fill', color: 'danger' },
         'コメント返し': { icon: 'bi-reply-all-fill', color: 'primary' },
-        'コメント返し対象': { icon: 'bi-chat-dots-fill', color: 'primary' },
+        'コメント待ち': { icon: 'bi-chat-dots-fill', color: 'primary' },
         '次の予定': { icon: 'bi-alarm', color: 'warning' }
     }
     const inventoryMapping = {
@@ -245,8 +245,8 @@ document.addEventListener('DOMContentLoaded', function () {
             inventoryContainer.insertAdjacentHTML('afterbegin', errorCardHtml);
 
             // エンゲージメントサマリーカードを在庫状況セクションに追加
-            inventoryContainer.insertAdjacentHTML('beforeend', createCard('いいね返し対象', engagementData.like_back_target_count, 0));
-            inventoryContainer.insertAdjacentHTML('beforeend', createCard('コメント返し対象', engagementData.comment_target_count, 0));
+            inventoryContainer.insertAdjacentHTML('beforeend', createCard('いいね待ち', engagementData.like_back_target_count, 0));
+            inventoryContainer.insertAdjacentHTML('beforeend', createCard('コメント待ち', engagementData.comment_target_count, 0));
 
 
             // 最近使ったキーワードを表示

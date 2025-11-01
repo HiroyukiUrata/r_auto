@@ -65,7 +65,7 @@ def get_recent_activities_from_log(limit=5, max_lines=1000):
         }
 
         # 正規表現パターン
-        summary_pattern = re.compile(r"\[Action Summary\]\s*name=(?P<name>[^,]+),\s*count=(?P<count>\d+)")
+        summary_pattern = re.compile(r"\[Action Summary\]\s*name=(?P<name>[^,]+)(?:,\s*count=(?P<count>\d+))?(?:,\s*message='(?P<message>[^']*)')?")
         error_pattern = re.compile(r"「(?P<name>[^」]+)」(?:アクション中に|実行中に|が失敗しました)")
         timestamp_pattern = re.compile(r"^(?P<ts>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}|\d{2}-\d{2} \d{2}:\d{2}:\d{2})")
 
@@ -100,8 +100,13 @@ def get_recent_activities_from_log(limit=5, max_lines=1000):
                     if ui_name in processed_actions and (processed_actions[ui_name] - dt_obj).total_seconds() < 60:
                         continue
 
-                    count = int(data['count'])
-                    activities.append({"name": ui_name, "timestamp": timestamp_iso, "status": "success", "message": f"{count}件の処理が完了しました。"})
+                    count_str = data.get('count')
+                    message = data.get('message')
+
+                    if message:
+                        activities.append({"name": ui_name, "timestamp": timestamp_iso, "status": "success", "message": message})
+                    elif count_str:
+                        activities.append({"name": ui_name, "timestamp": timestamp_iso, "status": "success", "message": f"{int(count_str)}件の処理が完了しました。"})
                     processed_actions[ui_name] = dt_obj # 処理済みアクションとして記録
                     continue # この行でアクティビティを見つけたら次の行へ
 

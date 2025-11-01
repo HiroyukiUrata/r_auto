@@ -755,7 +755,8 @@ def commit_user_actions(user_ids: list[str], is_comment_posted: bool, post_url: 
                 recent_like_count = 0,
                 recent_collect_count = 0,
                 recent_comment_count = 0,
-                recent_follow_count = 0
+                recent_follow_count = 0,
+                last_engagement_error = NULL
             WHERE id IN ({placeholders})
         """
         if is_comment_posted:

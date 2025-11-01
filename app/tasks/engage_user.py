@@ -5,7 +5,6 @@ from datetime import datetime, timedelta
 from playwright.sync_api import Page, Error as PlaywrightError, expect
 from app.utils.selector_utils import convert_to_robust_selector
 from app.core.base_task import BaseTask
-from app.core.database import get_product_by_id, commit_user_actions
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +84,12 @@ class EngageUserTask(BaseTask):
                 target_card.evaluate("node => { node.style.display = 'none'; }")
 
         except Exception as e:
-            logger.error(f"いいね返し中にエラーが発生しました: {e}")
+            # Call Logを除いたエラーメッセージを生成
+            error_message = str(e).split("Call log:")[0].strip()
+            log_message = f"「いいね返し」中にエラーが発生しました: {error_message}"
+            logger.error(log_message)
+            from app.core.database import update_engagement_error
+            update_engagement_error(user_id, log_message) # DBにエラーを記録
             return False # _like_backメソッド自体を終了させる
 
         logger.info(f"  -> いいね返し完了。合計{liked_count}件実行しました。")
@@ -102,12 +106,14 @@ class EngageUserTask(BaseTask):
         # ページを一番上までスクロール
         logger.debug(f"  -> 最新投稿にコメントします。")
         page.evaluate("window.scrollTo(0, 0)")
-        time.sleep(10)#ページ読み込みをしっかり待つ
-
+        
         # いいね返し処理で非表示にされたカードを再表示させるため、ページをリロードする
         logger.info("  -> ページをリロードして全投稿を再表示します。")
-        page.reload(wait_until="domcontentloaded")
-        time.sleep(30) # リロード後の描画を待つ
+        page.reload(wait_until="domcontentloaded", timeout=20000)
+        time.sleep(30) # リロード後の描画を少し待つ
+        # 最初の投稿カードが表示されるのを待つことで、動的な描画完了を確実にする
+        post_card_selector = convert_to_robust_selector("div.container--JAywt")
+        page.locator(post_card_selector).first.wait_for(state="visible", timeout=30000)
 
         try:
             logger.info("  -> 投稿カードが表示されるのを待ちます。")
@@ -178,7 +184,12 @@ class EngageUserTask(BaseTask):
             return True
 
         except PlaywrightError as e:
-            logger.error(f"コメント返し中にエラーが発生しました: {e}")
+            # Call Logを除いたエラーメッセージを生成
+            error_message = str(e).split("Call log:")[0].strip()
+            log_message = f"「コメント返し」中にエラーが発生しました: {error_message}"
+            logger.error(log_message)
+            from app.core.database import update_engagement_error
+            update_engagement_error(user_id, log_message) # DBにエラーを記録
             self._take_screenshot_on_error(prefix=f"comment_error_{user_id}")
             return False
 
@@ -210,7 +221,7 @@ class EngageUserTask(BaseTask):
 
                 # 1. いいね返し
                 if True :
-                    like_back_success = self._like_back(page, user_name, user.get("recent_like_count", 0))
+                    like_back_success = self._like_back(page, user_id, user_name, user.get("recent_like_count", 0))
                     if like_back_success:
                         like_back_processed_count += 1
                     elif user.get("recent_like_count", 0) > 0: # いいね対象があったのに失敗した場合
@@ -246,12 +257,20 @@ class EngageUserTask(BaseTask):
                     else:
                         comment_error_count += 1
 
-                # 3. アクションのコミット
-                # いいね返しまたはコメント返しのどちらかが成功した場合にコミット
-                if True :
-                    if like_back_success or comment_success:
-                        logger.info(f"  -> アクションをコミットします。")
-                        commit_user_actions(user_ids=[user_id], is_comment_posted=bool(comment_text and comment_success), post_url=page.url if (comment_text and comment_success) else None)
+                # 3. アクションのコミット（個別実行）
+                # いいね返しが成功した場合、いいね関連のアクションのみをコミット
+                if like_back_success:
+                    logger.info(f"  -> いいね返しのアクションをコミットします。")
+                    from app.core.database import commit_user_actions
+                    # is_comment_posted=False で呼び出し、いいね数のみをリセット
+                    commit_user_actions(user_ids=[user_id], is_comment_posted=False)
+                
+                # コメント返しが成功した場合、コメント関連のアクションをコミット
+                if comment_success:
+                    logger.info(f"  -> コメント返しのアクションをコミットします。")
+                    from app.core.database import commit_user_actions
+                    # is_comment_posted=True で呼び出し、最終コメント日時を更新
+                    commit_user_actions(user_ids=[user_id], is_comment_posted=True, post_url=page.url)
 
             except Exception as e:
                 logger.error(f"ユーザー「{user_name}」の処理中にエラーが発生しました: {e}", exc_info=True)
@@ -265,6 +284,10 @@ class EngageUserTask(BaseTask):
         
         if comment_processed_count > 0 or comment_error_count > 0:
             logger.info(f"[Action Summary] name=コメント返し, count={comment_processed_count}, errors={comment_error_count}")
+        
+        # エラーがあった場合、ダッシュボード用にサマリーログを別途出力
+        if like_back_error_count > 0:
+            logger.info(f"[Action Summary] name=いいね返し, count=0, errors={like_back_error_count}")
 
         return True
 

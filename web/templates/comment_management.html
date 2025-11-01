@@ -514,6 +514,12 @@
                         commentTitle = `（投稿済み）${commentTitle}`;
                     }
 
+                    // --- エラーアイコンの表示 ---
+                    let errorIcon = '';
+                    if (user.last_engagement_error) {
+                        errorIcon = `<span title="${user.last_engagement_error}" class="me-1">🚨</span>`;
+                    }
+
                     const row = `
                         <tr id="user-row-${user.id}" data-user='${escapedUserJson}'>
                             <td class="align-middle text-center">
@@ -525,7 +531,7 @@
                                 </div>
                             </td>
                             <td class="text-start" style="min-width: 0;">
-                                <div class="fw-bold truncate-cell" title="${user.name || ''}">${engagementIcon}${user.name || ''}</div>
+                                <div class="fw-bold truncate-cell" title="${user.name || ''}">${errorIcon}${engagementIcon}${user.name || ''}</div>
                                 <div class="${commentClass}" title="${commentTitle}">${user.comment_text || ''}</div>
                             </td>
                             <td class="small text-muted" style="min-width: 0;">
