@@ -113,13 +113,44 @@
                     // タブのコンテンツ部分を生成
                     const contentHtml = `
                         <div class="tab-pane fade ${showClass} ${activeClass}" id="${key}-pane" role="tabpanel" aria-labelledby="${key}-tab" tabindex="0">
+                            <div class="accordion mb-3" id="profileAccordion-${key}">
+                                <div class="accordion-item">
+                                    <h2 class="accordion-header">
+                                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-${key}" aria-expanded="false" aria-controls="collapse-${key}">
+                                            <i class="bi bi-collection-fill me-2"></i>プロファイル管理
+                                        </button>
+                                    </h2>
+                                    <div id="collapse-${key}" class="accordion-collapse collapse" data-bs-parent="#profileAccordion-${key}">
+                                        <div class="accordion-body">
+                                            <div class="row g-2 align-items-center">
+                                                <div class="col-sm-4">
+                                                    <label for="profile-select-${key}" class="form-label">プロファイルを選択</label>
+                                                    <select id="profile-select-${key}" class="form-select"></select>
+                                                </div>
+                                                <div class="col-sm-8 d-flex align-items-end gap-2">
+                                                    <button class="btn btn-primary" onclick="loadProfile('${key}')"><i class="bi bi-box-arrow-in-down me-1"></i>読み込み</button>
+                                                    <button class="btn btn-danger" onclick="deleteProfile('${key}')"><i class="bi bi-trash me-1"></i>削除</button>
+                                                </div>
+                                            </div>
+                                            <hr>
+                                            <div class="row g-2 align-items-center">
+                                                <div class="col-sm-4">
+                                                    <label for="new-profile-name-${key}" class="form-label">現在のプロンプトを名前を付けて保存</label>
+                                                    <input type="text" id="new-profile-name-${key}" class="form-control" placeholder="例: 対話重視コメント用">
+                                                </div>
+                                                <div class="col-sm-8 d-flex align-items-end"><button class="btn btn-success" onclick="saveProfile('${key}')"><i class="bi bi-save me-1"></i>保存</button></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                             <div class="card h-100" id="prompt-card-${key}">
                                 <div class="card-body flex-grow-1">
                                     <p class="text-muted small mb-2">${prompt.description}</p>
                                     <textarea class="form-control prompt-textarea flex-grow-1" data-filename="${prompt.filename}">${prompt.content}</textarea>
                                 </div>
                                 <div class="card-footer text-end">
-                                    <button class="btn btn-primary" onclick="savePrompt('${key}')"><i class="bi bi-save-fill me-1"></i>保存</button>
+                                    <button class="btn btn-primary" onclick="savePrompt('${key}')"><i class="bi bi-floppy-fill me-1"></i>現在のプロンプトを保存</button>
                                 </div>
                             </div>
                         </div>
@@ -127,10 +158,97 @@
                     contentContainer.innerHTML += contentHtml;
                     isFirst = false;
                 }
+
+                // 各タブのプロファイル一覧を読み込み
+                Object.keys(data).forEach(key => fetchProfiles(key));
             })
             .catch(error => {
                 contentContainer.innerHTML = `<div class="alert alert-danger">${error.message}</div>`;
             });
     });
+
+    // --- プロファイル管理用スクリプト ---
+
+    async function fetchProfiles(promptKey) {
+        try {
+            const response = await fetch(`/api/prompt-profiles/${promptKey}`);
+            const profiles = await response.json();
+            const select = document.getElementById(`profile-select-${promptKey}`);
+            select.innerHTML = '<option value="">-- プロファイルを選択 --</option>';
+            profiles.forEach(p => {
+                const option = document.createElement('option');
+                option.value = p;
+                option.textContent = p;
+                select.appendChild(option);
+            });
+        } catch (error) {
+            console.error('Failed to fetch profiles:', error);
+        }
+    }
+
+    async function loadProfile(promptKey) {
+        const select = document.getElementById(`profile-select-${promptKey}`);
+        const profileName = select.value;
+        if (!profileName) {
+            alert('読み込むプロファイルを選択してください。');
+            return;
+        }
+        if (!confirm(`プロファイル「${profileName}」を読み込みますか？\n現在のプロンプトは上書きされます。`)) return;
+
+        try {
+            const response = await fetch(`/api/prompt-profiles/${promptKey}/${profileName}`, { method: 'PUT' });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.error);
+            alert(result.message);
+            location.reload(); // 画面をリロードして変更を反映
+        } catch (error) {
+            alert(`エラー: ${error.message}`);
+        }
+    }
+
+    async function saveProfile(promptKey) {
+        const input = document.getElementById(`new-profile-name-${promptKey}`);
+        const profileName = input.value.trim();
+        if (!profileName) {
+            alert('プロファイル名を入力してください。');
+            return;
+        }
+        if (!confirm(`現在のプロンプトを「${profileName}」として保存しますか？`)) return;
+
+        try {
+            const response = await fetch(`/api/prompt-profiles/${promptKey}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ profile_name: profileName })
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.error);
+            alert(result.message);
+            input.value = '';
+            await fetchProfiles(promptKey); // プロファイル一覧を更新
+        } catch (error) {
+            alert(`エラー: ${error.message}`);
+        }
+    }
+
+    async function deleteProfile(promptKey) {
+        const select = document.getElementById(`profile-select-${promptKey}`);
+        const profileName = select.value;
+        if (!profileName) {
+            alert('削除するプロファイルを選択してください。');
+            return;
+        }
+        if (!confirm(`本当にプロファイル「${profileName}」を削除しますか？この操作は元に戻せません。`)) return;
+
+        try {
+            const response = await fetch(`/api/prompt-profiles/${promptKey}/${profileName}`, { method: 'DELETE' });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.error);
+            alert(result.message);
+            await fetchProfiles(promptKey); // プロファイル一覧を更新
+        } catch (error) {
+            alert(`エラー: ${error.message}`);
+        }
+    }
 </script>
 {% endblock %}

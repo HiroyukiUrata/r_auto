@@ -34,6 +34,7 @@ LAST_USED_URL_INDEX_FILE = "db/last_used_url_index.json"
 RECENT_KEYWORDS_FILE = "db/recent_keywords.json"
 SCHEDULE_PROFILES_DIR = "db/schedule_profiles"
 KEYWORD_PROFILES_DIR = "db/keyword_profiles"
+PROMPT_PROFILES_DIR = "db/prompt_profiles"
 
 PROMPTS_DIR = "app/prompts"
 class TimeEntry(BaseModel):
@@ -1094,6 +1095,89 @@ def _run_task_internal(tag: str, is_part_of_flow: bool, **kwargs):
     message = f"タスク「{definition['name_ja']}」の実行を開始しました。"
     logging.debug(f"APIレスポンス (タスク: {tag}): {message}")
     return {"status": "success", "message": message}
+
+# --- Prompt Profile API ---
+
+@router.get("/api/prompt-profiles/{prompt_key}")
+async def get_prompt_profiles(prompt_key: str):
+    """保存されているプロンプトプロファイルの一覧を返す"""
+    profile_dir = os.path.join(PROMPT_PROFILES_DIR, prompt_key)
+    os.makedirs(profile_dir, exist_ok=True)
+    # 拡張子を.txtに変更
+    profiles = [os.path.splitext(f)[0] for f in os.listdir(profile_dir) if f.endswith(".txt")]
+    return JSONResponse(content=sorted(profiles))
+
+@router.post("/api/prompt-profiles/{prompt_key}")
+async def save_prompt_profile(prompt_key: str, request: ProfileNameRequest):
+    """現在のプロンプトを新しいプロファイルとして保存する"""
+    profile_name = request.profile_name.strip()
+    if not profile_name or not re.match(r'^[a-zA-Z0-9_.\-ぁ-んァ-ヶ一-龠々ー ]+$', profile_name) or "/" in profile_name or "\\" in profile_name:
+        return JSONResponse(status_code=400, content={"status": "error", "message": "プロファイル名に使用できない文字が含まれています。"})
+
+    # prompt_keyからファイル名を取得するマッピング
+    prompt_filenames = {
+        "caption_prompt": "caption_prompt.txt",
+        "user_comment_body_prompt": "user_comment_body_prompt.txt"
+    }
+    source_filename = prompt_filenames.get(prompt_key)
+    if not source_filename:
+        return JSONResponse(status_code=400, content={"status": "error", "message": "無効なプロンプトキーです。"})
+
+    source_path = os.path.join(PROMPTS_DIR, source_filename)
+    profile_dir = os.path.join(PROMPT_PROFILES_DIR, prompt_key)
+    os.makedirs(profile_dir, exist_ok=True)
+    profile_path = os.path.join(profile_dir, f"{profile_name}.txt")
+
+    try:
+        with open(source_path, "r", encoding="utf-8") as f_src:
+            content = f_src.read()
+        with open(profile_path, "w", encoding="utf-8") as f_dst:
+            f_dst.write(content)
+
+        return JSONResponse(content={"status": "success", "message": f"プロファイル「{profile_name}」を保存しました。"})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"status": "error", "message": f"プロファイルの保存に失敗しました: {e}"})
+
+@router.put("/api/prompt-profiles/{prompt_key}/{profile_name}")
+async def load_prompt_profile(prompt_key: str, profile_name: str):
+    """指定されたプロファイルを現在のプロンプトとして読み込む"""
+    profile_dir = os.path.join(PROMPT_PROFILES_DIR, prompt_key)
+    profile_path = os.path.join(profile_dir, f"{profile_name}.txt")
+    if not os.path.exists(profile_path):
+        return JSONResponse(status_code=404, content={"status": "error", "message": "プロファイルが見つかりません。"})
+
+    prompt_filenames = {
+        "caption_prompt": "caption_prompt.txt",
+        "user_comment_body_prompt": "user_comment_body_prompt.txt"
+    }
+    dest_filename = prompt_filenames.get(prompt_key)
+    if not dest_filename:
+        return JSONResponse(status_code=400, content={"status": "error", "message": "無効なプロンプトキーです。"})
+
+    dest_path = os.path.join(PROMPTS_DIR, dest_filename)
+
+    try:
+        with open(profile_path, "r", encoding="utf-8") as f_src:
+            content = f_src.read()
+        with open(dest_path, "w", encoding="utf-8") as f_dst:
+            f_dst.write(content)
+
+        return JSONResponse(content={"status": "success", "message": f"プロファイル「{profile_name}」を読み込みました。"})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"status": "error", "message": f"プロファイルの読み込みに失敗しました: {e}"})
+
+@router.delete("/api/prompt-profiles/{prompt_key}/{profile_name}")
+async def delete_prompt_profile(prompt_key: str, profile_name: str):
+    """指定されたプロンプトプロファイルを削除する"""
+    profile_dir = os.path.join(PROMPT_PROFILES_DIR, prompt_key)
+    profile_path = os.path.join(profile_dir, f"{profile_name}.txt")
+    if not os.path.exists(profile_path):
+        return JSONResponse(status_code=404, content={"status": "error", "message": "プロファイルが見つかりません。"})
+    try:
+        os.remove(profile_path)
+        return JSONResponse(content={"status": "success", "message": f"プロファイル「{profile_name}」を削除しました。"})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"status": "error", "message": f"プロファイルの削除に失敗しました: {e}"})
 
 # --- Prompt Editor API ---
 
