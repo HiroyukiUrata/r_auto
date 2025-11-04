@@ -140,12 +140,6 @@ async def read_comment_management(request: Request):
 @router.get("/error-management", response_class=HTMLResponse)
 async def read_error_management(request: Request):
     """エラー管理ページを表示する"""
-    # ファイル名を解析するための正規表現パターンを更新
-    return request.app.state.templates.TemplateResponse("error_management.html", {"request": request, "files": all_files, "file_details": file_details})
-
-@router.get("/prompts", response_class=HTMLResponse)
-async def prompts_editor(request: Request):
-    """プロンプト編集ページを表示する"""
     # 例: error_post_comment_user123_20231027-103000.png
     # 例: dry_run_engage-user_user123_20231027-103000.png
     # グループ: 1:type, 2:action, 3:details, 4:timestamp
@@ -180,10 +174,8 @@ async def prompts_editor(request: Request):
                 if match:
                     parsed_data = match.groupdict()
                     file_type = parsed_data.get('type', 'unknown')
-                    # アクション名をTASK_DEFINITIONSから日本語名に変換
                     action_tag = parsed_data.get('action')
                     action_name = TASK_DEFINITIONS.get(action_tag, {}).get('name_ja', action_tag)
-
                     details_display = parsed_data.get('details', '')
                     raw_timestamp = parsed_data['timestamp']
                     try:
@@ -191,13 +183,14 @@ async def prompts_editor(request: Request):
                         timestamp_display = dt_obj.strftime('%Y-%m-%d %H:%M')
                     except ValueError:
                         timestamp_display = f"不正な日時 ({raw_timestamp})"
-                else:
-                    # パース失敗時のフォールバック
-                    action_name = "不明なアクション"
 
                 file_details[filename] = {'action_name': action_name, 'timestamp': timestamp_display, 'type': file_type, 'details': details_display}
 
-    # 既存のエラー商品表示機能はそのままに、スクリーンショットの情報を追加で渡す
+    return request.app.state.templates.TemplateResponse("error_management.html", {"request": request, "files": all_files, "file_details": file_details})
+
+@router.get("/prompts", response_class=HTMLResponse)
+async def prompts_editor(request: Request):
+    """プロンプト編集ページを表示する"""
     return request.app.state.templates.TemplateResponse("prompts.html", {"request": request})
 
 # --- API Routes ---

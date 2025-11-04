@@ -170,9 +170,6 @@
         fetch('/api/prompts')
             .then(response => response.json())
             .then(data => {
-                // ★★★ ログ出力追加 ★★★
-                console.log("[/api/prompts] から受け取ったデータ:", JSON.parse(JSON.stringify(data)));
-
                 loadingIndicator.remove(); // ローディング表示を削除
                 if (data.error) {
                     throw new Error(data.error);
