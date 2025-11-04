@@ -1,51 +1,136 @@
 import logging
-import json
 import os
-import random
-from app.core.database import product_exists_by_url
+import json
+from playwright.sync_api import Page, Error
 from app.core.base_task import BaseTask
-from app.tasks.import_products import process_and_import_products
+from app.core.database import add_product_if_not_exists, get_db_connection
 from app.utils.selector_utils import convert_to_robust_selector
+
+logger = logging.getLogger(__name__)
 
 SOURCE_URLS_FILE = "db/source_urls.json"
 LAST_USED_URL_INDEX_FILE = "db/last_used_url_index.json"
 
 def get_next_source_url():
-    """
-    調達元のURLリストを読み込み、前回使用した次のURLを返す（ローテーション）。
-    """
     if not os.path.exists(SOURCE_URLS_FILE):
         logging.warning(f"URLリストファイルが見つかりません: {SOURCE_URLS_FILE}")
         return None
-
-    try:
-        with open(SOURCE_URLS_FILE, "r", encoding="utf-8") as f:
-            urls = json.load(f)
-        if not urls:
-            logging.warning("URLリストが空です。")
-            return None
-
-        last_index = -1
-        if os.path.exists(LAST_USED_URL_INDEX_FILE):
-            with open(LAST_USED_URL_INDEX_FILE, "r") as f:
-                last_index = json.load(f).get("last_index", -1)
-
-        next_index = (last_index + 1) % len(urls)
-
-        with open(LAST_USED_URL_INDEX_FILE, "w") as f:
-            json.dump({"last_index": next_index}, f)
-
-        return urls[next_index]
-
-    except (IOError, json.JSONDecodeError) as e:
-        logging.error(f"URLリストファイルの読み込みまたは書き込みに失敗しました: {e}")
+    with open(SOURCE_URLS_FILE, "r", encoding="utf-8") as f:
+        urls = json.load(f)
+    if not urls:
         return None
+    last_index = -1
+    if os.path.exists(LAST_USED_URL_INDEX_FILE):
+        with open(LAST_USED_URL_INDEX_FILE, "r") as f:
+            last_index = json.load(f).get("last_index", -1)
+    next_index = (last_index + 1) % len(urls)
+    with open(LAST_USED_URL_INDEX_FILE, "w") as f:
+        json.dump({"last_index": next_index}, f)
+    return urls[next_index]
+
+def product_exists_by_image_url(image_url: str) -> bool:
+    """指定されたimage_urlを持つ商品がDBに存在するか確認する"""
+    if not image_url:
+        return False
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT 1 FROM products WHERE image_url = ? LIMIT 1", (image_url,))
+    exists = cursor.fetchone() is not None
+    conn.close()
+    return exists
+
+
+def get_product_details_from_card(page: Page, image_src: str, required_scrolls: int) -> tuple[str | None, str | None]:
+    """
+    指定された画像srcを持つカードをクリックして商品詳細ページに遷移し、
+    「楽天市場で見る」ボタンのURLと商品説明文を取得して、元の一覧ページに戻る。
+    :param page: PlaywrightのPageオブジェクト
+    :param image_src: 処理対象カードの画像src文字列
+    :param required_scrolls: 高速スクロールを実行する回数
+    :return: (URL文字列, 商品説明文文字列) のタプル。失敗した場合は (None, None)。
+    """
+    page_transitioned = False
+    try:
+        # 画像のsrcをキーにして、処理対象のカードを特定する
+        card_locator = page.locator(f'div[class*="container--JAywt"]:has(img[src="{image_src}"])').first
+
+        # 必要な回数だけ先にスクロールする
+        if required_scrolls > 0:
+            logger.debug(f"  -> 目的のブロックに到達するため、{required_scrolls}回の高速スクロールを実行します。")
+            for i in range(required_scrolls):
+                if card_locator.is_visible():
+                    logger.debug(f"    -> 高速スクロールの途中でカードが見つかりました。({i+1}回目)")
+                    break # 途中で見つかったらスクロールを中断
+
+                page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                try:
+                    page.locator('div[aria-label="loading"]').wait_for(state="visible", timeout=1500)
+                    page.locator('div[aria-label="loading"]').wait_for(state="hidden", timeout=30000)
+                except Error:
+                    pass # スピナーが出なくても気にしない
+                page.wait_for_timeout(500) # 描画を待つ
+            logger.debug(f"  -> 高速スクロールが完了しました。")
+
+        # 対象カードが画面に表示されるまで、最大10回スクロールを試行
+        is_card_found = False
+        for attempt in range(10):
+            if card_locator.is_visible():
+                is_card_found = True
+                break
+            logger.debug(f"  -> カード({image_src[-20:]})が見つかりません。スクロールして探します... ({attempt + 1}/10)")
+
+            page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+            try:
+                page.locator('div[aria-label="loading"]').wait_for(state="visible", timeout=1500)
+                page.locator('div[aria-label="loading"]').wait_for(state="hidden", timeout=30000)
+                logger.debug("    -> ローディングスピナーによる読み込みを検知しました。")
+            except Error:
+                logger.debug("    -> スピナーは表示されませんでした。")
+                pass
+            page.wait_for_timeout(1000) # 描画の安定を待つ
+
+        if not is_card_found:
+            logger.error(f"  -> 10回スクロールを試みましたが、カード({image_src[-20:]})が見つかりませんでした。")
+            return None, None
+
+        # 画像リンクをクリックして商品詳細ページに遷移
+        card_locator.locator('a[class*="link-image--"]').first.click()
+        page.wait_for_load_state("domcontentloaded", timeout=20000)
+        page_transitioned = True
+
+        # 「楽天市場で見る」ボタンのリンクを取得
+        rakuten_link_selector = convert_to_robust_selector('div[class*="ichiba-in-page--"] a')
+        rakuten_link_element = page.locator(rakuten_link_selector).first
+        rakuten_link_element.wait_for(state="visible", timeout=15000)
+        rakuten_url = rakuten_link_element.get_attribute('href')
+        if rakuten_url:
+            logger.debug(f"    -> 楽天URLの取得成功: {rakuten_url[:40]}...")
+        else:
+            logger.warning("    -> 楽天URLの取得に失敗しました。")
+
+        # 商品説明文を取得
+        parent_selector = convert_to_robust_selector('div[class*="word-break-break-all--"]')
+        description_selector = convert_to_robust_selector('div[class*="social-text-area--"]')
+        detail_description_element = page.locator(f'{parent_selector} {description_selector}').first
+        detail_description = None
+        if detail_description_element.count() > 0:
+            detail_description = detail_description_element.text_content().strip()
+            logger.debug(f"    -> 商品説明の取得成功: {detail_description}")
+        else:
+            logger.warning("    -> 商品説明の取得に失敗しました。要素が見つかりません。")
+
+        return rakuten_url, detail_description
+
+    except Error as e:
+        logger.error(f"URL取得処理中にエラーが発生しました: {e}")
+        return None, None
+    finally:
+        if page_transitioned:
+            page.go_back(wait_until="domcontentloaded")
+            page.wait_for_timeout(2000)
 
 class ProcureFromUserPageTask(BaseTask):
-    """
-    指定されたユーザーページを巡回して商品を調達するタスク。
-    """
-    def __init__(self, count: int = 5):
+    def __init__(self, count: int = 50):
         super().__init__(count=count)
         self.action_name = "ユーザーページから商品を調達"
         self.use_auth_profile = False # 認証プロファイルは不要
@@ -54,65 +139,122 @@ class ProcureFromUserPageTask(BaseTask):
         source_url = get_next_source_url()
         if not source_url:
             logging.error("調達元のURLを取得できませんでした。タスクを中止します。")
-            return
+            return False
 
-        logging.info(f"ユーザーページ「{source_url}」から商品調達を開始します。")
-        logging.debug(f"商品調達の目標件数: {self.target_count}件")
+        logger.info(f"調達元URL: {source_url}")
+        logger.info(f"目標件数: {self.target_count}件")
 
-        items = []
         page = self.page
+        globally_processed_srcs = set()
+        newly_procured_items = []
+        block_scroll_count = 0
+        consecutive_failures = 0
+        MAX_CONSECUTIVE_FAILURES = 5
+
         try:
-            page.goto(source_url, wait_until="domcontentloaded", timeout=60000)
-            page_title = page.title() # ページタイトルを取得
-            logging.info(f"ページタイトルを取得しました: {page_title}")
+            page.goto(source_url.strip(), wait_until="domcontentloaded", timeout=60000)
+            page_title = page.title()
+            logger.info(f"ページタイトルを取得しました: {page_title}")
 
-            # ユーザーページの商品カードセレクタ
+            spinner_selector = 'div[aria-label="loading"]'
             card_selector = convert_to_robust_selector('div[class*="container--JAywt"]')
-            product_cards = page.locator(card_selector)
-            
-            # ページ上のカードが読み込まれるのを待つ
-            product_cards.first.wait_for(state="visible", timeout=30000)
 
-            all_cards = product_cards.all()
-            random.shuffle(all_cards) # 毎回同じ商品を取得しないようにシャッフル
+            logger.debug("最初の商品カードが表示されるのを待ちます...")
+            page.locator(card_selector).first.wait_for(state="visible", timeout=30000)
+            page.wait_for_timeout(2000)
 
-            logging.debug(f"ページから {len(all_cards)} 件の商品が見つかりました。")
+            scroll_count = 0
+            max_scroll_attempts = 20
 
-            for card in all_cards:
-                if len(items) >= self.target_count:
-                    break
+            while len(newly_procured_items) < self.target_count and scroll_count < max_scroll_attempts:
+                logger.debug(f"--- ループ開始 (現在 {len(newly_procured_items)}/{self.target_count} 件) ---")
 
-                image_link_selector = convert_to_robust_selector("a.link-image--15_8Q")
-                url_element = card.locator(image_link_selector).first
-                image_element = card.locator("img").first
-
-                if url_element.count() and image_element.count():
-                    page_url = url_element.get_attribute('href')
-                    if not page_url.startswith("http"):
-                        page_url = f"https://room.rakuten.co.jp{page_url}"
-
-                    if product_exists_by_url(page_url):
-                        logging.debug(f"  スキップ(DB重複): この商品は既にDBに存在します。 URL: {page_url[:50]}...")
+                # 画面上の未処理カードを収集
+                current_visible_cards = page.locator(card_selector).all()
+                srcs_to_process_this_time = []
+                for card in current_visible_cards:
+                    try:
+                        if not card.is_visible(): continue
+                        image_src = card.locator('img').first.get_attribute('src')
+                        if image_src and image_src not in globally_processed_srcs:
+                            srcs_to_process_this_time.append(image_src)
+                    except Error:
                         continue
+                logger.debug(f"  -> {len(srcs_to_process_this_time)} 件の未処理カードを画面上で発見しました。")
 
-                    item_data = {"item_description": image_element.get_attribute('alt'), "page_url": page_url, "image_url": image_element.get_attribute('src'), "procurement_keyword": f"ユーザー巡回 ({page_title})"}
-                    items.append(item_data)
-                    logging.debug(f"  [{len(items)}/{self.target_count}] 商品情報を収集: {item_data['item_description'][:30]}...")
-                else:
-                    logging.warning("  商品カードから必要な情報（URL、画像）を取得できませんでした。")
+                # 未処理カードを1件ずつ処理
+                if srcs_to_process_this_time:
+                    for image_src in srcs_to_process_this_time:
+                        if len(newly_procured_items) >= self.target_count:
+                            logger.info("目標件数に達したため、処理を中断します。")
+                            break
+
+                        globally_processed_srcs.add(image_src)
+
+                        if product_exists_by_image_url(image_src):
+                            logger.debug(f"  -> スキップ(DB image_url重複): ...{image_src[-30:]}")
+                            continue
+
+                        logger.debug(f"  -> 処理試行: ...{image_src[-30:]}")
+                        rakuten_url, detail_description = get_product_details_from_card(page, image_src, block_scroll_count)
+
+                        if not rakuten_url:
+                            consecutive_failures += 1
+                            logger.warning(f"     -> URL取得失敗。このカードはスキップされます。")
+                            if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
+                                logger.error(f"カードの取得失敗が{MAX_CONSECUTIVE_FAILURES}回連続で発生したため、処理を中断します。")
+                                newly_procured_items.append({"FORCE_EXIT": True})
+                                break
+                            continue
+
+                        consecutive_failures = 0
+                        item_data = {
+                            "name": detail_description,
+                            "url": rakuten_url,
+                            "image_url": image_src,
+                            "procurement_keyword": f"ユーザー巡回 ({page_title})"
+                        }
+                        if add_product_if_not_exists(**item_data):
+                            newly_procured_items.append(item_data)
+                            logger.info(f"  🎉 [{len(newly_procured_items)}/{self.target_count}] 新規商品獲得＆DB登録！ -> {str(item_data['name'])[:20]}... (URL: {item_data['url'][:40]}...)")
+
+                # スクロール処理
+                if len(newly_procured_items) < self.target_count:
+                    if any(item.get("FORCE_EXIT") for item in newly_procured_items):
+                        newly_procured_items = [item for item in newly_procured_items if not item.get("FORCE_EXIT")]
+                        break
+
+                    logger.debug("新しいカードを読み込むため、スクロール処理に移行します。")
+                    page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                    try:
+                        page.locator(spinner_selector).wait_for(state="visible", timeout=5000)
+                        page.locator(spinner_selector).wait_for(state="hidden", timeout=30000)
+                        block_scroll_count += 1
+                        scroll_count += 1
+                        page.wait_for_timeout(2000)
+                    except Error:
+                        logger.warning("スピナーが表示されませんでした。ページの終端か、読み込みに時間がかかっている可能性があります。")
+                        scroll_count += 1
+                        if scroll_count >= max_scroll_attempts:
+                            logger.warning("最大スクロール回数に達しました。")
+                            break
 
         except Exception as e:
-            logging.error(f"ユーザーページのスクレイピング中にエラーが発生しました: {e}")
+            logger.error(f"ユーザーページのスクレイピング中に予期せぬエラーが発生しました: {e}", exc_info=True)
+            return False
+        finally:
+            added_count = len(newly_procured_items)
+            if added_count > 0:
+                logger.info(f"[Action Summary] name=商品調達, count={added_count}")
+            logger.info(f"--- ユーザーページ巡回調達タスクを完了します ---")
+            logger.info(f"最終的な新規獲得商品数: {added_count}件")
 
-        if items:
-            logging.debug(f"収集した {len(items)} 件の商品をデータベースに登録します。")
-            added_count, skipped_count = process_and_import_products(items)
-            logging.info(f"商品登録処理が完了しました。新規追加: {added_count}件, スキップ: {skipped_count}件")
-            logging.info(f"[Action Summary] name=商品調達(ユーザー巡回), count={added_count}")
-        else:
-            logging.info("指定されたユーザーページから調達できる新しい商品がありませんでした。")
+        return True
 
-def run_procure_from_user_page(count: int = 5):
-    """ラッパー関数"""
+
+def run_procure_from_user_page(count: int = 50, **kwargs):
+    """
+    ProcureFromUserPageTask のラッパー関数。
+    """
     task = ProcureFromUserPageTask(count=count)
     return task.run()

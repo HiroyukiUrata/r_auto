@@ -9,6 +9,7 @@ from app.tasks import (
     run_backup_database,
     run_restore_auth_state,
 )
+from app.tasks.procure_from_user_page import run_procure_from_user_page
 from app.tasks.manual_test import run_manual_test
 
 from app.tasks.commit_stale_actions import run_commit_stale_actions
@@ -179,6 +180,14 @@ TASK_DEFINITIONS = {
         "is_debug": True,
         "description": "バックアップから認証プロファイルを復元します。ログインが切れた際に使用します。他のブラウザタスクが実行中でないことを確認してください。",
         "order": 41,
+    },
+    "procure-from-user-page": {
+        "name_ja": "ユーザーページから商品を調達",
+        "function": run_procure_from_user_page,
+        "is_debug": False,
+        "show_in_schedule": False, # フローからのみ呼び出す
+        "description": "指定されたユーザーページを巡回して商品を調達します。",
+        "order": 999,
     },
     "check-login-status": {
         "name_ja": "ログイン状態チェック",

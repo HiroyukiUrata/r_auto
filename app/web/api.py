@@ -1023,15 +1023,14 @@ def _run_task_internal(tag: str, is_part_of_flow: bool, **kwargs):
                             if k in sig.parameters
                         }
                         task_result = sub_task_func(**valid_args)
-                        if task_result is False: # 明示的にFalseの場合のみ失敗とみなす
-                            logging.error(f"フロー内のタスク「{sub_task_def['name_ja']}」が失敗しました。フローを中断します。")
-                            break
                     except Exception as e:
                         # 本番環境(simple)ではトレースバックを抑制し、開発環境(detailed)では表示する
-                        is_detailed_log = os.getenv('LOG_FORMAT', 'detailed').lower() == 'detailed'
-                        logging.error(f"フロー内のタスク「{sub_task_def['name_ja']}」実行中に予期せぬエラーが発生しました: {e}", exc_info=is_detailed_log)
-                        logging.error("フローの実行を中断します。")
-                        break
+                        logging.error(f"フロー内のタスク「{sub_task_def['name_ja']}」実行中に予期せぬエラーが発生しました: {e}", exc_info=os.getenv('LOG_FORMAT', 'detailed').lower() == 'detailed')
+                        task_result = False
+
+                    if task_result is False: # 明示的にFalseの場合のみ失敗とみなす
+                        logging.error(f"フロー内のタスク「{sub_task_def['name_ja']}」が失敗しました。フローを中断します。")
+                        break # forループを抜ける
                 else:
                     logging.error(f"フロー内のタスク「{sub_task_id}」が見つかりません。フローを中断します。")
                     break
