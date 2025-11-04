@@ -51,7 +51,7 @@
             </button>
         </div>
         <!-- スマホ表示時のみ凡例アイコンを表示 -->
-        <i class="bi bi-info-circle d-inline-block d-md-none text-secondary ms-2" 
+        <i id="bulk-action-legend" class="bi bi-info-circle d-inline-block d-md-none text-secondary ms-2" 
            style="cursor: pointer; font-size: 1.2rem;"
            data-bs-toggle="tooltip" 
            data-bs-html="true"
@@ -61,28 +61,28 @@
             <input class="form-check-input" type="checkbox" role="switch" id="show-all-users-switch" onchange="updateViewOptions(); fetchUsers();">
             <label class="form-check-label small" for="show-all-users-switch">
                 全ユーザー表示
-                <i class="bi bi-info-circle" data-bs-toggle="tooltip" title="ONにすると、DBに存在する全ユーザーを最新アクション順に表示します（デバッグ用）"></i>
             </label>
-        </div>
-        <div class="ms-2" id="sort-options-container" style="display: none;">
-            <select class="form-select form-select-sm" id="sort-select" onchange="fetchUsers()">
-                <option value="recent_action" selected>最新アクション順</option>
-                <option value="commented">投稿済ユーザー</option>
-                <option value="like_count_desc">いいね数が多い順</option>
-                <option value="commented_at_desc">最終コメントが新しい順</option>
-                <option value="commented_at_asc">最終コメントが古い順</option>
-            </select>
         </div>
     </div>
 </div>
 
-<div id="search-container" style="display: none;">
-    <div class="row mb-3">
-        <div class="col-md-6">
-            <div class="search-box">
+<!-- 全ユーザー表示時の検索・ソート用コンテナ -->
+<div id="filter-container" class="mb-3" style="display: none;">
+    <div class="row g-2">
+        <div class="col-7">
+            <div class="search-box h-100">
                 <i class="bi bi-search"></i>
-                <input type="search" id="user-search-input" class="form-control" placeholder="ユーザー名で検索...">
+                <input type="search" id="user-search-input" class="form-control h-100" placeholder="ユーザー名で検索...">
             </div>
+        </div>
+        <div class="col-5">
+            <select class="form-select" id="sort-select" onchange="fetchUsers()">
+                <option value="recent_action" selected>🕒新しい順</option>
+                <option value="commented">💬済ユーザー</option>
+                <option value="like_count_desc">❤️多い順</option>
+                <option value="commented_at_desc">💬新しい順</option>
+                <option value="commented_at_asc">💬古い順</option>
+            </select>
         </div>
     </div>
 </div>
@@ -455,13 +455,13 @@
 
     function updateViewOptions() {
         const showAll = document.getElementById('show-all-users-switch').checked;
-        const sortContainer = document.getElementById('sort-options-container');
-        const searchContainer = document.getElementById('search-container');
+        const filterContainer = document.getElementById('filter-container');
         const bulkActionButtons = document.getElementById('bulk-action-buttons');
+        const legendIcon = document.getElementById('bulk-action-legend');
 
-        sortContainer.style.display = showAll ? 'block' : 'none';
-        searchContainer.style.display = showAll ? 'block' : 'none';
-        bulkActionButtons.style.display = showAll ? 'none' : 'inline-flex';
+        filterContainer.style.display = showAll ? 'block' : 'none';
+        bulkActionButtons.classList.toggle('d-none', showAll);
+        legendIcon.classList.toggle('d-none', showAll);
     }
 
     function fetchUsers() {
