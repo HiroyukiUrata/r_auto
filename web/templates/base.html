@@ -16,6 +16,14 @@
     <!-- Font Awesomeを追加 -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
     {% block styles %}{% endblock %}
+    <style>
+        /* ナビゲーションバーのメニュー項目が多くなっても収まるように調整 */
+        .navbar-nav .nav-link {
+            padding-right: 0.7rem !important; /* 左右のパディングを少し詰める */
+            padding-left: 0.7rem !important;
+            font-size: 0.9rem; /* フォントサイズを少し小さくする */
+        }
+    </style>
 </head>
 <body>
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark sticky-top">
