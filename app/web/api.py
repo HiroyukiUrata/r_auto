@@ -1128,8 +1128,8 @@ async def save_prompt_profile(prompt_key: str, request: ProfileNameRequest):
 
     # prompt_keyからファイル名を取得するマッピング
     prompt_filenames = {
-        "caption_prompt": "caption_prompt.txt",
-        "user_comment_body_prompt": "user_comment_body_prompt.txt"
+        "create-caption-flow": "caption_prompt.txt",
+        "create-comment": "user_comment_body_prompt.txt"
     }
     source_filename = prompt_filenames.get(prompt_key)
     if not source_filename:
