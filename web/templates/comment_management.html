@@ -18,6 +18,17 @@
     .search-box .form-control {
         padding-left: 2.5rem;
     }
+    /* スマートフォン表示でヘッダーを非表示にする */
+    @media (max-width: 767.98px) {
+        thead {
+            display: none;
+        }
+        /* 各列の幅を再調整 */
+        tbody tr td:nth-child(1) { width: 17%; } /* アイコン */
+        tbody tr td:nth-child(2) { width: 55%; } /* ユーザー情報 */
+        tbody tr td:nth-child(3) { width: 18%; } /* アクション */
+        tbody tr td:nth-child(4) { width: 10%; } /* 詳細 */
+    }
 </style>
 {% endblock %}
 
@@ -25,18 +36,18 @@
 <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
     <h1 class="h2">💬 コメント投稿管理</h1>
     <div class="btn-toolbar mb-2 mb-md-0">
-        <div class="btn-group me-2" id="bulk-action-buttons">
-            <button type="button" class="btn btn-sm btn-outline-primary" id="bulk-execute-btn" onclick="bulkExecute()" disabled>
-                <i class="bi bi-send-fill me-1"></i>選択したユーザーに投稿
-            </button>
-            <button type="button" class="btn btn-sm btn-outline-info" id="bulk-dryrun-btn" onclick="bulkDryRun()" disabled>
-                <i class="bi bi-send-slash-fill me-1"></i>投稿予行
+        <div class="btn-group flex-wrap me-2" id="bulk-action-buttons">
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="select-all-toggle-btn" onclick="toggleSelectAll()">
+                <i class="bi bi-check-square me-1"></i>すべて選択
             </button>
             <button type="button" class="btn btn-sm btn-outline-secondary" id="bulk-skip-btn" onclick="bulkSkip()" disabled>
                 <i class="bi bi-skip-forward-fill me-1"></i>選択したユーザーをスキップ
             </button>
-            <button type="button" class="btn btn-sm btn-outline-secondary" id="select-all-toggle-btn" onclick="toggleSelectAll()">
-                <i class="bi bi-check-square me-1"></i>すべて選択
+            <button type="button" class="btn btn-sm btn-outline-info" id="bulk-dryrun-btn" onclick="bulkDryRun()" disabled>
+                <i class="bi bi-send-slash-fill me-1"></i>投稿予行
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-primary" id="bulk-execute-btn" onclick="bulkExecute()" disabled>
+                <i class="bi bi-send-fill me-1"></i>選択したユーザーに投稿
             </button>
         </div>
         <div class="form-check form-switch ms-3">
@@ -94,35 +105,42 @@
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
-        <h6 class="fw-bold">ユーザー名</h6>
-        <p id="modal-user-name"></p>
-        <h6 class="fw-bold mt-3">生成済みコメント</h6>
-        <textarea class="form-control" id="modal-comment-text" rows="6" style="white-space: pre-wrap;"></textarea>
-        <h6 class="fw-bold mt-3">
-            <a class="text-decoration-none text-dark" data-bs-toggle="collapse" href="#collapseFullData" role="button" aria-expanded="false" aria-controls="collapseFullData">
-                全データ <i class="bi bi-chevron-down small"></i>
-            </a>
-        </h6>
-        <div class="collapse" id="collapseFullData">
-            <pre><code id="modal-full-data" class="bg-light p-2 rounded" style="font-size: 0.8rem; display: block; min-height: 100px;"></code></pre>
+        <div class="d-flex justify-content-between align-items-center">
+            <h6 class="fw-bold mb-0">ユーザー名</h6>
+            <a href="#" id="modal-profile-link" class="btn btn-sm btn-outline-primary" target="_blank" rel="noopener noreferrer" style="display: none;" title="プロフィールを開く"><i class="bi bi-box-arrow-up-right"></i></a>
         </div>
-        <button class="btn btn-sm btn-outline-secondary mt-2" onclick="copyFullData('modal-full-data')">
-            <i class="bi bi-clipboard me-1"></i>クリップボードにコピー
-        </button>
+        <p id="modal-user-name"></p>
+        <div class="d-flex justify-content-between align-items-center mt-3">
+            <h6 class="fw-bold mb-0">生成済みコメント</h6>
+            <div class="btn-group">
+                <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" id="templateDropdown" data-bs-toggle="dropdown" aria-expanded="false" title="テンプレートを適用">
+                    <i class="bi bi-card-text"></i>
+                </button>
+                <ul class="dropdown-menu" aria-labelledby="templateDropdown" id="comment-template-list"></ul>
+                <button type="button" class="btn btn-sm btn-outline-success" id="modal-save-comment-btn" onclick="updateComment()" title="コメントを保存"><i class="bi bi-save-fill"></i></button>
+            </div>
+        </div>
+        <textarea class="form-control" id="modal-comment-text" rows="6" style="white-space: pre-wrap;"></textarea>
+        <div class="d-flex justify-content-between align-items-start mt-3">
+            <h6 class="fw-bold mb-0">
+                <a class="text-decoration-none text-dark" data-bs-toggle="collapse" href="#collapseFullData" role="button" aria-expanded="false" aria-controls="collapseFullData">
+                    全データ <i class="bi bi-chevron-down small"></i>
+                </a>
+            </h6>
+        </div>
+        <div class="collapse" id="collapseFullData">
+            <div style="position: relative;">
+                <pre><code id="modal-full-data" class="bg-light p-2 rounded" style="font-size: 0.8rem; display: block; min-height: 100px;"></code></pre>
+                <button class="btn btn-outline-secondary d-none d-md-block" onclick="copyFullData('modal-full-data')" title="クリップボードにコピー" style="position: absolute; top: 5px; right: 5px; padding: .1rem .4rem; font-size: .8rem;">
+                <button class="btn btn-outline-secondary" onclick="copyFullData('modal-full-data')" title="テキストを全選択" style="position: absolute; top: 5px; right: 5px; padding: .1rem .4rem; font-size: .8rem;">
+                    <i class="bi bi-clipboard"></i>
+                </button>
+            </div>
+        </div>
       </div>
       <div class="modal-footer">
-        <div class="dropdown me-auto">
-            <button class="btn btn-secondary dropdown-toggle" type="button" id="templateDropdown" data-bs-toggle="dropdown" aria-expanded="false">
-                <i class="bi bi-card-text me-1"></i>テンプレート
-            </button>
-            <ul class="dropdown-menu" aria-labelledby="templateDropdown" id="comment-template-list">
-                <!-- テンプレートはJSでここに挿入されます -->
-            </ul>
-        </div>
-        <button type="button" class="btn btn-success" id="modal-save-comment-btn" onclick="updateComment()"><i class="bi bi-save-fill me-1"></i>コメントを保存</button>
-        <a href="#" id="modal-profile-link" class="btn btn-primary" target="_blank" rel="noopener noreferrer" style="display: none;"><i class="bi bi-box-arrow-up-right me-1"></i>プロフィールを開く</a>
+        <!-- 「投稿済ページへ」と「閉じる」ボタンのみフッターに残す -->
         <a href="#" id="modal-last-comment-link" class="btn btn-info" target="_blank" rel="noopener noreferrer" style="display: none;"><i class="bi bi-chat-left-text-fill me-1"></i>投稿済ページへ</a>
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">閉じる</button>
       </div>
     </div>
   </div>
@@ -212,21 +230,33 @@
     let onModalHiddenCallback = null;
 
     function copyFullData(elementId) {
-        const dataText = document.getElementById(elementId).textContent;
-        navigator.clipboard.writeText(dataText).then(() => {
-            // トースト通知を表示する (base.htmlにshowToast関数があると仮定)
-            if (typeof showToast === 'function') {
-                showToast('コピー完了', '全データがクリップボードにコピーされました。');
-            } else {
-                alert('クリップボードにコピーしました。');
-            }
-        }).catch(err => {
-            console.error('クリップボードへのコピーに失敗しました: ', err);
-        });
+        const elementToSelect = document.getElementById(elementId);
+
+        // テキストを選択状態にする
+        const range = document.createRange();
+        range.selectNodeContents(elementToSelect);
+
+        const selection = window.getSelection();
+        selection.removeAllRanges(); // 既存の選択範囲をクリア
+        selection.addRange(range);   // 新しい範囲を選択
+
+        // ユーザーに手動コピーを促す
+        if (typeof showToast === 'function') {
+            showToast('テキスト選択完了', 'テキストを選択しました。手動でコピーしてください。');
+        } else {
+            alert('テキストを選択しました。手動でコピーしてください。');
+        }
     }
 
     function showInfoModal(element) {
         event.stopPropagation();
+
+        // モーダルを開く前に、アコーディオンを閉じた状態にリセットする
+        const collapseElement = document.getElementById('collapseFullData');
+        if (collapseElement.classList.contains('show')) {
+            collapseElement.classList.remove('show');
+        }
+
         const user = JSON.parse(element.closest('tr').dataset.user);
         document.getElementById('modal-user-name').textContent = user.name;
         // <textarea> に値を設定するために .value を使用
@@ -267,8 +297,9 @@
         }
 
         // ボタンをローディング状態にする
+        const originalIcon = saveBtn.innerHTML;
         saveBtn.disabled = true;
-        saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 保存中...';
+        saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>';
 
         try {
             const response = await fetch('/api/users/update-comment', {
@@ -293,15 +324,17 @@
                     row.querySelector('.text-muted.small').textContent = newComment;
                     row.querySelector('.text-muted.small').title = newComment;
                 }
+                // ボタンの状態をここで元に戻す
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = originalIcon;
                 onModalHiddenCallback = null; // 一度実行したらコールバックをリセット
             };
             infoModalInstance.hide();
         } catch (error) {
             alert(`エラー: ${error.message}`);
-        } finally {
-            // ボタンの状態を元に戻す
+            // エラー時もボタンの状態を元に戻す
             saveBtn.disabled = false;
-            saveBtn.innerHTML = '<i class="bi bi-save-fill me-1"></i>コメントを保存';
+            saveBtn.innerHTML = originalIcon;
         }
     }
 
