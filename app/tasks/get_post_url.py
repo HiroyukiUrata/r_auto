@@ -3,7 +3,7 @@ import traceback
 import os
 from playwright.sync_api import TimeoutError
 from app.core.base_task import BaseTask
-from app.core.database import get_products_for_post_url_acquisition, update_post_url, update_product_status
+from app.core.database import get_products_for_post_url_acquisition, update_post_url, update_product_status, product_exists_by_post_url
 
 class GetPostUrlTask(BaseTask):
     """
@@ -39,19 +39,26 @@ class GetPostUrlTask(BaseTask):
                 post_url = post_link_locator.get_attribute('href')
 
                 if post_url:
-                    logging.debug(f"  -> 投稿URL取得成功: {post_url}")
-                    update_post_url(product['id'], post_url)
-                    success_count += 1
+                    # DB内でpost_urlが重複していないかチェック
+                    if product_exists_by_post_url(post_url):
+                        error_msg = f"取得した投稿URLがDB内で重複しています: {post_url}"
+                        logging.error(f"  -> {error_msg}")
+                        update_product_status(product['id'], 'エラー', error_message=error_msg)
+                        error_count += 1
+                    else:
+                        logging.debug(f"  -> 投稿URL取得成功: {post_url}")
+                        update_post_url(product['id'], post_url)
+                        success_count += 1
                 else:
-                    logging.warning(f"  -> 商品ID: {product['id']} の投稿URLが見つかりませんでした。ステータスを「エラー」に更新します。")
-                    update_product_status(product['id'], 'エラー')
+                    update_product_status(product['id'], 'エラー', error_message="投稿URLの取得に失敗しました。")
                     error_count += 1
 
             except Exception as e:
                 # 本番環境(simple)ではトレースバックを抑制し、開発環境(detailed)では表示する
                 is_detailed_log = os.getenv('LOG_FORMAT', 'detailed').lower() == 'detailed'
-                logging.error(f"  -> 商品ID: {product['id']} の処理中に予期せぬ例外が発生しました: {e}", exc_info=is_detailed_log)
-                update_product_status(product['id'], 'エラー')
+                error_msg = f"処理中に予期せぬ例外が発生しました: {str(e).splitlines()[0]}"
+                logging.error(f"  -> 商品ID: {product['id']} の{error_msg}", exc_info=is_detailed_log)
+                update_product_status(product['id'], 'エラー', error_message=error_msg)
                 error_count += 1
             finally:
                 # 1商品ごとの処理が終わったら、必ずページを閉じる

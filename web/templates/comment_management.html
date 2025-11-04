@@ -540,7 +540,7 @@
                                          new Date(user.comment_generated_at) <= new Date(user.last_commented_at);
 
                     if (isCommentOld) {
-                        commentClass += ' text-opacity-50'; // 古いコメントを半透明にする
+                        commentClass += ' text-decoration-line-through'; // 古いコメントに取り消し線を追加
                         commentTitle = `（投稿済み）${commentTitle}`;
                     }
 

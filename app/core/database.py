@@ -407,6 +407,19 @@ def product_exists_by_url(url: str) -> bool:
     finally:
         conn.close()
 
+def product_exists_by_post_url(post_url: str) -> bool:
+    """指定されたpost_urlを持つ商品がデータベースに存在するかどうかをチェックする。"""
+    if not post_url:
+        return False
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        # post_urlがNULLでないレコードも考慮
+        cursor.execute("SELECT 1 FROM products WHERE post_url = ? AND post_url IS NOT NULL LIMIT 1", (post_url,))
+        return cursor.fetchone() is not None
+    finally:
+        conn.close()
+
 def import_products(products_data: list[dict]):
     """
     複数の商品データを一括でデータベースにインポートする。
@@ -812,25 +825,29 @@ def get_stale_user_ids_for_commit(hours: int = 24) -> list[str]:
 def _add_engagement_type_to_users(users: list[dict]) -> list[dict]:
     """ユーザーデータのリストにエンゲージメントタイプを追加するヘルパー関数"""
     three_days_ago = datetime.now() - timedelta(days=3)
+    processed_users = []
     for user in users:
-        user['engagement_type'] = 'none' # デフォルト
-        last_commented_at_str = user.get('last_commented_at')
-        recent_like_count = user.get('recent_like_count', 0)
+        user['engagement_type'] = 'none'  # デフォルト
 
-        # 新規コメント対象か？
-        if not last_commented_at_str and recent_like_count >= 3:
+        # コメント対象(💬)の条件:
+        # 1. コメント本文(comment_text)が存在する
+        # 2. かつ、まだそのコメントを投稿していない
+        #    - last_commented_at が NULL (一度も投稿していない)
+        #    - または、comment_generated_at が last_commented_at より新しい (新しいコメントが生成された)
+        is_comment_target = user.get('comment_text') and (not user.get('last_commented_at') or (user.get('comment_generated_at') and user.get('last_commented_at') < user.get('comment_generated_at')))
+
+        if is_comment_target:
             user['engagement_type'] = 'comment'
-            continue
+        # いいね返しのみ対象(❤️)の条件:
+        # コメント対象ではなく、かつ最近のいいねが1件以上ある
+        elif user.get('recent_like_count', 0) >= 3:
+            user['engagement_type'] = 'like_only'
 
-        if last_commented_at_str:
-            last_commented_at = datetime.fromisoformat(last_commented_at_str)
-            # 再コメント対象か？
-            if last_commented_at < three_days_ago and recent_like_count >= 5:
-                user['engagement_type'] = 'comment'
-            # いいね返しのみ対象か？
-            elif recent_like_count >= 3:
-                user['engagement_type'] = 'like_only'
-    return users
+        # どちらかの対象であればリストに追加
+        if user['engagement_type'] != 'none':
+            processed_users.append(user)
+
+    return processed_users
 
 def get_users_for_commenting(limit: int = 10) -> list[dict]:
     """
@@ -845,39 +862,25 @@ def get_users_for_commenting(limit: int = 10) -> list[dict]:
     :param limit: 取得するユーザーの最大数
     :return: ユーザーデータの辞書のリスト
     """
-    three_days_ago = (datetime.now() - timedelta(days=3)).isoformat()
-    twenty_four_hours_ago = (datetime.now() - timedelta(hours=24)).isoformat()
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
-        query = f"""
+        # コメント対象またはいいね返しの可能性があるユーザーを幅広く取得
+        # - 最近のアクションがある (recent_like_count > 0)
+        # - または、コメントが生成されている (comment_text IS NOT NULL)
+        query = """
             SELECT * FROM user_engagement
             WHERE
-                -- 必須条件: 未処理のアクションがあり、タイムスタンプが存在する
-                (recent_like_count > 0 OR recent_collect_count > 0 OR recent_comment_count > 0)
-                AND recent_action_timestamp IS NOT NULL AND (
-                    -- パターンA: コメント対象ユーザー（コメント生成済み）
-                    (comment_text IS NOT NULL AND comment_text != '' AND (
-                        -- A-1: 新規コメント対象 (24時間以内のアクション)
-                        (last_commented_at IS NULL AND recent_action_timestamp >= '{twenty_four_hours_ago}')
-                        OR
-                        -- A-2: 再コメント対象 (3日以上経過 & 5いいね以上)
-                        (last_commented_at IS NOT NULL AND last_commented_at < '{three_days_ago}' AND recent_like_count >= 5)
-                    ))
-                    OR
-                    -- パターンB: コメント対象ユーザー（コメント未生成でもOK）
-                    (last_commented_at IS NULL AND recent_like_count >= 3)
-                    OR
-                    -- パターンC: いいね返しのみ対象ユーザー
-                    (last_commented_at IS NOT NULL AND last_commented_at >= '{three_days_ago}' AND recent_like_count >= 3)
-                )
+                (recent_like_count > 0) OR (comment_text IS NOT NULL AND comment_text != '')
             ORDER BY recent_action_timestamp DESC
-            LIMIT ?
         """
-        cursor.execute(query, (limit,))
-        users = [dict(row) for row in cursor.fetchall()]
-        users = _add_engagement_type_to_users(users)
-        return users
+        cursor.execute(query)
+        potential_users = [dict(row) for row in cursor.fetchall()]
+
+        # ヘルパー関数で engagement_type を判定し、対象外のユーザーを除外
+        target_users = _add_engagement_type_to_users(potential_users)
+
+        return target_users[:limit]
     finally:
         conn.close()
 
