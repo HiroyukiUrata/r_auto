@@ -8,12 +8,6 @@
         font-family: 'Menlo', 'Monaco', 'Consolas', "Courier New", monospace;
         font-size: 0.95rem;
         line-height: 1.6;
-        height: 65vh; /* ビューポートの高さの65%を確保 */
-    }
-    .tab-content, .tab-pane, .card, .card-body {
-        height: 100%;
-        display: flex;
-        flex-direction: column;
     }
     .card-header {
         background-color: #f8f9fa;
@@ -26,9 +20,6 @@
     <h1 class="h2">📝 プロンプト編集</h1>
 </div>
 
-<p class="text-muted">
-    AIがタスクを実行する際に使用する指示（プロンプト）をここで編集できます。変更は「保存」ボタンを押すと即座に反映されます。
-</p>
 
 <!-- Nav tabs -->
 <ul class="nav nav-tabs" id="promptTabs" role="tablist">
@@ -44,19 +35,107 @@
     <!-- タブコンテンツはここにJavaScriptで挿入されます -->
 </div>
 
+<!-- テスト実行用モーダル -->
+<div class="modal fade" id="testPromptModal" tabindex="-1" aria-labelledby="testPromptModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="testPromptModalLabel">プロンプト テスト実行</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row">
+            <div class="col-md-6">
+                <h6><i class="bi bi-file-earmark-text me-1"></i>テスト用データ (JSON)</h6>
+                <p class="text-muted small">ここにテストしたいデータをJSON形式で入力してください。プロンプトに応じて適切な形式のデータを複数件（配列形式で）入力できます。</p>
+                <textarea id="test-data-input" class="form-control" rows="15" style="font-family: monospace; font-size: 0.8rem;"></textarea>
+            </div>
+            <div class="col-md-6">
+                <h6><i class="bi bi-robot me-1"></i>AIによる生成結果</h6>
+                <p class="text-muted small">&nbsp;</p> <!-- 高さを合わせるためのダミー -->
+                <div id="test-result-output" class="bg-light p-2 rounded" style="height: calc(100% - 50px); overflow-y: auto; font-family: monospace; font-size: 0.8rem; white-space: pre-wrap;">
+                    ここに結果が表示されます。
+                </div>
+            </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <input type="hidden" id="test-prompt-key-hidden">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">閉じる</button>
+        <button type="button" class="btn btn-primary" id="run-test-btn" onclick="runPromptTest()">
+            <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+            <i class="bi bi-play-fill me-1"></i>テスト実行
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 
 {% endblock %}
 
 {% block scripts %}
 <script>
+    let testPromptModal = null;
+
+    const createCaptionSampleData = `[
+    { "id": 101, "page_url": "https://item.rakuten.co.jp/shop/item001/", "item_description": "【楽天1位】ワイヤレスイヤホン Bluetooth5.3 高音質 ノイズキャンセリング", "image_url": "https://thumbnail.image.rakuten.co.jp/@0_mall/shop/cabinet/item001.jpg", "ai_caption": "" },
+    { "id": 102, "page_url": "https://item.rakuten.co.jp/shop/item002/", "item_description": "送料無料！ ふわふわ今治タオル 3枚セット 抗菌防臭", "image_url": "https://thumbnail.image.rakuten.co.jp/@0_mall/shop/cabinet/item002.jpg", "ai_caption": "" },
+    { "id": 103, "page_url": "https://item.rakuten.co.jp/shop/item003/", "item_description": "訳あり！ 熊本県産みかん 5kg 甘くてジューシー", "image_url": "https://thumbnail.image.rakuten.co.jp/@0_mall/shop/cabinet/item003.jpg", "ai_caption": "" },
+    { "id": 104, "page_url": "https://item.rakuten.co.jp/shop/item004/", "item_description": "防災リュック 33点セット 1人用 非常用持ち出し袋", "image_url": "https://thumbnail.image.rakuten.co.jp/@0_mall/shop/cabinet/item004.jpg", "ai_caption": "" },
+    { "id": 105, "page_url": "https://item.rakuten.co.jp/shop/item005/", "item_description": "猫壱 バリバリボウル 猫用爪とぎベッド 交換可能", "image_url": "https://thumbnail.image.rakuten.co.jp/@0_mall/shop/cabinet/item005.jpg", "ai_caption": "" }
+]`;
+
+    const sampleData = {
+        // 投稿文生成に関連するキーで同じサンプルデータを参照させる
+        'create-caption-browser': createCaptionSampleData,
+        'create-caption-gemini': createCaptionSampleData,
+        'create-caption-flow': createCaptionSampleData,
+
+        'create-comment': `[
+    { "id": "user001", "ai_prompt_message": "新規にフォローしてくれました。 今回、新たに3件の「いいね」をしてくれました。", "comment_body": "" },
+    { "id": "user002", "ai_prompt_message": "以前からフォローしてくれているユーザーです。 いつもたくさんの「いいね」をくれる常連の方です。 今回も10件の「いいね」をしてくれました。", "comment_body": "" },
+    { "id": "user003", "ai_prompt_message": "まだフォローされていないユーザーです。 今回、新たに2件の「いいね」をしてくれました。", "comment_body": "" },
+    { "id": "user004", "ai_prompt_message": "以前からフォローしてくれているユーザーです。 今回、新たに1件の「いいね」をしてくれました。", "comment_body": "" },
+    { "id": "user005", "ai_prompt_message": "新規にフォローしてくれました。 今回、新たに8件の「いいね」をしてくれました。", "comment_body": "" }
+]`,
+        'summarize-text': `[
+    { "text": "長文のテキストサンプル1..." },
+    { "text": "長文のテキストサンプル2..." },
+    { "text": "長文のテキストサンプル3..." },
+    { "text": "長文のテキストサンプル4..." }
+]`,
+        'default': `[
+    { "key1": "value1", "key2": "value2" }
+]`
+    };
+
+    // トースト通知を表示するヘルパー関数
+    function showToast(title, message, type = 'info') {
+        // base.html にあるトースト要素を取得
+        const toastEl = document.getElementById('appToast');
+        const toastTitle = document.getElementById('toast-title');
+        const toastBody = document.getElementById('toast-body');
+        
+        toastTitle.textContent = title;
+        toastBody.textContent = message;
+
+        // typeに応じてヘッダーの色を変更 (success, danger, infoなど)
+        toastEl.querySelector('.toast-header').className = `toast-header bg-${type} text-white`;
+
+        const toast = new bootstrap.Toast(toastEl);
+        toast.show();
+    }
+
     async function savePrompt(promptKey) {
+        // promptKey (例: create-caption-flow) を使って、対応するカードとテキストエリアを特定します。
         const card = document.getElementById(`prompt-card-${promptKey}`);
-        const textarea = card.querySelector('textarea');
-        const saveButton = card.querySelector('button');
+        const textarea = document.querySelector(`#prompt-card-${promptKey} textarea`);
+        const saveButton = card.querySelector('.btn-primary'); // 保存ボタンをより正確に特定
         const originalButtonHtml = saveButton.innerHTML;
 
         const content = textarea.value;
-        const filename = textarea.dataset.filename;
+        const filename = textarea.dataset.filename; // data-filename属性からファイル名を取得
 
         // ボタンをローディング状態にする
         saveButton.disabled = true;
@@ -66,7 +145,7 @@
             const response = await fetch(`/api/prompts/${promptKey}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ content: content, filename: filename })
+                body: JSON.stringify({ content: content })
             });
 
             const result = await response.json();
@@ -91,6 +170,9 @@
         fetch('/api/prompts')
             .then(response => response.json())
             .then(data => {
+                // ★★★ ログ出力追加 ★★★
+                console.log("[/api/prompts] から受け取ったデータ:", JSON.parse(JSON.stringify(data)));
+
                 loadingIndicator.remove(); // ローディング表示を削除
                 if (data.error) {
                     throw new Error(data.error);
@@ -98,7 +180,7 @@
 
                 let isFirst = true;
                 for (const key in data) {
-                    const prompt = data[key];
+                    const prompt = data[key]; // promptオブジェクトを取得
                     const activeClass = isFirst ? 'active' : '';
                     const showClass = isFirst ? 'show' : '';
 
@@ -112,45 +194,42 @@
 
                     // タブのコンテンツ部分を生成
                     const contentHtml = `
-                        <div class="tab-pane fade ${showClass} ${activeClass}" id="${key}-pane" role="tabpanel" aria-labelledby="${key}-tab" tabindex="0">
-                            <div class="accordion mb-3" id="profileAccordion-${key}">
-                                <div class="accordion-item">
-                                    <h2 class="accordion-header">
-                                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-${key}" aria-expanded="false" aria-controls="collapse-${key}">
-                                            <i class="bi bi-collection-fill me-2"></i>プロファイル管理
-                                        </button>
-                                    </h2>
-                                    <div id="collapse-${key}" class="accordion-collapse collapse" data-bs-parent="#profileAccordion-${key}">
-                                        <div class="accordion-body">
-                                            <div class="row g-2 align-items-center">
-                                                <div class="col-sm-4">
-                                                    <label for="profile-select-${key}" class="form-label">プロファイルを選択</label>
-                                                    <select id="profile-select-${key}" class="form-select"></select>
+                        <div class="tab-pane fade ${showClass} ${activeClass}" id="${key}-pane" role="tabpanel" aria-labelledby="${key}-tab" tabindex="0" style="min-height: 75vh;">
+                            <div class="card h-100 d-flex flex-column" id="prompt-card-${key}">
+                                <div class="card-header d-flex justify-content-between align-items-center flex-wrap">
+                                    <p class="text-muted small mb-0 me-3">${prompt.description}</p>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <div class="dropdown">
+                                            <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" id="profileMenuButton-${key}" data-bs-toggle="dropdown" aria-expanded="false">
+                                                <i class="bi bi-collection-fill me-1"></i>プロファイル
+                                            </button>
+                                            <div class="dropdown-menu p-3" aria-labelledby="profileMenuButton-${key}" style="min-width: 400px;">
+                                                <div class="mb-3">
+                                                    <label for="profile-select-${key}" class="form-label small">プロファイルを選択して読み込み</label>
+                                                    <div class="input-group">
+                                                        <select id="profile-select-${key}" class="form-select form-select-sm"></select>
+                                                        <button class="btn btn-sm btn-primary" onclick="loadProfile('${key}')"><span class="d-none d-md-inline">読込</span><i class="bi bi-box-arrow-in-down d-inline d-md-none"></i></button>
+                                                        <button class="btn btn-sm btn-danger" onclick="deleteProfile('${key}')"><span class="d-none d-md-inline">削除</span><i class="bi bi-trash d-inline d-md-none"></i></button>
+                                                    </div>
                                                 </div>
-                                                <div class="col-sm-8 d-flex align-items-end gap-2">
-                                                    <button class="btn btn-primary" onclick="loadProfile('${key}')"><i class="bi bi-box-arrow-in-down me-1"></i>読み込み</button>
-                                                    <button class="btn btn-danger" onclick="deleteProfile('${key}')"><i class="bi bi-trash me-1"></i>削除</button>
+                                                <hr>
+                                                <div>
+                                                    <label for="new-profile-name-${key}" class="form-label small">現在のプロンプトを名前を付けて保存</label>
+                                                    <div class="input-group">
+                                                        <input type="text" id="new-profile-name-${key}" class="form-control form-control-sm" placeholder="例: 対話重視コメント用">
+                                                        <button class="btn btn-sm btn-success" onclick="saveProfile('${key}')"><span class="d-none d-md-inline">保存</span><i class="bi bi-save d-inline d-md-none"></i></button>
+                                                    </div>
                                                 </div>
-                                            </div>
-                                            <hr>
-                                            <div class="row g-2 align-items-center">
-                                                <div class="col-sm-4">
-                                                    <label for="new-profile-name-${key}" class="form-label">現在のプロンプトを名前を付けて保存</label>
-                                                    <input type="text" id="new-profile-name-${key}" class="form-control" placeholder="例: 対話重視コメント用">
-                                                </div>
-                                                <div class="col-sm-8 d-flex align-items-end"><button class="btn btn-success" onclick="saveProfile('${key}')"><i class="bi bi-save me-1"></i>保存</button></div>
                                             </div>
                                         </div>
+                                        <button class="btn btn-sm btn-info" onclick="openTestModal('${key}')">
+                                            <i class="bi bi-play-circle me-1"></i><span class="d-none d-md-inline">テスト実行</span>
+                                        </button>
+                                        <button class="btn btn-sm btn-primary" onclick="savePrompt('${key}')"><i class="bi bi-floppy-fill me-1"></i>保存</button>
                                     </div>
                                 </div>
-                            </div>
-                            <div class="card h-100" id="prompt-card-${key}">
-                                <div class="card-body flex-grow-1">
-                                    <p class="text-muted small mb-2">${prompt.description}</p>
+                                <div class="card-body flex-grow-1 d-flex flex-column">
                                     <textarea class="form-control prompt-textarea flex-grow-1" data-filename="${prompt.filename}">${prompt.content}</textarea>
-                                </div>
-                                <div class="card-footer text-end">
-                                    <button class="btn btn-primary" onclick="savePrompt('${key}')"><i class="bi bi-floppy-fill me-1"></i>現在のプロンプトを保存</button>
                                 </div>
                             </div>
                         </div>
@@ -161,12 +240,92 @@
 
                 // 各タブのプロファイル一覧を読み込み
                 Object.keys(data).forEach(key => fetchProfiles(key));
+
+                // モーダルのインスタンスを生成
+                testPromptModal = new bootstrap.Modal(document.getElementById('testPromptModal'));
             })
             .catch(error => {
                 contentContainer.innerHTML = `<div class="alert alert-danger">${error.message}</div>`;
             });
+
+        // --- テキストエリアのフォーカス処理 ---
+        // CSSでの制御が効かないため、JavaScriptで直接スタイルを操作します。
+        contentContainer.addEventListener('focusin', function(event) {
+            // イベントが発生した要素が .prompt-textarea かどうかを確認
+            if (event.target.matches('.prompt-textarea')) {
+                const textarea = event.target;
+                textarea.style.transition = 'min-height 0.2s ease-in-out';
+                textarea.style.minHeight = '500px';
+                textarea.style.flexGrow = '0'; // flex-growを無効化
+            }
+        });
+
+        contentContainer.addEventListener('focusout', function(event) {
+            // イベントが発生した要素が .prompt-textarea かどうかを確認
+            if (event.target.matches('.prompt-textarea')) {
+                const textarea = event.target;
+                textarea.style.minHeight = ''; // 元の高さに戻す
+                textarea.style.flexGrow = ''; // 元のflex-growに戻す
+            }
+        });
     });
 
+    function openTestModal(promptKey) {
+        // ★★★ ログ出力追加 ★★★
+        console.log(`[openTestModal] 呼び出し時の promptKey: '${promptKey}'`);
+
+        // モーダル内の非表示フィールドに現在のプロンプトキーを保存
+        document.getElementById('test-prompt-key-hidden').value = promptKey;
+
+        // テストデータ入力欄にサンプルデータを設定
+        const testDataInput = document.getElementById('test-data-input');
+        testDataInput.value = sampleData[promptKey] || sampleData['default'];
+
+        // 結果表示欄をクリア
+        document.getElementById('test-result-output').textContent = 'ここに結果が表示されます。';
+
+        // モーダルを表示
+        testPromptModal.show();
+    }
+
+    async function runPromptTest() {
+        const runButton = document.getElementById('run-test-btn');
+        const spinner = runButton.querySelector('.spinner-border');
+        const resultOutput = document.getElementById('test-result-output');
+
+        const promptKey = document.getElementById('test-prompt-key-hidden').value;
+        const promptContent = document.querySelector(`#prompt-card-${promptKey} textarea`).value;
+        const testDataString = document.getElementById('test-data-input').value;
+
+        let testData;
+        try {
+            testData = JSON.parse(testDataString);
+        } catch (e) {
+            resultOutput.textContent = `テストデータのJSON形式が正しくありません。\n\nエラー: ${e.message}`;
+            return;
+        }
+
+        // ボタンをローディング状態に
+        runButton.disabled = true;
+        spinner.classList.remove('d-none');
+        resultOutput.textContent = 'AIが生成中です...';
+
+        try {
+            const response = await fetch('/api/prompts/test', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ prompt_key: promptKey, prompt_content: promptContent, test_data: testData })
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.detail || 'テスト実行に失敗しました。');
+            resultOutput.textContent = JSON.stringify(result, null, 2);
+        } catch (error) {
+            resultOutput.textContent = `エラーが発生しました:\n\n${error.message}`;
+        } finally {
+            runButton.disabled = false;
+            spinner.classList.add('d-none');
+        }
+    }
     // --- プロファイル管理用スクリプト ---
 
     async function fetchProfiles(promptKey) {

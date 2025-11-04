@@ -1189,18 +1189,18 @@ async def get_prompts():
     try:
         # 編集対象のファイルを指定
         editable_files = {
-            "caption_prompt": {
-                "name_ja": "投稿文生成プロンプト",
+            "create-caption-flow": {
+                "name_ja": "<i class='bi bi-file-post me-1'></i>投稿文生成プロンプト",
                 "description": "商品情報から投稿文を生成する際の指示です。",
                 "filename": "caption_prompt.txt"
             },
-            "user_comment_body_prompt": {
-                "name_ja": "AIコメント本文生成プロンプト",
+            "create-comment": {
+                "name_ja": "<i class='bi bi-chat-dots me-1'></i>返信コメント生成プロンプト",
                 "description": "ユーザーへの返信コメント（掛け合い形式の本文）を生成する際の指示です。",
                 "filename": "user_comment_body_prompt.txt"
             }
         }
-        
+
         prompts_data = {}
         for key, info in editable_files.items():
             filepath = os.path.join(PROMPTS_DIR, info["filename"])
