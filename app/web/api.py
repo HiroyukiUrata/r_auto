@@ -35,6 +35,7 @@ RECENT_KEYWORDS_FILE = "db/recent_keywords.json"
 SCHEDULE_PROFILES_DIR = "db/schedule_profiles"
 KEYWORD_PROFILES_DIR = "db/keyword_profiles"
 
+PROMPTS_DIR = "app/prompts"
 class TimeEntry(BaseModel):
     time: str
     count: int
@@ -139,6 +140,11 @@ async def read_comment_management(request: Request):
 async def read_error_management(request: Request):
     """エラー管理ページを表示する"""
     # ファイル名を解析するための正規表現パターンを更新
+    return request.app.state.templates.TemplateResponse("error_management.html", {"request": request, "files": all_files, "file_details": file_details})
+
+@router.get("/prompts", response_class=HTMLResponse)
+async def prompts_editor(request: Request):
+    """プロンプト編集ページを表示する"""
     # 例: error_post_comment_user123_20231027-103000.png
     # 例: dry_run_engage-user_user123_20231027-103000.png
     # グループ: 1:type, 2:action, 3:details, 4:timestamp
@@ -191,7 +197,7 @@ async def read_error_management(request: Request):
                 file_details[filename] = {'action_name': action_name, 'timestamp': timestamp_display, 'type': file_type, 'details': details_display}
 
     # 既存のエラー商品表示機能はそのままに、スクリーンショットの情報を追加で渡す
-    return request.app.state.templates.TemplateResponse("error_management.html", {"request": request, "files": all_files, "file_details": file_details})
+    return request.app.state.templates.TemplateResponse("prompts.html", {"request": request})
 
 # --- API Routes ---
 @router.get("/api/schedules")
@@ -1088,3 +1094,59 @@ def _run_task_internal(tag: str, is_part_of_flow: bool, **kwargs):
     message = f"タスク「{definition['name_ja']}」の実行を開始しました。"
     logging.debug(f"APIレスポンス (タスク: {tag}): {message}")
     return {"status": "success", "message": message}
+
+# --- Prompt Editor API ---
+
+@router.get('/api/prompts')
+async def get_prompts():
+    """
+    編集可能なプロンプトファイルの一覧と内容を取得する
+    """
+    try:
+        # 編集対象のファイルを指定
+        editable_files = {
+            "caption_prompt": {
+                "name_ja": "投稿文生成プロンプト",
+                "description": "商品情報から投稿文を生成する際の指示です。",
+                "filename": "caption_prompt.txt"
+            },
+            "user_comment_body_prompt": {
+                "name_ja": "AIコメント本文生成プロンプト",
+                "description": "ユーザーへの返信コメント（掛け合い形式の本文）を生成する際の指示です。",
+                "filename": "user_comment_body_prompt.txt"
+            }
+        }
+        
+        prompts_data = {}
+        for key, info in editable_files.items():
+            filepath = os.path.join(PROMPTS_DIR, info["filename"])
+            if os.path.exists(filepath):
+                with open(filepath, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                prompts_data[key] = {**info, "content": content}
+            else:
+                prompts_data[key] = {**info, "content": f"エラー: ファイルが見つかりません ({filepath})", "error": True}
+
+        return JSONResponse(content=prompts_data)
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": f"プロンプトの読み込み中にエラーが発生しました: {str(e)}"})
+
+@router.post('/api/prompts/{prompt_name}')
+async def update_prompt(prompt_name: str, request: Request):
+    """
+    指定されたプロンプトの内容を更新する
+    """
+    try:
+        data = await request.json()
+        content = data.get('content')
+        filename = data.get('filename')
+
+        if not filename or '..' in filename or filename.startswith('/'):
+            return JSONResponse(status_code=400, content={"error": "無効なファイル名です。"})
+
+        filepath = os.path.join(PROMPTS_DIR, filename)
+        with open(filepath, 'w', encoding='utf-8') as f:
+            f.write(content)
+        return JSONResponse(content={"message": f"プロンプト「{prompt_name}」を更新しました。"})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": f"プロンプトの更新中にエラーが発生しました: {str(e)}"})

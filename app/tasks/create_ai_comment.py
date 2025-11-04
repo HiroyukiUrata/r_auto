@@ -12,6 +12,7 @@ from app.core.database import get_users_for_ai_comment_creation, update_user_com
 logger = logging.getLogger(__name__)
 
 PROMPT_FILE = "app/prompts/user_comment_prompt.txt"
+COMMENT_BODY_PROMPT_FILE = "app/prompts/user_comment_body_prompt.txt"
 DEFAULT_PROMPT_TEXT = """あなたは、ユーザー名から自然な呼び名を抽出するのが得意なアシスタントです。
 `name` フィールドから、コメントの冒頭で呼びかけるのに最も自然な名前やニックネームを抽出してください。
 
@@ -25,70 +26,6 @@ DEFAULT_PROMPT_TEXT = """あなたは、ユーザー名から自然な呼び名�
   - `台湾🇹🇼⇄日本🇯🇵もちこ` -> `もちこ`
   - `あい♡３児ママ` -> `あい`
   - `黒糖抹茶わらび餅` -> `わらび`
-"""
-
-COMMENT_BODY_PROMPT = """あなたは、楽天ROOMで他のユーザーと交流するのが得意な親しみやすいインフルエンサーです。
-以下のユーザー情報をもとに、二人のキャラクターによる掛け合い形式で `comment_body` を生成してください。**名前は含めないでください。**
-
-登場人物:
-- 👸：やさしくて丁寧なお姉さん（フォロー・挨拶担当）
-- 👦：明るく素直な男の子（フォロワーへの感謝担当）
-- 👸👦：二人のハモり（締めのあいさつ）
-
-出力フォーマット（必ずこの形式で出力）:
-👸「<お姉さんのセリフ>」
-👦「<男の子のセリフ>」
-👸👦「「<二人のセリフ>」」
-
-ルール:
-- 100文字程度で完結に（1行あたり30文字以内を目安に）
-- 各セリフは自然で親しみやすく丁寧な日本語にすること
-- 感謝の気持ちを中心に、フォロー関係やアクション内容を反映すること
-- 顔文字・絵文字を自由に使うこと
-- recent_like_count などの具体的数値は使わず、「たくさん」「いつも」などで表現する
-- セリフのトーンは落ち着いた自然な喜びにする。「ついに〜」「やっと〜」のような大げさな表現は避ける
-- 出力は本文のみ。説明や補足は不要
-
-- 同じ状況（フォロー有無やいいね数など）が複数ユーザーで共通していても、コメントの言い回しが単調に重ならないようにすること。
-  - 語尾や絵文字の種類、感謝の表現を少しずつ変えて自然な多様性を出す。
-  - 例：
-    - 「本当にありがとうございます😊」
-    - 「うれしい気持ちでいっぱいです🌷」
-    - 「感謝しています💐」
-  - これらのように、意味は同じでも言葉や絵文字の組み合わせを変える。
-- テンプレートのような繰り返し表現は避けること。
-
-【出力例1：以前からフォローしてくれているユーザーです。 いつもたくさんの「いいね」をくれる常連の方です。 今回も10件の「いいね」をしてくれました。」のケース】
-👸「いつも応援ありがとうございます🌷」
-👦「また遊びに来てください✨」
-👸👦「「これからもよろしくお願いします💐」」
-
-【出力例2：新規にフォローしてくれました。 今回、新たに3件の「いいね」をしてくれました。」のケース】
-👸「フォローといいね嬉しいです😊」
-👦「これからよろしくお願いします🌸」
-👸👦「「今後ともごひいきに🙇‍♀️」」
-
-【出力例3：まだフォローされていないユーザーです。 今回、新たに2件の「いいね」をしてくれました。」のケース】
-👸「いいね！本当にありがとうございます💐」
-👦「もしよければフォローも検討してくださいね🌼」
-👸👦「「今後ともよろしくお願いします😊」」
-
-以下の JSON 配列の各要素について `comment_body` を生成してください。  
-各要素のキー:
-- id: ユーザーID
-- comment_name: 呼びかけに使う名前（空文字の場合あり）
-- ai_prompt_message: ユーザー状況
-- comment_body: 生成されるコメント本文（AI が埋める）
-
-JSON 配列例:
-[
-  {
-    "id": "user01",
-    "comment_name": "{{comment_name}}",
-    "ai_prompt_message": "{{ai_prompt_message}}",
-    "comment_body": ""
-  }
-]
 """
 
 
@@ -141,13 +78,13 @@ class CreateAiCommentTask(BaseTask):
         extracted_names = json.loads(json_match.group(1))
         return {item['id']: item.get('comment_name', '') for item in extracted_names}
 
-    def _generate_bodies_for_batch(self, client, batch_users, batch_num):
+    def _generate_bodies_for_batch(self, client, batch_users, batch_num, comment_body_prompt):
         """バッチ単位でコメント本文を生成する"""
         users_for_generation = [
             {"id": u["id"], "ai_prompt_message": u["ai_prompt_message"], "comment_body": ""}
             for u in batch_users
         ]
-        prompt = f"{COMMENT_BODY_PROMPT}\n\n以下のJSON配列の各要素について、`comment_body`を生成し、JSON配列全体を完成させてください。\n\n```json\n"
+        prompt = f"{comment_body_prompt}\n\n以下のJSON配列の各要素について、`comment_body`を生成し、JSON配列全体を完成させてください。\n\n```json\n"
         prompt += json.dumps(users_for_generation, indent=2, ensure_ascii=False) + "\n```"
         
         response = self._call_gemini_api_with_retry(client, prompt, f"本文生成 - バッチ {batch_num}")
@@ -167,6 +104,13 @@ class CreateAiCommentTask(BaseTask):
         if not api_key:
             logger.error("環境変数 'GEMINI_API_KEY' が設定されていません。")
             return False
+
+        if not os.path.exists(COMMENT_BODY_PROMPT_FILE):
+            logger.error(f"コメント本文プロンプトファイルが見つかりません: {COMMENT_BODY_PROMPT_FILE}")
+            return False
+        
+        with open(COMMENT_BODY_PROMPT_FILE, "r", encoding="utf-8") as f:
+            comment_body_prompt = f.read()
 
         try:
             client = genai.Client(api_key=api_key)
@@ -193,7 +137,7 @@ class CreateAiCommentTask(BaseTask):
                 logger.debug(f"バッチ {batch_num}: 名前の抽出が完了。")
 
                 # ステップ2: コメント本文の生成
-                bodies_batch = self._generate_bodies_for_batch(client, batch_users, batch_num)
+                bodies_batch = self._generate_bodies_for_batch(client, batch_users, batch_num, comment_body_prompt)
                 id_to_comment_body.update(bodies_batch)
                 logger.debug(f"バッチ {batch_num}: コメント本文の生成が完了。")
 

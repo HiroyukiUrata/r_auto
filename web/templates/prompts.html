@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+
+{% block title %}プロンプト編集 - R-Auto Control Panel{% endblock %}
+
+{% block styles %}
+<style>
+    .prompt-textarea {
+        font-family: 'Menlo', 'Monaco', 'Consolas', "Courier New", monospace;
+        font-size: 0.95rem;
+        line-height: 1.6;
+        height: 65vh; /* ビューポートの高さの65%を確保 */
+    }
+    .tab-content, .tab-pane, .card, .card-body {
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+    }
+    .card-header {
+        background-color: #f8f9fa;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">📝 プロンプト編集</h1>
+</div>
+
+<p class="text-muted">
+    AIがタスクを実行する際に使用する指示（プロンプト）をここで編集できます。変更は「保存」ボタンを押すと即座に反映されます。
+</p>
+
+<!-- Nav tabs -->
+<ul class="nav nav-tabs" id="promptTabs" role="tablist">
+    <!-- タブはここにJavaScriptで挿入されます -->
+</ul>
+
+<!-- Tab panes -->
+<div class="tab-content pt-3" id="promptTabContent">
+    <div class="text-center mt-5" id="loading-indicator">
+        <div class="spinner-border" role="status"><span class="visually-hidden">Loading...</span></div>
+        <p class="mt-2">プロンプトを読み込んでいます...</p>
+    </div>
+    <!-- タブコンテンツはここにJavaScriptで挿入されます -->
+</div>
+
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    async function savePrompt(promptKey) {
+        const card = document.getElementById(`prompt-card-${promptKey}`);
+        const textarea = card.querySelector('textarea');
+        const saveButton = card.querySelector('button');
+        const originalButtonHtml = saveButton.innerHTML;
+
+        const content = textarea.value;
+        const filename = textarea.dataset.filename;
+
+        // ボタンをローディング状態にする
+        saveButton.disabled = true;
+        saveButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 保存中...';
+
+        try {
+            const response = await fetch(`/api/prompts/${promptKey}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content: content, filename: filename })
+            });
+
+            const result = await response.json();
+            if (!response.ok) {
+                throw new Error(result.error || '保存に失敗しました。');
+            }
+            showToast('保存完了', result.message, 'success');
+        } catch (error) {
+            showToast('エラー', error.message, 'danger');
+        } finally {
+            // ボタンの状態を元に戻す
+            saveButton.disabled = false;
+            saveButton.innerHTML = originalButtonHtml;
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        const tabsContainer = document.getElementById('promptTabs');
+        const contentContainer = document.getElementById('promptTabContent');
+        const loadingIndicator = document.getElementById('loading-indicator');
+
+        fetch('/api/prompts')
+            .then(response => response.json())
+            .then(data => {
+                loadingIndicator.remove(); // ローディング表示を削除
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+
+                let isFirst = true;
+                for (const key in data) {
+                    const prompt = data[key];
+                    const activeClass = isFirst ? 'active' : '';
+                    const showClass = isFirst ? 'show' : '';
+
+                    // タブのリンク部分を生成
+                    const tabHtml = `
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link ${activeClass}" id="${key}-tab" data-bs-toggle="tab" data-bs-target="#${key}-pane" type="button" role="tab" aria-controls="${key}-pane" aria-selected="${isFirst}">${prompt.name_ja}</button>
+                        </li>
+                    `;
+                    tabsContainer.innerHTML += tabHtml;
+
+                    // タブのコンテンツ部分を生成
+                    const contentHtml = `
+                        <div class="tab-pane fade ${showClass} ${activeClass}" id="${key}-pane" role="tabpanel" aria-labelledby="${key}-tab" tabindex="0">
+                            <div class="card h-100" id="prompt-card-${key}">
+                                <div class="card-body flex-grow-1">
+                                    <p class="text-muted small mb-2">${prompt.description}</p>
+                                    <textarea class="form-control prompt-textarea flex-grow-1" data-filename="${prompt.filename}">${prompt.content}</textarea>
+                                </div>
+                                <div class="card-footer text-end">
+                                    <button class="btn btn-primary" onclick="savePrompt('${key}')"><i class="bi bi-save-fill me-1"></i>保存</button>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    contentContainer.innerHTML += contentHtml;
+                    isFirst = false;
+                }
+            })
+            .catch(error => {
+                contentContainer.innerHTML = `<div class="alert alert-danger">${error.message}</div>`;
+            });
+    });
+</script>
+{% endblock %}
