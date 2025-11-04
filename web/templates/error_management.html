@@ -121,7 +121,9 @@
     }
     /* スクリーンショットリストの選択状態 */
     .list-group-item.selected {
-        background-color: #e9ecef; /* 選択時の背景色 */
+        background-color: #cfe2ff; /* Bootstrapのプライマリカラーに対応する明るい青 */
+        border-left: 5px solid #0d6efd; /* 左側に太い青線を追加 */
+        font-weight: 500; /* テキストを少し太くする */
     }
     /* スクリーンショットプレビューの画像スタイル */
     #preview-image-wrapper {
@@ -137,32 +139,41 @@
 <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
     <h1 class="h2">🚨 エラー商品管理</h1>
     <div class="btn-toolbar mb-2 mb-md-0">
-        <div class="btn-group me-2" id="bulk-action-group">
-            <button type="button" class="btn btn-sm btn-outline-primary" onclick="bulkUpdateStatus('投稿準備完了')" disabled title="選択した商品を「投稿準備完了」ステータスに変更します">
-                <i class="bi bi-arrow-clockwise me-1"></i>☀️ 再投稿準備
+        <div class="d-flex flex-wrap gap-2 me-2" id="bulk-action-group">
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="select-all-toggle-btn" onclick="toggleSelectAll()" title="すべて選択/解除">
+                <i class="bi bi-check-square"></i><span class="d-none d-md-inline ms-1">全選択</span>
             </button>
-            <button type="button" class="btn btn-sm btn-outline-primary dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-expanded="false" disabled>
-                <span class="visually-hidden">Toggle Dropdown</span>
-            </button>
-            <ul class="dropdown-menu">
-                <li><a class="dropdown-item" href="#" onclick="event.preventDefault(); bulkUpdateStatus('投稿準備完了')">☀️ 「投稿準備完了」にする</a></li>
-                <li><hr class="dropdown-divider"></li>
-                <li><a class="dropdown-item" href="#" onclick="event.preventDefault(); bulkUpdateStatus('生情報取得')">☁️ 「生情報取得」に戻す</a></li>
-                <li><a class="dropdown-item" href="#" onclick="event.preventDefault(); bulkUpdateStatus('URL取得済')">⛅️ 「URL取得済」に戻す</a></li>
-                <li><hr class="dropdown-divider"></li>
-                <li><a class="dropdown-item" href="#" onclick="event.preventDefault(); bulkUpdateStatus('投稿済')">🚀 「投稿済」にする</a></li>
-                <li><a class="dropdown-item" href="#" onclick="event.preventDefault(); bulkUpdateStatus('対象外')">☔ 「対象外」にする</a></li>
-            </ul>
             <button type="button" class="btn btn-sm btn-outline-info" id="export-json-btn" onclick="exportToJson()" disabled title="選択した商品の全データをJSON形式でダウンロードします">
-                <i class="bi bi-file-earmark-code me-1"></i>JSONエクスポート
+                <i class="bi bi-file-earmark-code"></i><span class="d-none d-md-inline ms-1">JSON</span>
             </button>
-            <button type="button" class="btn btn-sm btn-outline-secondary" id="select-all-toggle-btn" onclick="toggleSelectAll()">
-                <i class="bi bi-check-square me-1"></i>すべて選択
-            </button>
-            <button type="button" class="btn btn-sm btn-outline-danger" id="bulk-delete-btn" onclick="bulkDelete()" disabled>
-                <i class="bi bi-trash-fill me-1"></i>選択した項目を削除
+            <div class="btn-group">
+                <button type="button" class="btn btn-sm btn-outline-primary" onclick="bulkUpdateStatus('投稿準備完了')" disabled title="選択した商品を「投稿準備完了」ステータスに変更します">
+                    <i class="bi bi-arrow-clockwise"></i><span class="d-none d-md-inline ms-1">☀️ 再準備</span>
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-primary dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-expanded="false" disabled>
+                    <span class="visually-hidden">Toggle Dropdown</span>
+                </button>
+                <ul class="dropdown-menu">
+                    <li><a class="dropdown-item" href="#" onclick="event.preventDefault(); bulkUpdateStatus('投稿準備完了')">☀️ 「投稿準備完了」にする</a></li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li><a class="dropdown-item" href="#" onclick="event.preventDefault(); bulkUpdateStatus('生情報取得')">☁️ 「生情報取得」に戻す</a></li>
+                    <li><a class="dropdown-item" href="#" onclick="event.preventDefault(); bulkUpdateStatus('URL取得済')">⛅️ 「URL取得済」に戻す</a></li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li><a class="dropdown-item" href="#" onclick="event.preventDefault(); bulkUpdateStatus('投稿済')">🚀 「投稿済」にする</a></li>
+                    <li><a class="dropdown-item" href="#" onclick="event.preventDefault(); bulkUpdateStatus('対象外')">☔ 「対象外」にする</a></li>
+                </ul>
+            </div>
+            <button type="button" class="btn btn-sm btn-outline-danger" id="bulk-delete-btn" onclick="bulkDelete()" disabled title="選択した項目を削除">
+                <i class="bi bi-trash-fill"></i><span class="d-none d-md-inline ms-1">削除</span>
             </button>
         </div>
+        <!-- スマホ表示時のみ凡例アイコンを表示 -->
+        <i class="bi bi-info-circle d-inline-block d-md-none text-secondary ms-2" 
+           style="cursor: pointer; font-size: 1.2rem;"
+           data-bs-toggle="tooltip" 
+           data-bs-html="true"
+           data-bs-title="<div class='text-start'>・<i class='bi bi-check-square'></i>: 全選択/解除<br>・<i class='bi bi-file-earmark-code'></i>: JSON<br>・<i class='bi bi-arrow-clockwise'></i>: 再準備<br>・<i class='bi bi-trash-fill'></i>: 削除</div>">
+        </i>
     </div>
 </div>
 
@@ -216,7 +227,7 @@
 <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
     <h1 class="h2">📸 Playwrightスクリーンショット</h1>
     <div class="btn-toolbar mb-2 mb-md-0">
-        <div class="btn-group me-2" id="screenshot-bulk-action-group">
+        <div class="d-flex flex-wrap gap-2 me-2" id="screenshot-bulk-action-group">
             <button type="button" class="btn btn-sm btn-outline-secondary" id="screenshot-select-all-toggle-btn" onclick="toggleSelectAllScreenshots()">
                 <i class="bi bi-check-square me-1"></i>すべて選択
             </button>
@@ -333,32 +344,31 @@
 
 {% block scripts %}
 <script>
-    function getSelectedScreenshots() {
+    function getSelectedScreenshotFiles() {
         return Array.from(document.querySelectorAll('.screenshot-checkbox:checked')).map(cb => cb.value);
     }
 
     function updateScreenshotBulkActionButtons() {
-        const selectedFiles = getSelectedScreenshots();
+        const selectedFiles = getSelectedScreenshotFiles();
         const disabled = selectedFiles.length === 0;
-        document.querySelectorAll('#screenshot-bulk-action-group button').forEach(button => {
+        document.querySelectorAll('#screenshot-bulk-action-group button:not(#screenshot-select-all-toggle-btn)').forEach(button => {
             // 「すべて選択」ボタンは常に有効
-            if (button.id !== 'screenshot-select-all-toggle-btn') {
-                button.disabled = disabled;
-            }
+            button.disabled = disabled;
         });
     }
 
     function toggleSelectAllScreenshots() {
         const allCheckboxes = document.querySelectorAll('.screenshot-checkbox');
-        const isAllSelected = getSelectedScreenshots().length === allCheckboxes.length;
-        allCheckboxes.forEach(checkbox => {
-            checkbox.checked = !isAllSelected;
-        });
+        const isAllSelected = getSelectedScreenshotFiles().length === allCheckboxes.length;
+        const nextState = !isAllSelected;
+
+        allCheckboxes.forEach(checkbox => checkbox.checked = nextState);
+        document.querySelectorAll('#screenshot-list .list-group-item').forEach(item => item.classList.toggle('selected', nextState));
         updateScreenshotBulkActionButtons();
     }
 
     async function bulkDeleteScreenshots() {
-        const filesToDelete = getSelectedScreenshots();
+        const filesToDelete = getSelectedScreenshotFiles();
         if (filesToDelete.length === 0) {
             alert('削除するスクリーンショットを選択してください。');
             return;
@@ -506,20 +516,22 @@
         const selectedIds = getSelectedProductIds();
         const disabled = selectedIds.length === 0;
         // bulk-action-group内のすべてのボタンのdisabled状態を更新
-        document.querySelectorAll('#bulk-action-group button').forEach(button => {
+        // 「全選択」ボタンを除外して、他のボタンのdisabled状態を更新
+        document.querySelectorAll('#bulk-action-group button:not(#select-all-toggle-btn)').forEach(button => {
             button.disabled = disabled;
         });
-        document.getElementById('export-json-btn').disabled = disabled; // JSONエクスポートボタンも更新
-        document.getElementById('bulk-delete-btn').disabled = disabled; // 削除ボタンも更新
     }
 
     function toggleSelectAll() {
         const allCheckboxes = document.querySelectorAll('.product-checkbox');
-        const allSelected = getSelectedProductIds().length === allCheckboxes.length;
-        allCheckboxes.forEach(checkbox => {
-            checkbox.checked = !allSelected;
-            checkbox.closest('tr').classList.toggle('selected', !allSelected);
-        });
+        // 現在選択されているチェックボックスの数が、全体の数と一致するかどうかで判断
+        const isAllProductSelected = getSelectedProductIds().length === allCheckboxes.length;
+
+        // isAllSelectedがtrue（すべて選択済み）なら、チェックを外す。falseなら、チェックを入れる。
+        const nextState = !isAllProductSelected;
+        allCheckboxes.forEach(checkbox => checkbox.checked = nextState);
+        document.querySelectorAll('#error-table-body tr').forEach(row => row.classList.toggle('selected', nextState));
+
         updateBulkActionButtons();
     }
 
@@ -625,6 +637,10 @@
 
     document.addEventListener('DOMContentLoaded', function () {
         infoModalInstance = new bootstrap.Modal(document.getElementById('infoModal'));
+
+        // ツールチップを初期化
+        const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]');
+        [...tooltipTriggerList].map(tooltipTriggerEl => new bootstrap.Tooltip(tooltipTriggerEl));
 
         fetch('/api/errors')
             .then(response => response.json())
@@ -750,8 +766,8 @@
         });
 
         // --- Screenshot Previewer ---
-        const allPreviewFiles = {{ files | tojson }};
-        const allFileDetails = {{ file_details | tojson }};
+        const allPreviewFiles = JSON.parse('{{ files | tojson | safe }}');
+        const allFileDetails = JSON.parse('{{ file_details | tojson | safe }}');
         const totalFiles = allPreviewFiles.length;
         let currentPreviewIndex = 0;
 
