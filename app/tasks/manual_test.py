@@ -1,6 +1,8 @@
 import logging
 import os
+import time
 from app.core.base_task import BaseTask
+
 
 logger = logging.getLogger(__name__)
 
@@ -14,13 +16,14 @@ class ManualTestTask(BaseTask):
     """
     指定されたURLにアクセスし、ブラウザが閉じられるまで待機する手動テスト用のタスク。
     """
-    def __init__(self, script: str = None):
+    def __init__(self, script: str = None, use_auth: bool = True):
         # --- ここで手動テストの挙動を切り替えます ---
         # True: GUIなし / False: GUIあり
         self.headless_mode = True
+
         # True: ログイン情報を引き継ぐ / False: 新規セッションで起動
-        self.use_auth = True
-        # -----------------------------------------
+        # コマンドライン引数 `use_auth` で制御される
+        self.use_auth = use_auth
 
         super().__init__(count=None)
         if not script:
@@ -93,12 +96,35 @@ class ManualTestTask(BaseTask):
             logger.info("ブラウザは起動したままです。")
             logger.info("手動での確認や操作、またはスクリプト実行後の状態確認が完了したら、ブラウザウィンドウを閉じてください。")
             logger.info("ブラウザが閉じられるのを待機しています...")
-            # ユーザーがブラウザを閉じるまで無期限に待機する
-            self.context.wait_for_event("close", timeout=0)
+            # ユーザーがブラウザウィンドウを閉じるのを待機する。
+            # self.context.wait_for_event("close") は、認証なしモードでは正しく発火しないことがあるため、
+            # 代わりに self.page.wait_for_event("close") を使用して、最初のページが閉じられたことを検知する。
+            # これにより、ウィンドウが閉じられた際にタスクが確実に終了するようになる。
+            self.page.wait_for_event("close", timeout=0)
             logger.info("ブラウザが閉じられたため、タスクを正常に終了します。")
         return True
+    
+    def _take_screenshot_on_error(self, prefix: str = "error"):
+        """
+        エラー発生時にスクリーンショットを保存する。
+        manual-test専用に保存先を 'test_scripts/screenshots' に変更する。
+        """
+        if self.page:
+            try:
+                screenshot_dir = "test_scripts/screenshots"
+                os.makedirs(screenshot_dir, exist_ok=True)
+                
+                # スクリプトファイル名から安全なプレフィックスを生成
+                script_name = os.path.splitext(os.path.basename(self.script_path))[0]
+                timestamp = time.strftime("%Y%m%d-%H%M%S")
+                screenshot_path = os.path.join(screenshot_dir, f"error_{script_name}_{timestamp}.png")
 
-def run_manual_test(script: str = None):
+                self.page.screenshot(path=screenshot_path)
+                logging.info(f"スクリーンショットを保存しました: {screenshot_path}")
+            except Exception as ss_e:
+                logging.error(f"スクリーンショットの保存に失敗しました: {ss_e}")
+
+def run_manual_test(script: str = None, use_auth: bool = True):
     """ラッパー関数"""
-    task = ManualTestTask(script=script)
+    task = ManualTestTask(script=script, use_auth=use_auth)
     return task.run()

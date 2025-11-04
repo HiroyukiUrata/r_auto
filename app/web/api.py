@@ -7,6 +7,7 @@ import logging
 import os
 import json
 from pydantic import BaseModel
+from typing import Optional
 from pathlib import Path
 from fastapi import BackgroundTasks
 
@@ -28,6 +29,8 @@ from datetime import date, timedelta, datetime
 
 KEYWORDS_FILE = "db/keywords.json"
 SCHEDULE_FILE = "db/schedules.json"
+SOURCE_URLS_FILE = "db/source_urls.json"
+LAST_USED_URL_INDEX_FILE = "db/last_used_url_index.json"
 RECENT_KEYWORDS_FILE = "db/recent_keywords.json"
 SCHEDULE_PROFILES_DIR = "db/schedule_profiles"
 KEYWORD_PROFILES_DIR = "db/keyword_profiles"
@@ -75,6 +78,7 @@ class BulkStatusUpdateRequest(BaseModel):
 class KeywordsUpdateRequest(BaseModel):
     keywords_a: list[str]
     keywords_b: list[str]
+    source_urls: Optional[list[str]] = None
 
 class CommentUpdateRequest(BaseModel):
     user_id: str
@@ -744,27 +748,58 @@ async def bulk_update_from_json(request: JsonImportRequest):
 @router.get("/api/keywords")
 async def get_keywords():
     """キーワードをJSONファイルから読み込んで返す"""
+    keywords = {"keywords_a": [], "keywords_b": []}
+    source_urls = []
     try:
+        # キーワードファイルの読み込み
         if os.path.exists(KEYWORDS_FILE):
-            with open(KEYWORDS_FILE, "r") as f:
+            with open(KEYWORDS_FILE, "r", encoding="utf-8") as f:
                 keywords = json.load(f)
-            return JSONResponse(content=keywords)
-        else:
-            return JSONResponse(content={"keywords_a": [], "keywords_b": []})
-    except Exception as e:
-        logging.error(f"キーワードファイルの読み込みに失敗しました: {e}")
+        
+        # URLリストファイルの読み込み
+        if os.path.exists(SOURCE_URLS_FILE):
+            with open(SOURCE_URLS_FILE, "r", encoding="utf-8") as f:
+                source_urls = json.load(f)
+
+        response_data = {
+            "keywords_a": keywords.get("keywords_a", []),
+            "keywords_b": keywords.get("keywords_b", []),
+            "source_urls": source_urls
+        }
+        return JSONResponse(content=response_data)
+    except (IOError, json.JSONDecodeError) as e:
+        logging.error(f"キーワードまたはURLリストの読み込みに失敗しました: {e}")
         return JSONResponse(status_code=500, content={"status": "error", "message": "キーワードの読み込みに失敗しました。"})
 
 @router.post("/api/keywords")
 async def save_keywords(request: KeywordsUpdateRequest):
     """キーワードをJSONファイルに保存する"""
     try:
-        with open(KEYWORDS_FILE, "w") as f:
-            json.dump(request.dict(), f, indent=4, ensure_ascii=False)
-        return JSONResponse(content={"status": "success", "message": "キーワードを保存しました。"})
-    except Exception as e:
-        logging.error(f"キーワードファイルの保存に失敗しました: {e}")
-        return JSONResponse(status_code=500, content={"status": "error", "message": "キーワードの保存に失敗しました。"})
+        # キーワードA群とB群を保存
+        keyword_data = {"keywords_a": request.keywords_a, "keywords_b": request.keywords_b}
+        with open(KEYWORDS_FILE, "w", encoding="utf-8") as f:
+            json.dump(keyword_data, f, indent=2, ensure_ascii=False)
+
+        # URLリストを保存
+        if request.source_urls is not None:
+            current_urls = []
+            if os.path.exists(SOURCE_URLS_FILE):
+                with open(SOURCE_URLS_FILE, "r", encoding="utf-8") as f:
+                    current_urls = json.load(f)
+            
+            # URLリストが変更されていたら、ローテーションインデックスをリセット
+            if current_urls != request.source_urls:
+                logging.info("URLリストが変更されたため、巡回インデックスをリセットします。")
+                with open(LAST_USED_URL_INDEX_FILE, "w", encoding="utf-8") as f:
+                    json.dump({"last_index": -1}, f)
+
+            with open(SOURCE_URLS_FILE, "w", encoding="utf-8") as f:
+                json.dump(request.source_urls, f, indent=2, ensure_ascii=False)
+
+        return JSONResponse(content={"status": "success", "message": "キーワードとURLリストを保存しました。"})
+    except (IOError, json.JSONDecodeError) as e:
+        logging.error(f"キーワードまたはURLリストの保存に失敗しました: {e}")
+        return JSONResponse(status_code=500, content={"status": "error", "message": "キーワード等の保存に失敗しました。"})
 
 
 @router.post("/api/import/json")
@@ -901,10 +936,12 @@ def _run_task_internal(tag: str, is_part_of_flow: bool, **kwargs):
     if tag == "_procure-wrapper": # ラッパータスクが呼び出されたら差し替え
         config = get_config()
         method = config.get("procurement_method", "rakuten_search") # デフォルトは楽天検索
-        if method == "rakuten_api":
+        if method == "user_page_crawl":
+            actual_tag = "procure-from-user-page"
+        elif method == "rakuten_api":
             actual_tag = "rakuten-api-procure"
-        else: # rakuten_search
-            actual_tag = "search-and-procure-from-rakuten"
+        else: # "rakuten_search" がデフォルト
+            actual_tag = "rakuten-search-procure"
         logging.info(f"商品調達メソッド: {method} を使用します。実行タスク: {actual_tag}")
         definition = TASK_DEFINITIONS.get(actual_tag)
 
@@ -946,10 +983,12 @@ def _run_task_internal(tag: str, is_part_of_flow: bool, **kwargs):
                     if sub_task_id == "_procure-wrapper":
                         config = get_config()
                         method = config.get("procurement_method", "rakuten_search")
-                        if method == "rakuten_api":
+                        if method == "user_page_crawl":
+                            sub_task_id = "procure-from-user-page"
+                        elif method == "rakuten_api":
                             sub_task_id = "rakuten-api-procure"
-                        else: # rakuten_search
-                            sub_task_id = "search-and-procure-from-rakuten"
+                        else: # "rakuten_search"
+                            sub_task_id = "rakuten-search-procure"
                         logging.info(f"フロー内タスクを動的に解決: {sub_task_id}")
                     
                     if sub_task_id == "create-caption-flow":

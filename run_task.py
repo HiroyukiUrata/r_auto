@@ -31,7 +31,14 @@ def main():
         key = unknown[i].lstrip('-')
         # 値が続く場合（--key value）と、フラグのみの場合（--flag）を考慮
         if i + 1 < len(unknown) and not unknown[i+1].startswith('--'):
-            kwargs[key] = unknown[i+1]
+            value = unknown[i+1]
+            # 文字列の 'true'/'false' をブール値に変換
+            if value.lower() == 'true':
+                kwargs[key] = True
+            elif value.lower() == 'false':
+                kwargs[key] = False
+            else:
+                kwargs[key] = value
             i += 2
         else:
             kwargs[key] = True # 引数値がない場合はTrueを設定

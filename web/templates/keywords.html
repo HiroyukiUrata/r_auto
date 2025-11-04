@@ -50,14 +50,29 @@
             </div>
         </div>
     </div>
-    <div class="col-md-6 mb-4">
-        <div class="card h-100">
+</div>
+<div class="row">
+    <div class="col-md-6 mb-4 d-flex">
+        <div class="card flex-fill">
             <div class="card-header">キーワードB群（装飾・絞り込み用）</div>
             <div class="card-body d-flex flex-column">
-                <div id="keywords-b-container" class="keyword-container mb-3"></div>
+                <div id="keywords-b-container" class="keyword-container mb-3" style="min-height: 200px;"></div>
                 <div class="input-group mt-auto">
                     <input type="text" id="new-keyword-b" class="form-control" placeholder="キーワードを追加">
                     <button class="btn btn-outline-secondary" type="button" onclick="addKeyword('b')">追加</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6 mb-4 d-flex">
+        <div class="card flex-fill">
+            <div class="card-header">URLリスト（ユーザーページ巡回用）</div>
+            <div class="card-body d-flex flex-column">
+                <p class="text-muted small">「ユーザーページ巡回調達」で使用するROOMのURLを登録します。</p>
+                <div id="source-urls-container" class="keyword-container mb-3" style="min-height: 200px;"></div>
+                <div class="input-group mt-auto">
+                    <input type="url" id="new-source-url" class="form-control" placeholder="https://room.rakuten.co.jp/...">
+                    <button class="btn btn-outline-secondary" type="button" onclick="addUrl()">追加</button>
                 </div>
             </div>
         </div>
@@ -142,8 +157,13 @@
         try {
             const response = await fetch('/api/keywords');
             const data = await response.json();
-            renderGenreCheckboxes(data.keywords_a);
-            renderKeywords('b', data.keywords_b);
+            if (!response.ok) {
+                throw new Error(data.message || 'サーバーからデータを取得できませんでした。');
+            }
+            renderGenreCheckboxes(data.keywords_a || []);
+            renderKeywords('b', data.keywords_b || []);
+            // source_urls が存在しない場合も考慮して、空の配列をデフォルト値とする
+            renderUrls(data.source_urls || []);
         } catch (error) {
             console.error('Failed to fetch keywords:', error);
             alert('キーワードの読み込みに失敗しました。');
@@ -173,9 +193,39 @@
         }
     }
 
+    function renderUrls(urls) {
+        const container = document.getElementById('source-urls-container');
+        container.innerHTML = '';
+        urls.forEach(url => {
+            const badge = document.createElement('span');
+            badge.className = 'badge rounded-pill bg-info me-2 mb-2 p-2 d-inline-flex align-items-center';
+            badge.innerHTML = `
+                ${url}
+                <button type="button" class="btn-close btn-close-white ms-2" aria-label="Close" onclick="this.parentElement.remove()"></button>
+            `;
+            container.appendChild(badge);
+        });
+    }
+
+    function addUrl() {
+        const input = document.getElementById('new-source-url');
+        const url = input.value.trim();
+        if (url) {
+            try {
+                // URLとして妥当か簡易チェック
+                new URL(url);
+                renderUrls([url, ...getUrlsFromDOM()]);
+                input.value = '';
+            } catch (_) {
+                alert('有効なURLを入力してください。');
+            }
+        }
+    }
+
     async function saveKeywords(showMessages = true) {
         const keywords_a = getSelectedGenres();
         const keywords_b = getKeywordsFromDOM('b');
+        const source_urls = getUrlsFromDOM();
 
         try {
             if (showMessages) {
@@ -184,7 +234,7 @@
             const response = await fetch('/api/keywords', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ keywords_a, keywords_b })
+                body: JSON.stringify({ keywords_a, keywords_b, source_urls })
             });
             const result = await response.json();
             if (!response.ok) throw new Error(result.message || 'キーワードの保存に失敗しました。');
@@ -202,6 +252,13 @@
         const container = document.getElementById(`keywords-${group}-container`);
         return Array.from(container.querySelectorAll('.badge')).map(badge => {
             // テキストノードのみを取得して、ボタンのテキスト（"Close"など）を含めないようにする
+            return badge.childNodes[0].nodeValue.trim();
+        });
+    }
+
+    function getUrlsFromDOM() {
+        const container = document.getElementById('source-urls-container');
+        return Array.from(container.querySelectorAll('.badge')).map(badge => {
             return badge.childNodes[0].nodeValue.trim();
         });
     }
@@ -300,12 +357,4 @@
         fetchProfiles();
     });
 </script>
-{% endblock %}
-
-{% block styles %}
-<style>
-    #keywords-b-container {
-        min-height: 200px;
-    }
-</style>
 {% endblock %}

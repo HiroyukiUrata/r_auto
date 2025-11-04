@@ -27,11 +27,12 @@
                 <div class="mb-3">
                     <label for="procurement-method" class="form-label">
                         <i class="bi bi-tools me-1"></i>商品調達方法
-                        <i class="bi bi-info-circle" data-bs-toggle="tooltip" data-bs-placement="top" title="商品を調達する方法を選択します。楽天APIは未実装です。"></i>
+                        <i class="bi bi-info-circle" data-bs-toggle="tooltip" data-bs-placement="top" title="商品を調達する方法を選択します。楽天APIは未実装です。「ユーザーページ巡回」はdb/source_urls.jsonに登録したROOMページから商品を調達します。"></i>
                     </label>
                     <select class="form-select" id="procurement-method">
                         <option value="rakuten_search">楽天市場の検索 (ブラウザ)</option>
                         <option value="rakuten_api">楽天API (ダミー)</option>
+                        <option value="user_page_crawl">ユーザーページ巡回調達</option>
                     </select>
                 </div>
                 <div class="mb-3">
