@@ -14,7 +14,7 @@ from fastapi import BackgroundTasks
 # タスク定義を一元的にインポート
 from app.core.task_manager import TaskManager
 from app.core.task_definitions import TASK_DEFINITIONS
-from app.core.database import (get_all_inventory_products, update_product_status, delete_all_products, init_db, 
+from app.core.database import (get_all_inventory_products, update_product_status, delete_all_products, init_db,
                                delete_product, update_status_for_multiple_products, delete_multiple_products, get_product_count_by_status,
                                get_error_products_in_last_24h, update_product_priority, update_product_order, bulk_update_products_from_data, commit_user_actions, get_all_user_engagements, 
                                get_users_for_commenting, update_user_comment)
@@ -22,7 +22,11 @@ from app.tasks.posting import run_posting
 from app.tasks.get_post_url import run_get_post_url
 from app.tasks.import_products import process_and_import_products
 from app.core.logging_config import LOG_FILE # ログファイルのパスをインポート
+
+
 from app.core.config_manager import get_config, save_config, SCREENSHOT_DIR, clear_config_cache
+
+from app.tasks.prompt_test_task import PromptTestTask
 from app.core.scheduler_utils import run_threaded, run_task_with_random_delay, get_log_summary
 from datetime import date, timedelta, datetime
 
@@ -40,6 +44,21 @@ PROMPTS_DIR = "app/prompts"
 class TimeEntry(BaseModel):
     time: str
     count: int
+
+# --- Prompt Pydantic Models ---
+class Prompt(BaseModel):
+    filename: str
+    content: str
+    name_ja: str
+    description: str
+
+class PromptUpdateRequest(BaseModel):
+    content: str
+
+class PromptTestRequest(BaseModel):
+    prompt_key: str
+    prompt_content: str
+    test_data: list[dict]
 
 # --- Pydantic Models ---
 class ScheduleUpdateRequest(BaseModel):
@@ -1208,6 +1227,28 @@ async def get_prompts():
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": f"プロンプトの読み込み中にエラーが発生しました: {str(e)}"})
 
+@router.post("/api/prompts/test")
+async def test_prompt(request: PromptTestRequest):
+    """
+    指定されたプロンプトとテストデータを使用してAIの生成をテストする。
+    """
+    try:
+        logging.info(f"[/api/prompts/test] リクエスト受信: prompt_key='{request.prompt_key}', test_data件数={len(request.test_data)}")
+        # タスクをインスタンス化して実行
+        task = PromptTestTask(
+            prompt_key=request.prompt_key,
+            prompt_content=request.prompt_content,
+            test_data=request.test_data,
+        )
+        # PromptTestTaskのrunメソッドは同期的に結果を返す
+        result = task.run()
+        return JSONResponse(content=result)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logging.error(f"プロンプトのテスト実行中にエラーが発生しました: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.post('/api/prompts/{prompt_name}')
 async def update_prompt(prompt_name: str, request: Request):
     """
@@ -1216,10 +1257,15 @@ async def update_prompt(prompt_name: str, request: Request):
     try:
         data = await request.json()
         content = data.get('content')
-        filename = data.get('filename')
-
-        if not filename or '..' in filename or filename.startswith('/'):
-            return JSONResponse(status_code=400, content={"error": "無効なファイル名です。"})
+        
+        # このマッピングは get_prompts と同じである必要があります
+        filename_map = {
+            "create-caption-flow": "caption_prompt.txt",
+            "create-comment": "user_comment_body_prompt.txt"
+        }
+        filename = filename_map.get(prompt_name)
+        if not filename:
+            return JSONResponse(status_code=400, content={"error": "無効なプロンプトキーです。"})
 
         filepath = os.path.join(PROMPTS_DIR, filename)
         with open(filepath, 'w', encoding='utf-8') as f:

@@ -464,7 +464,7 @@
 
     function fetchUsers() {
         const showAll = document.getElementById('show-all-users-switch').checked;
-        let apiUrl = '/api/comment-targets';
+        let apiUrl = showAll ? '/api/comment-targets?all=true' : '/api/comment-targets';
         const searchKeyword = document.getElementById('user-search-input').value;
 
         if (showAll) {
