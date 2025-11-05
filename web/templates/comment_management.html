@@ -97,8 +97,7 @@
         </div>
         <div class="col-5">
             <select class="form-select" id="sort-select" onchange="fetchUsers()">
-                <option value="recent_action" selected>🕒新しい順</option>
-                <option value="commented">💬済ユーザー</option>
+                <option value="all" selected>🕒新しい順</option>
                 <option value="like_count_desc">❤️多い順</option>
                 <option value="commented_at_desc">💬新しい順</option>
                 <option value="commented_at_asc">💬古い順</option>
@@ -609,13 +608,17 @@
                         engagementIcon = '<span title="いいね返しのみ対象" class="me-1">❤️</span>';
                     }
 
-                    // コメントが投稿済み（古い）かどうかを判定
-                    const isCommentOld = user.last_commented_at && user.comment_generated_at &&
-                                         new Date(user.comment_generated_at) <= new Date(user.last_commented_at);
+                    // 「全員表示」がOFFの場合のみ、取り消し線のロジックを適用
+                    if (!showAll) {
+                        const threeDaysAgo = new Date();
+                        threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+                        const lastCommentedDate = user.last_commented_at ? new Date(user.last_commented_at) : null;
 
-                    if (isCommentOld) {
-                        commentClass += ' text-decoration-line-through'; // 古いコメントに取り消し線を追加
-                        commentTitle = `（投稿済み）${commentTitle}`;
+                        // 最終コメント日時が3日以内の場合に取り消し線を追加
+                        if (lastCommentedDate && lastCommentedDate > threeDaysAgo) {
+                            commentClass += ' text-decoration-line-through';
+                            commentTitle = `（再コメント不可期間）${commentTitle}`;
+                        }
                     }
 
                     // --- エラーアイコンの表示 ---

@@ -411,23 +411,30 @@ class NotificationAnalyzerTask(BaseTask):
             recent_likes = user.get('recent_like_count', 0)
             follow_count = user.get('follow_count', 0)
             recent_follow_count = user.get('recent_follow_count', 0)
+            is_following = user.get('is_following', 0) == 1
             # 今回のセッションでフォローがあったかどうかで判定
             is_new_follow = recent_follow_count > 0
+
+            # --- コメント返信対象の条件判定 ---
+            is_like_based_target = (recent_likes >= 5)
+            is_follow_based_target = (is_following and is_new_follow and recent_likes >= 1)
+
+            # コメント返信対象の場合のみ、プロンプトメッセージを生成する
+            if not (is_like_based_target or is_follow_based_target):
+                continue
 
             # 1. フォロー関係
             if is_new_follow:
                 messages.append("新規にフォローしてくれました。")
             elif follow_count > recent_follow_count:
                 messages.append("以前からフォローしてくれているユーザーです。")
-            else:
-                pass
-                #messages.append("まだフォローされていないユーザーです。")
 
             # 2. いいね関係
             if recent_likes > 0:
                 # 過去にもアクションがあるか (total_likes > recent_likes) で分岐
                 if total_likes > recent_likes:
-                    if total_likes > 10:
+                    # 累計いいねが10件以上で、かつ今回のいいねが5件以上の場合に「常連」とする
+                    if total_likes > 10 and recent_likes >= 5:
                         messages.append("いつもたくさんの「いいね」をくれる常連の方です。")
                     else:
                         messages.append("過去にも「いいね」をしてくれたことがあります。")

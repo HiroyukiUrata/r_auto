@@ -684,15 +684,22 @@ async def bulk_status_update_products(request: BulkStatusUpdateRequest):
 async def get_comment_targets(request: Request):
     """コメント投稿対象のユーザーリストを返す"""
     try:
-        show_all = request.query_params.get('all', 'false').lower() == 'true'
+        show_all_param = request.query_params.get('all', 'false')
+        show_all = show_all_param.lower() == 'true'
         search_keyword = request.query_params.get('search', '')
+        sort_by_param = request.query_params.get('sort', 'not_provided')
+
+        logging.debug(f"[API:get_comment_targets] Request params: all='{show_all_param}', sort='{sort_by_param}', search='{search_keyword}'")
         
         if show_all:
             # 全ユーザー表示モード。ソート順をクエリパラメータから取得
-            sort_by = request.query_params.get('sort', 'recent_action')
+            sort_by = sort_by_param if sort_by_param != 'not_provided' else 'all'
+            logging.debug(f"[API:get_comment_targets] Calling get_all_user_engagements with: sort_by='{sort_by}', search='{search_keyword}'")
             users = get_all_user_engagements(sort_by=sort_by, limit=200, search_keyword=search_keyword)
+            logging.debug(f"[API:get_comment_targets] get_all_user_engagements returned {len(users)} users.")
         else:
             # 通常のコメント対象ユーザー表示モード
+            logging.debug("[API:get_comment_targets] Calling get_users_for_commenting.")
             users = get_users_for_commenting(limit=50)
         return JSONResponse(content=users)    
     except Exception as e:

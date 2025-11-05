@@ -627,6 +627,7 @@ def get_users_for_prompt_creation() -> list[dict]:
             WHERE profile_page_url IS NOT NULL
               AND (ai_prompt_updated_at IS NULL OR ai_prompt_updated_at < latest_action_timestamp)
               AND (
+                  -- コメント返信対象の条件に合致するユーザーのみを対象とする
                   recent_like_count >= 5
                   OR (is_following > 0 AND recent_follow_count > 0 AND recent_like_count >= 1)
               )
@@ -835,19 +836,35 @@ def _add_engagement_type_to_users(users: list[dict]) -> list[dict]:
     processed_users = []
     for user in users:
         user['engagement_type'] = 'none'  # デフォルト
+        
+        # --- 判定に必要な変数を準備 ---
+        recent_likes = user.get('recent_like_count', 0)
+        recent_follows = user.get('recent_follow_count', 0)
+        is_following = user.get('is_following', 0) == 1
+        last_commented_at_str = user.get('last_commented_at')
+        last_commented_at = datetime.fromisoformat(last_commented_at_str) if last_commented_at_str else None
+        has_comment_text = bool(user.get('comment_text'))
 
-        # コメント対象(💬)の条件:
-        # 1. コメント本文(comment_text)が存在する
-        # 2. かつ、まだそのコメントを投稿していない
-        #    - last_commented_at が NULL (一度も投稿していない)
-        #    - または、comment_generated_at が last_commented_at より新しい (新しいコメントが生成された)
-        is_comment_target = user.get('comment_text') and (not user.get('last_commented_at') or (user.get('comment_generated_at') and user.get('last_commented_at') < user.get('comment_generated_at')))
+        # --- コメント対象(💬)の判定 ---
+        is_comment_target = False
+        # 1. 共通の前提条件: コメント本文があり、かつ3日間の再コメント期間をクリアしている
+        can_comment_today = has_comment_text and (not last_commented_at or last_commented_at < three_days_ago)
+
+        if can_comment_today:
+            # 2. 個別の条件: 条件Aまたは条件Bを満たすか
+            # 条件A: いいね5件以上
+            is_like_based_target = (recent_likes >= 5)
+            # 条件B: フォロー済み & 新規フォローバック & いいね1件以上
+            is_follow_based_target = (is_following and recent_follows > 0 and recent_likes >= 1)
+
+            if is_like_based_target or is_follow_based_target:
+                is_comment_target = True
 
         if is_comment_target:
             user['engagement_type'] = 'comment'
-        # いいね返しのみ対象(❤️)の条件:
-        # コメント対象ではなく、かつ最近のいいねが1件以上ある
-        elif user.get('recent_like_count', 0) >= 3:
+        # --- いいね返しのみ対象(❤️)の判定 ---
+        # コメント対象ではなく、かつ、いいねが3件以上ある場合
+        elif recent_likes >= 3:
             user['engagement_type'] = 'like_only'
 
         # どちらかの対象であればリストに追加
@@ -858,13 +875,16 @@ def _add_engagement_type_to_users(users: list[dict]) -> list[dict]:
 
 def get_users_for_commenting(limit: int = 10) -> list[dict]:
     """
-    コメント投稿対象のユーザーを優先度順に取得する。
+    コメント投稿対象のユーザーをアクション日時順に取得する。
 
-    - **コメント対象**:
-        - 新規: 未コメントで、今回3いいね以上
-        - 再コメント: 最終コメントから3日以上経過し、今回5いいね以上
-    - **いいね返しのみ対象**:
-        - コメント済みだが、再コメント条件を満たさず、今回3いいね以上
+    - **コメント返信対象 (💬)**:
+        - AIによるコメント本文が生成済みで、かつ最終コメントから3日以上経過（または新規）しており、
+        - 以下のいずれかを満たすユーザー:
+            - (A) 今セッションで **いいねを5回以上**
+            - (B) こちらが **フォロー済み** で、相手から **新規フォロー** があり、かつ **いいねを1回以上**
+    - **いいね返しのみ対象 (❤️)**:
+        - 上記の「コメント返信対象」ではない。
+        - かつ、今セッションで **いいねを3回以上** してくれたユーザー。
 
     :param limit: 取得するユーザーの最大数
     :return: ユーザーデータの辞書のリスト
@@ -878,7 +898,10 @@ def get_users_for_commenting(limit: int = 10) -> list[dict]:
         query = """
             SELECT * FROM user_engagement
             WHERE
-                (recent_like_count > 0) OR (comment_text IS NOT NULL AND comment_text != '')
+                -- 条件A,B,いいね返し対象のいずれかに合致する可能性のあるユーザーを幅広く取得
+                -- (フォローバック+いいね1件 or いいね3件以上)
+                (is_following = 1 AND recent_follow_count > 0 AND recent_like_count >= 1)
+                OR (recent_like_count >= 3)
             ORDER BY recent_action_timestamp DESC
         """
         cursor.execute(query)
@@ -940,11 +963,15 @@ def get_all_user_engagements(sort_by: str = 'recent_action', limit: int = 100, s
         where_clauses = []
         order_by_clause = "ORDER BY latest_action_timestamp DESC" # デフォルト
 
-        if sort_by == 'commented':
+        if sort_by == 'all' or sort_by == 'recent_action':
+            # 全員表示の場合は絞り込みなし、デフォルトのソート順を維持
+            pass
+        elif sort_by == 'commented':
             where_clauses.append("last_commented_at IS NOT NULL")
             order_by_clause = "ORDER BY last_commented_at DESC"
         elif sort_by == 'like_count_desc':
             order_by_clause = "ORDER BY (like_count + recent_like_count) DESC"
+        # 'commented_at_desc' と 'commented_at_asc' は 'commented' と同じ絞り込み条件
         elif sort_by == 'commented_at_desc':
             where_clauses.append("last_commented_at IS NOT NULL")
             order_by_clause = "ORDER BY last_commented_at DESC"
@@ -962,9 +989,16 @@ def get_all_user_engagements(sort_by: str = 'recent_action', limit: int = 100, s
         params.append(limit)
 
         query = f"SELECT * FROM user_engagement {where_clause_str} {order_by_clause} LIMIT ?"
+        
+        logging.debug(f"[DB:get_all_user_engagements] Executing query: `{query}` with params: {params}")
         cursor.execute(query, params)
         users = [dict(row) for row in cursor.fetchall()]
-        users = _add_engagement_type_to_users(users)
+
+        # 「全員表示」の場合は絞り込みを行わず、全ユーザーを返す
+        # それ以外（コメント対象者表示など）の場合は、エンゲージメントタイプを判定して絞り込む
+        if sort_by not in ['all', 'recent_action', 'like_count_desc', 'commented_at_desc', 'commented_at_asc']:
+             users = _add_engagement_type_to_users(users)
+
         return users
     finally:
         conn.close()
