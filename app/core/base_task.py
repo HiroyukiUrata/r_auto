@@ -57,7 +57,7 @@ class BaseTask(ABC):
                 timestamp = time.strftime("%Y%m%d-%H%M%S")
                 screenshot_path = os.path.join(SCREENSHOT_DIR, f"{prefix}_{timestamp}.png")
                 screenshot_locator.screenshot(path=screenshot_path)
-                logging.info(f"要素のスクリーンショットを保存しました: {screenshot_path}")
+                logging.debug(f"要素のスクリーンショットを保存しました: {screenshot_path}")
             except Exception as e:
                 logging.error(f"要素のスクリーンショット撮影に失敗しました: {e}")
 

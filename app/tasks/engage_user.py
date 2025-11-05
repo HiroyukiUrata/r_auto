@@ -22,6 +22,7 @@ class EngageUserTask(BaseTask):
         # タスク実行に必要な引数を設定
         self.users = users
         self.engage_mode = engage_mode # 'all', 'like_only', 'comment_only'
+        logger.debug(f"EngageUserTaskが初期化されました。Mode: {self.engage_mode}, DryRun: {self.dry_run}")
 
     def _like_back(self, page: Page, user_id: str, user_name: str, like_back_count: int):
         """いいね返し処理"""
@@ -46,18 +47,18 @@ class EngageUserTask(BaseTask):
             # 全カードの中から、「いいね済み」ボタンを持つカードだけを絞り込みます。
             liked_cards_locator = all_cards_locator.filter(has=liked_button_locator)
             count = liked_cards_locator.count()
-            print(f"{count} 件の「いいね済み」カードが見つかりました。")
+            #print(f"{count} 件の「いいね済み」カードが見つかりました。")
 
             if count > 0:
                 #  絞り込んだカードを一括で非表示にします。
                 liked_cards_locator.evaluate_all("nodes => nodes.forEach(n => n.style.display = 'none')")
-                print(f"合計 {count} 件のカードを非表示にしました。")
+                #print(f"合計 {count} 件のカードを非表示にしました。")
 
             time.sleep(3) # 視覚的な確認のための待機
         
         except Exception as e:
-            print(f"エラー: 「いいね済み」の処理中に問題が発生しました。タイムアウトしたか、セレクタが古い可能性があります。")
-            print(f"詳細: {e}") # 詳細なエラーメッセージを出力
+            logger.error(f"エラー: 「いいね済み」の処理中に問題が発生しました。タイムアウトしたか、セレクタが古い可能性があります。")
+            logger.error(f"詳細: {e}") # 詳細なエラーメッセージを出力
 
         liked_count = 0
 
@@ -113,7 +114,7 @@ class EngageUserTask(BaseTask):
         page.evaluate("window.scrollTo(0, 0)")
         
         # いいね返し処理で非表示にされたカードを再表示させるため、ページをリロードする
-        logger.info("  -> ページをリロードして全投稿を再表示します。")
+        logger.debug("  -> ページをリロードして全投稿を再表示します。")
         page.reload(wait_until="domcontentloaded", timeout=40000)
         time.sleep(30) # リロード後の描画を少し待つ
         # 最初の投稿カードが表示されるのを待つことで、動的な描画完了を確実にする
@@ -121,7 +122,7 @@ class EngageUserTask(BaseTask):
         page.locator(post_card_selector).first.wait_for(state="visible", timeout=30000)
 
         try:
-            logger.info("  -> 投稿カードが表示されるのを待ちます。")
+            logger.debug("  -> 投稿カードが表示されるのを待ちます。")
            # --- 1. コメント数が最も多い投稿を探す ---
             # 参考スクリプトに合わせて、より内側のコンテナをカードとして特定する
             post_card_selector = convert_to_robust_selector("div.container--JAywt")
@@ -150,9 +151,9 @@ class EngageUserTask(BaseTask):
                     continue
             
             if max_comments < 1:
-                logger.info("  -> コメントが1件以上の投稿が見つからなかったため、最初の投稿を対象とします。")
+                logger.debug("  -> コメントが1件以上の投稿が見つからなかったため、最初の投稿を対象とします。")
             else:
-                logger.info(f"  -> コメント数が最も多い投稿が見つかりました (コメント数: {max_comments})。")
+                logger.debug(f"  -> コメント数が最も多い投稿が見つかりました (コメント数: {max_comments})。")
 
             # --- 2. 投稿の詳細ページに遷移 ---
             image_link_selector = convert_to_robust_selector("a.link-image--15_8Q")
@@ -161,16 +162,16 @@ class EngageUserTask(BaseTask):
             time.sleep(0.5) # スクロール後の描画を少し待つ
             target_post_card.locator(image_link_selector).click()
             page.wait_for_load_state("domcontentloaded", timeout=20000)
-            logger.info(f"  -> 投稿詳細ページに遷移しました: {page.url}")
+            logger.debug(f"  -> 投稿詳細ページに遷移しました: {page.url}")
 
             # --- 3. コメントボタンをクリック ---
-            logger.info(f"  -> コメントボタンをクリックしてコメント画面を開きます")
+            logger.debug(f"  -> コメントボタンをクリックしてコメント画面を開きます")
             comment_button_selector = convert_to_robust_selector('div.pointer--3rZ2h:has-text("コメント")')
             page.locator(comment_button_selector).click()
             time.sleep(3)#ページ読み込みをしっかり待つ
 
             # --- 4. コメントを入力 ---
-            logger.info(f"  -> コメント入力欄にコメントを挿入します")
+            logger.debug(f"  -> コメント入力欄にコメントを挿入します")
             comment_textarea = page.locator('textarea[placeholder="コメントを書いてください"]')
             comment_textarea.wait_for(state="visible", timeout=15000)
             comment_textarea.fill(comment_text)
@@ -179,7 +180,7 @@ class EngageUserTask(BaseTask):
 
 
            # --- 5. 送信ボタンをクリック ---
-            logger.info(f"  -> 送信ボタンをクリックします")
+            logger.debug(f"  -> 送信ボタンをクリックします")
             send_button = page.get_by_role("button", name="送信")
             self._execute_action(send_button, "click", action_name=f"post_comment_{user_id}")
 
@@ -187,7 +188,8 @@ class EngageUserTask(BaseTask):
             if not self.dry_run:
                 # 投稿完了を待機
                 time.sleep(3)
-                logger.info(f"  -> コメント返しが完了しました。投稿URL: {page.url}")
+                #logger.info(f"  -> コメント返しが完了しました。投稿URL: {page.url}")
+                logger.info(f"  -> コメント返しが完了しました。")
             return True
 
         except PlaywrightError as e:
@@ -211,6 +213,10 @@ class EngageUserTask(BaseTask):
             user_name = user.get("name")
             profile_page_url = user.get("profile_page_url")
             
+            # ループごとに成功フラグをリセット
+            like_back_success = False
+            comment_success = False
+
             logger.debug(f"--- {i+1}/{total_users}人目の処理開始: {user_name} ---")
 
             if not profile_page_url or profile_page_url == '取得失敗':
@@ -227,6 +233,7 @@ class EngageUserTask(BaseTask):
 
                 # 1. いいね返し
                 if self.engage_mode in ['all', 'like_only']:
+                    logger.debug(f"  -> Mode '{self.engage_mode}' のため、いいね返しを実行します。")
                     like_back_success = self._like_back(page, user_id, user_name, user.get("recent_like_count", 0))
                     if like_back_success:
                         like_back_processed_count += 1
@@ -255,8 +262,8 @@ class EngageUserTask(BaseTask):
                     else:
                         logger.info("  -> コメント投稿に必要な日時情報が不足しているため、スキップします。")
 
-                comment_success = False
                 if can_comment and self.engage_mode in ['all', 'comment_only']:
+                    logger.debug(f"  -> Mode '{self.engage_mode}' のため、コメント返しを実行します。")
                     comment_success = self._post_comment(page, user_id, user_name, comment_text)
                     if comment_success:
                         comment_processed_count += 1
@@ -266,7 +273,7 @@ class EngageUserTask(BaseTask):
                 # 3. アクションのコミット（個別実行）
                 # いいね返しが成功した場合、いいね関連のアクションのみをコミット
                 if like_back_success:
-                    logger.info(f"  -> いいね返しのアクションをコミットします。")
+                    logger.debug(f"  -> いいね返しのアクションをコミットします。")
                     self._execute_side_effect(
                         commit_user_actions,
                         user_ids=[user_id],
@@ -276,7 +283,7 @@ class EngageUserTask(BaseTask):
                 
                 # コメント返しが成功した場合、コメント関連のアクションをコミット
                 if comment_success:
-                    logger.info(f"  -> コメント返しのアクションをコミットします。")
+                    logger.debug(f"  -> コメント返しのアクションをコミットします。")
                     # ドライラン時は page.url が存在しない可能性があるため、Noneを渡す
                     post_url_for_commit = page.url if not self.dry_run else None
                     self._execute_side_effect(
@@ -293,16 +300,12 @@ class EngageUserTask(BaseTask):
             finally:
                 if page:
                     page.close()
-        
+
         if like_back_processed_count > 0 or like_back_error_count > 0:
             logger.info(f"[Action Summary] name=いいね返し, count={like_back_processed_count}, errors={like_back_error_count}")
-        
+
         if comment_processed_count > 0 or comment_error_count > 0:
             logger.info(f"[Action Summary] name=コメント返し, count={comment_processed_count}, errors={comment_error_count}")
-        
-        # エラーがあった場合、ダッシュボード用にサマリーログを別途出力
-        if like_back_error_count > 0:
-            logger.info(f"[Action Summary] name=いいね返し, count=0, errors={like_back_error_count}")
 
         return True
 
