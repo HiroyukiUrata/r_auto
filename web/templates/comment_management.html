@@ -547,8 +547,8 @@
                     // フォロー状態のアイコンを決定
                     // 自分がフォローしているか (is_following)
                     const isFollowingIcon = user.is_following ? '<i class="bi bi-person-check-fill text-success" title="あなたがフォローしています"></i>' : '';
-                    // 相手がフォローしてくれたか (follow_count)
-                    const followedByIcon = user.follow_count > 0 ? '<i class="bi bi-person-heart text-danger" title="相手からフォローされました"></i>' : '';
+                    // 相手がフォローしてくれたか (累計 + 今回のセッション)
+                    const followedByIcon = ((user.follow_count || 0) + (user.recent_follow_count || 0)) > 0 ? '<i class="bi bi-person-heart text-danger" title="相手からフォローされました"></i>' : '';
 
                     // --- アクション数の表示ロジック ---
                     let likeDisplay;
