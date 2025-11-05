@@ -91,6 +91,7 @@ class UserIdsRequest(BaseModel):
 class BulkEngagePayload(BaseModel):
     users: list[dict]
     dry_run: bool = False
+    engage_mode: str = 'all'
 
 class BulkStatusUpdateRequest(BaseModel):
     product_ids: list[int]
@@ -727,8 +728,14 @@ async def engage_with_multiple_users(payload: BulkEngagePayload, background_task
     task_manager = TaskManager()
     # ユーザーリスト全体を1つのタスクとしてスケジュール
     background_tasks.add_task(task_manager.run_task_by_tag, "engage-user", users=payload.users, dry_run=payload.dry_run)
+    background_tasks.add_task(
+        task_manager.run_task_by_tag, 
+        "engage-user", 
+        users=payload.users, 
+        dry_run=payload.dry_run, 
+        engage_mode=payload.engage_mode)
 
-    return {"message": f"{len(payload.users)}件のユーザーへのエンゲージメントタスクを開始しました。(Dry Run: {payload.dry_run})"}
+    return {"message": f"{len(payload.users)}件のユーザーへのエンゲージメントタスクを開始しました。(Mode: {payload.engage_mode}, Dry Run: {payload.dry_run})"}
 
 @router.patch("/api/users/update-comment", summary="指定されたユーザーのコメントを更新")
 async def patch_user_comment(request: CommentUpdateRequest):

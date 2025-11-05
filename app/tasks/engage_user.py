@@ -13,7 +13,7 @@ class EngageUserTask(BaseTask):
     """
     指定されたユーザーに対して「いいねバック」と「コメント投稿」を行うタスク。
     """
-    def __init__(self, users: list[dict], dry_run: bool = False):
+    def __init__(self, users: list[dict], dry_run: bool = False, engage_mode: str = 'all'):
         super().__init__(count=None, dry_run=dry_run)
         self.action_name = f"複数ユーザーへのエンゲージメント ({len(users)}人)"
         self.needs_browser = True
@@ -21,6 +21,7 @@ class EngageUserTask(BaseTask):
 
         # タスク実行に必要な引数を設定
         self.users = users
+        self.engage_mode = engage_mode # 'all', 'like_only', 'comment_only'
 
     def _like_back(self, page: Page, user_id: str, user_name: str, like_back_count: int):
         """いいね返し処理"""
@@ -225,7 +226,7 @@ class EngageUserTask(BaseTask):
 
 
                 # 1. いいね返し
-                if True :
+                if self.engage_mode in ['all', 'like_only']:
                     like_back_success = self._like_back(page, user_id, user_name, user.get("recent_like_count", 0))
                     if like_back_success:
                         like_back_processed_count += 1
@@ -255,7 +256,7 @@ class EngageUserTask(BaseTask):
                         logger.info("  -> コメント投稿に必要な日時情報が不足しているため、スキップします。")
 
                 comment_success = False
-                if can_comment:
+                if can_comment and self.engage_mode in ['all', 'comment_only']:
                     comment_success = self._post_comment(page, user_id, user_name, comment_text)
                     if comment_success:
                         comment_processed_count += 1
@@ -305,7 +306,7 @@ class EngageUserTask(BaseTask):
 
         return True
 
-def run_engage_user(users: list[dict], dry_run: bool = False):
+def run_engage_user(users: list[dict], dry_run: bool = False, engage_mode: str = 'all'):
     """ラッパー関数"""
-    task = EngageUserTask(users=users, dry_run=dry_run)
+    task = EngageUserTask(users=users, dry_run=dry_run, engage_mode=engage_mode)
     return task.run()
