@@ -42,27 +42,27 @@ class PromptTestTask(BaseTask):
         """
         同期的なタスク実行の起点。ここから非同期処理を呼び出す。
         """
-        logging.info(f"[PromptTestTask] _execute_main_logic 開始: prompt_key='{self.prompt_key}'")
+        logging.debug(f"[PromptTestTask] _execute_main_logic 開始: prompt_key='{self.prompt_key}'")
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
             logging.error("環境変数 'GEMINI_API_KEY' が設定されていません。")
             raise ValueError("GEMINI_API_KEYが設定されていません。")
         
-        logging.info(f"プロンプトテストを実行します: key='{self.prompt_key}'")
+        logging.debug(f"プロンプトテストを実行します: key='{self.prompt_key}'")
         
         client = genai.Client(api_key=api_key)
         json_string = json.dumps(self.test_data, indent=2, ensure_ascii=False)
         full_prompt = f"{self.prompt_content}\n\n以下のJSON配列の各要素について、`ai_caption`または`comment_body`を生成し、JSON配列全体を完成させてください。\n\n```json\n{json_string}\n```"
         
         # --- ログ出力 ---
-        logging.info("--- プロンプトテスト: AIへの入力 ---")
-        logging.info(f"【使用プロンプト】\n{self.prompt_content}")
-        logging.info(f"【テストデータ】\n{json_string}")
-        logging.info(f"【最終的なプロンプト全体】\n{full_prompt}")
-        logging.info("------------------------------------")
+        logging.debug("--- プロンプトテスト: AIへの入力 ---")
+        logging.debug(f"【使用プロンプト】\n{self.prompt_content}")
+        logging.debug(f"【テストデータ】\n{json_string}")
+        logging.debug(f"【最終的なプロンプト全体】\n{full_prompt}")
+        logging.debug("------------------------------------")
 
         response_text = _call_gemini_api_with_retry_sync(client, full_prompt, f"プロンプトテスト - {self.prompt_key}")
-        logging.info("AIからのレスポンスを受信しました。")
+        logging.debug("AIからのレスポンスを受信しました。")
 
         json_match = re.search(r"```json\s*([\s\S]*?)\s*```", response_text)
         if not json_match:

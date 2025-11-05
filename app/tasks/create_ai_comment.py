@@ -155,14 +155,18 @@ class CreateAiCommentTask(BaseTask):
                 if comment_body:
                     # 呼び名がある場合、1行目にそれを組み込む
                     if comment_name:
-                        lines = comment_body.strip().split('\n')
-                        first_line = lines[0]
-                        # 元のセリフから絵文字と括弧を取り除く
-                        cleaned_first_line = first_line.replace('👸「', '').replace('」', '').strip()
-                        # 新しい1行目を生成
-                        new_first_line = f'👸「{comment_name}さん、{cleaned_first_line}」'
-                        # コメント全体を再構築
-                        final_comment = new_first_line + '\n' + '\n'.join(lines[1:])
+                        body_lines = comment_body.strip().split('\n')
+                        first_line = body_lines[0]
+                        # 1行目が「👸「...」」の形式かチェック
+                        match = re.match(r"^\s*👸「(.*)」\s*$", first_line)
+                        if match:
+                            # 形式に一致する場合、括弧の中身に呼びかけを追加
+                            inner_text = match.group(1).strip()
+                            new_first_line = f"👸「{comment_name}さん、{inner_text}」"
+                            final_comment = new_first_line + '\n' + '\n'.join(body_lines[1:])
+                        else:
+                            # 形式に一致しない場合、全体の先頭に呼びかけを追加
+                            final_comment = f"{comment_name}さん、{comment_body}"
                     else:
                         final_comment = comment_body
 

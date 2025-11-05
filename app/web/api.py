@@ -1165,8 +1165,9 @@ async def load_prompt_profile(prompt_key: str, profile_name: str):
         return JSONResponse(status_code=404, content={"status": "error", "message": "プロファイルが見つかりません。"})
 
     prompt_filenames = {
-        "caption_prompt": "caption_prompt.txt",
-        "user_comment_body_prompt": "user_comment_body_prompt.txt"
+        "create-caption-flow": "caption_prompt.txt",
+        "create-comment": "user_comment_body_prompt.txt",
+        "user_comment_body_prompt": "user_comment_body_prompt.txt" # 念のため古いキーも残す
     }
     dest_filename = prompt_filenames.get(prompt_key)
     if not dest_filename:
