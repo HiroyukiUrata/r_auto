@@ -12,6 +12,18 @@
     .card-header {
         background-color: #f8f9fa;
     }
+    /* スマホ表示でプロファイルメニューのレイアウトを調整 */
+    @media (max-width: 767.98px) {
+        .profile-dropdown-menu {
+            /* 幅を固定せず、画面幅いっぱいに広がるように調整 */
+            left: 0;
+            right: 0;
+        }
+        .profile-dropdown-menu .input-group {
+            flex-direction: column; /* inputとbuttonを縦積みにする */
+            gap: 0.5rem; /* 要素間の隙間を調整 */
+        }
+    }
 </style>
 {% endblock %}
 
@@ -195,30 +207,7 @@
                             <div class="card h-100 d-flex flex-column" id="prompt-card-${key}">
                                 <div class="card-header d-flex justify-content-between align-items-center flex-wrap">
                                     <p class="text-muted small mb-0 me-3">${prompt.description}</p>
-                                    <div class="d-flex align-items-center gap-2">
-                                        <div class="dropdown">
-                                            <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" id="profileMenuButton-${key}" data-bs-toggle="dropdown" aria-expanded="false">
-                                                <i class="bi bi-collection-fill me-1"></i>プロファイル
-                                            </button>
-                                            <div class="dropdown-menu p-3" aria-labelledby="profileMenuButton-${key}" style="min-width: 400px;">
-                                                <div class="mb-3">
-                                                    <label for="profile-select-${key}" class="form-label small">プロファイルを選択して読み込み</label>
-                                                    <div class="input-group">
-                                                        <select id="profile-select-${key}" class="form-select form-select-sm"></select>
-                                                        <button class="btn btn-sm btn-primary" onclick="loadProfile('${key}')"><span class="d-none d-md-inline">読込</span><i class="bi bi-box-arrow-in-down d-inline d-md-none"></i></button>
-                                                        <button class="btn btn-sm btn-danger" onclick="deleteProfile('${key}')"><span class="d-none d-md-inline">削除</span><i class="bi bi-trash d-inline d-md-none"></i></button>
-                                                    </div>
-                                                </div>
-                                                <hr>
-                                                <div>
-                                                    <label for="new-profile-name-${key}" class="form-label small">現在のプロンプトを名前を付けて保存</label>
-                                                    <div class="input-group">
-                                                        <input type="text" id="new-profile-name-${key}" class="form-control form-control-sm" placeholder="例: 対話重視コメント用">
-                                                        <button class="btn btn-sm btn-success" onclick="saveProfile('${key}')"><span class="d-none d-md-inline">保存</span><i class="bi bi-save d-inline d-md-none"></i></button>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
+                                    <div class="d-flex align-items-center gap-2 ms-auto">
                                         <button class="btn btn-sm btn-info" onclick="openTestModal('${key}')">
                                             <i class="bi bi-play-circle me-1"></i><span class="d-none d-md-inline">テスト実行</span>
                                         </button>
@@ -226,6 +215,35 @@
                                     </div>
                                 </div>
                                 <div class="card-body flex-grow-1 d-flex flex-column">
+                                    <div class="accordion accordion-flush mb-3" id="profileAccordion-${key}">
+                                        <div class="accordion-item">
+                                            <h2 class="accordion-header" id="headingProfile-${key}">
+                                                <button class="accordion-button collapsed py-2" type="button" data-bs-toggle="collapse" data-bs-target="#collapseProfile-${key}" aria-expanded="false" aria-controls="collapseProfile-${key}">
+                                                    <i class="bi bi-collection-fill me-2"></i>プロファイル管理
+                                                </button>
+                                            </h2>
+                                            <div id="collapseProfile-${key}" class="accordion-collapse collapse" aria-labelledby="headingProfile-${key}">
+                                                <div class="accordion-body border-top">
+                                                    <div class="mb-3">
+                                                        <label for="profile-select-${key}" class="form-label small">プロファイルを選択して読み込み</label>
+                                                        <div class="input-group">
+                                                            <select id="profile-select-${key}" class="form-select form-select-sm"></select>
+                                                            <button class="btn btn-sm btn-primary" onclick="loadProfile('${key}')"><span class="d-none d-md-inline">読み込み</span><i class="bi bi-box-arrow-in-down d-inline d-md-none"></i></button>
+                                                            <button class="btn btn-sm btn-danger" onclick="deleteProfile('${key}')"><span class="d-none d-md-inline">削除</span><i class="bi bi-trash d-inline d-md-none"></i></button>
+                                                        </div>
+                                                    </div>
+                                                    <hr>
+                                                    <div>
+                                                        <label for="new-profile-name-${key}" class="form-label small">現在のプロンプトを名前を付けて保存</label>
+                                                        <div class="input-group">
+                                                            <input type="text" id="new-profile-name-${key}" class="form-control form-control-sm" placeholder="例: 対話重視コメント用">
+                                                            <button class="btn btn-sm btn-success" onclick="saveProfile('${key}')"><span class="d-none d-md-inline">保存</span><i class="bi bi-save d-inline d-md-none"></i></button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
                                     <textarea class="form-control prompt-textarea flex-grow-1" data-filename="${prompt.filename}">${prompt.content}</textarea>
                                 </div>
                             </div>
