@@ -802,7 +802,7 @@ def commit_user_actions(user_ids: list[str], is_comment_posted: bool, post_url: 
             params = user_ids
         cursor.execute(update_query, params)
         conn.commit()
-        logging.info(f"{cursor.rowcount}件のユーザーアクションをコミットしました。")
+        logging.debug(f"{cursor.rowcount}件のユーザーアクションをコミットしました。")
         return cursor.rowcount
     finally:
         conn.close()
