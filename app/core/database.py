@@ -615,10 +615,13 @@ def get_users_for_prompt_creation() -> list[dict]:
     AIプロンプトメッセージを生成/更新する必要があるユーザーを取得する。
     - URLが取得済み
     - ai_prompt_updated_at が latest_action_timestamp より古い、または NULL
+    - かつ、最後にコメントしてから3日以上経過している、または新規ユーザー
     """
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
+        three_days_ago = (datetime.now() - timedelta(days=3)).isoformat()
+
         cursor.execute("""
             SELECT * FROM user_engagement
             WHERE profile_page_url IS NOT NULL
@@ -627,7 +630,11 @@ def get_users_for_prompt_creation() -> list[dict]:
                   recent_like_count >= 5
                   OR (is_following > 0 AND recent_follow_count > 0 AND recent_like_count >= 1)
               )
-        """)
+              AND (
+                  last_commented_at IS NULL 
+                  OR last_commented_at < ?
+              )
+        """, (three_days_ago,))
         users = [dict(row) for row in cursor.fetchall()]
         return users
     finally:
