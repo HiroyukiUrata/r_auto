@@ -348,21 +348,12 @@ TASK_DEFINITIONS = {
         "name_ja": "（ダミー）件数表示なしフロー",
         "function": None,
         "default_kwargs": {"_": None}, # countキーを含まないダミー引数を定義することで、UIに件数入力が不要と伝える
-        "is_debug": True, # UIで確認できるように表示
-        "show_in_schedule": True,
+        "is_debug": False, # UIで確認できるように表示
+        "show_in_schedule": False,
         "show_count_in_dashboard": False,
         "show_count_in_schedule": False,
         "description": "件数入力ボックスが表示されないことを確認するためのダミーフローです。",
         "order": 91,
         "flow": [("check-login-status", {})] # フローの内容はシンプルでOK
-    },
-    "manual-test": {
-        "name_ja": "手動テスト",
-        "function": run_manual_test,
-        "is_debug": True,
-        "show_in_schedule": False,
-        "description": "指定したURLを開き、ブラウザが閉じるまで待機します。デバッグやセレクタの調査に利用します。",
-        "order": 100,
-        "default_kwargs": {"script": "test_scripts/example.py"},
     },
 }

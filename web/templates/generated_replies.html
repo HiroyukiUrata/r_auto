@@ -197,7 +197,7 @@ function fetchGeneratedReplies() {
                                     <div class="flex-grow-1" style="min-width: 0;">
                                         <p class="card-text mb-0" style="${truncatedStyle}">${replyText}</p>
                                     </div>
-                                    <button class="btn btn-sm btn-outline-secondary flex-shrink-0" onclick='openDetailModal(${JSON.stringify(replyText)}, ${JSON.stringify(comments)})' title="詳細の表示と編集">
+                                    <button class="btn btn-sm btn-outline-secondary flex-shrink-0" onclick='openDetailModal(this, ${JSON.stringify(replyText)}, ${JSON.stringify(comments)})' title="詳細の表示と編集">
                                         <i class="bi bi-search"></i><span class="d-none d-md-inline ms-1">詳細</span>
                                     </button>
                                 </div>
@@ -317,7 +317,7 @@ function bulkPost(isDryRun) {
     
 }
 
-function openDetailModal(replyText, comments) {
+function openDetailModal(buttonElement, replyText, comments) {
     const modalTextarea = document.getElementById('modal-textarea');
     const modalOriginalComments = document.getElementById('modal-original-comments');
     const saveBtn = document.getElementById('modal-save-btn');
@@ -331,15 +331,15 @@ function openDetailModal(replyText, comments) {
     const representativeId = comments[0].id;
     const allCommentIds = comments.map(c => c.id);
 
-    saveBtn.onclick = () => updateReply(representativeId);
+    saveBtn.onclick = () => updateReply(buttonElement, representativeId);
     ignoreBtn.onclick = () => ignoreReplies(allCommentIds);
 
     replyDetailModal.show();
 }
 
-function updateReply(representativeId) {
+function updateReply(buttonElement, representativeId) {
     const newText = document.getElementById('modal-textarea').value;
-    fetch(`/api/generated-replies/${representativeId}`, {
+    fetch(`/api/generated-replies/${representativeId}?comment_id=${representativeId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ reply_text: newText })
@@ -348,8 +348,22 @@ function updateReply(representativeId) {
     .then(data => {
         if (data.status === 'success') {
             showToast('成功', '返信コメントを更新しました。');
+            
+            // モーダルを開いたボタンを起点にDOMを更新
+            const listItem = buttonElement.closest('.list-group-item');
+            const textElement = listItem.querySelector('.card-text');
+
+            // 1. 表示されているテキストを更新
+            if (textElement) {
+                textElement.textContent = newText;
+            }
+            // 2. モーダルを開くためのonclick属性を更新
+            const originalOnClick = buttonElement.getAttribute('onclick');
+            const commentsJsonString = originalOnClick.substring(originalOnClick.indexOf(',', originalOnClick.indexOf(',') + 1) + 1); // 2番目のカンマ以降を取得
+            const updatedOnClick = `openDetailModal(this, ${JSON.stringify(newText)}, ${commentsJsonString}`;
+            buttonElement.setAttribute('onclick', updatedOnClick);
+
             replyDetailModal.hide();
-            fetchGeneratedReplies(); // リストを再読み込み
         } else {
             showToast('エラー', '更新に失敗しました: ' + data.message, 'error');
         }
