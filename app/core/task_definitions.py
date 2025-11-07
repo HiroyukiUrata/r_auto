@@ -364,4 +364,13 @@ TASK_DEFINITIONS = {
         "is_debug": True,
         "show_in_schedule": False,
     },
+        "manual-test": {
+        "name_ja": "手動テスト",
+        "function": run_manual_test,
+        "is_debug": True,
+        "show_in_schedule": False,
+        "description": "テストスクリプトの実行に必要です。",
+        "order": 100,
+        "default_kwargs": {"script": "test_scripts/example.py"},
+    },
 }

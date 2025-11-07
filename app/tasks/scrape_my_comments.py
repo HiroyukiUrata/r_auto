@@ -69,6 +69,7 @@ class ScrapeMyCommentsTask(BaseTask):
             myroom_link.click()
             page.wait_for_load_state("domcontentloaded", timeout=15000)
             logger.info(f"ページ遷移成功。現在のURL: {page.url}")
+            my_room_url = page.url # 自分のROOMのURLを保存
 
             # 3. 「ピン」アイコンを持つカードを探す
             card_selector = convert_to_robust_selector('div[class*="container--JAywt"]')
@@ -144,6 +145,11 @@ class ScrapeMyCommentsTask(BaseTask):
                                 user_page_url = f"https://room.rakuten.co.jp{user_name_element.get_attribute('href')}"
                                 comment_text = item.locator(comment_text_selector).first.inner_text().replace('\n', ' ')
                                 user_image_url = item.locator('img').first.get_attribute('src')
+
+                                # 取得したコメント投稿者のURLが自分自身のURLと一致する場合、処理をスキップ
+                                if user_page_url == my_room_url:
+                                    logger.debug(f"    -> 自分のコメントのためスキップします: {user_name} - {comment_text[:20]}...")
+                                    continue
 
                                 # このコメントのユニークな識別子を作成
                                 comment_unique_id = (user_page_url, comment_text, post_detail_url)
