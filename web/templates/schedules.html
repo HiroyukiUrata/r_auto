@@ -121,6 +121,7 @@
         async function fetchSchedules() {
             const response = await fetch('/api/schedules');
             const schedules = await response.json();
+
             const container = document.getElementById('schedules-container');
             container.innerHTML = '';
 
@@ -128,8 +129,10 @@
             renderScheduleChart(schedules);
 
             schedules.forEach(job => {
-                // 件数設定が可能なタスクのタグリスト
-                const isCountableTask = !['backup-database', 'notification-analyzer'].includes(job.tag);
+                // Python側の 'show_count_in_schedule' フラグを直接参照します。
+                // このキーが未定義(undefined)の場合は、後方互換性のためにデフォルトでtrue（表示）とします。
+                // falseが明示的に設定されている場合のみ非表示になります。
+                const isCountableTask = job.show_count_in_schedule !== false; 
 
                 const timesHtml = job.times.map(entry => `
                     <div class="time-entry d-flex justify-content-between align-items-center p-2 border-bottom">

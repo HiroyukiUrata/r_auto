@@ -234,7 +234,14 @@ async def get_schedules():
         is_schedulable = not definition.get("is_debug", False) or definition.get("show_in_schedule", False)
         if is_schedulable and definition.get("show_in_schedule", True):
 
-            all_tasks[tag] = {"tag": tag, "name_ja": definition["name_ja"], "enabled": True, "times": [], "next_run": None}
+            all_tasks[tag] = {
+                "tag": tag, 
+                "name_ja": definition["name_ja"], 
+                "enabled": True, 
+                "times": [], 
+                "next_run": None,
+                "show_count_in_schedule": definition.get("show_count_in_schedule", True) # ★この行を追加
+            }
 
     # 2. ファイルから保存されたスケジュール情報（enabledフラグ含む）を読み込んでマージ
     saved_schedules = _load_schedules_from_file()

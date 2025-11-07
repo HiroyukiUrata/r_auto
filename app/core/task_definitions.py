@@ -203,6 +203,8 @@ TASK_DEFINITIONS = {
         "function": run_backup_database,
         "is_debug": True,
         "show_in_schedule": True,
+        "default_kwargs": {}, # 件数引数を持たないことを明示
+        "show_count_in_schedule": False, # 件数入力は不要
         "description": "データベースファイル（商品情報など）のバックアップを作成します。",
         "order": 45,
     },
@@ -265,10 +267,11 @@ TASK_DEFINITIONS = {
     "notification-analyzer": {
         "name_ja": "お知らせ解析",
         "function": None, # フローなので直接の関数はなし
-        "default_kwargs": {"hours_ago": 12}, # スケジュール実行時のデフォルト値
+        "default_kwargs": {"hours_ago": 12, "_": None}, # 件数入力が不要であることを示すダミー引数を追加
         "is_debug": False, # 即時実行にも表示する
         "show_count_in_dashboard": False, # ダッシュボードの「次の予定」に件数を表示しない
         "show_in_schedule": True,
+        "show_count_in_schedule": False, # 件数入力は不要
         "description": "通知を分析しコメントを生成します。スケジュール実行時は12時間、即時実行時は30分(hours_ago=0.5)が推奨です。",
         "order": 80,
         "flow": [ ("check-login-status",{}), ("_internal-notification-analyzer", {"hours_ago": "flow_hours_ago"}), ("commit-stale-actions", {}), ("create-ai-comment", {})]
@@ -344,7 +347,7 @@ TASK_DEFINITIONS = {
     "dummy-flow-no-count": {
         "name_ja": "（ダミー）件数表示なしフロー",
         "function": None,
-        "default_kwargs": {"hours_ago": 0}, # countキーを含まない引数を定義することで、UIに件数入力が不要と伝える
+        "default_kwargs": {"_": None}, # countキーを含まないダミー引数を定義することで、UIに件数入力が不要と伝える
         "is_debug": True, # UIで確認できるように表示
         "show_in_schedule": True,
         "show_count_in_dashboard": False,
