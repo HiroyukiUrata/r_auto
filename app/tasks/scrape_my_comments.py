@@ -213,6 +213,11 @@ class ScrapeMyCommentsTask(BaseTask):
                                 comment_text = item.locator(comment_text_selector).first.inner_text().replace('\n', ' ')
                                 user_image_url = item.locator('img').first.get_attribute('src')
 
+                                # 自分のコメントはDB登録対象外とする
+                                if user_page_url == my_room_url:
+                                    logger.debug(f"    -> 自分のコメントのためスキップします: {user_name} - {comment_text[:20]}...")
+                                    continue
+
                                 comment_unique_id = (user_page_url, comment_text, post_detail_url)
                                 if comment_unique_id in processed_ids:
                                     continue
