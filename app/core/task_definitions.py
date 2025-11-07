@@ -20,6 +20,7 @@ from app.tasks.create_ai_comment import run_create_ai_comment
 from app.tasks.create_caption_api import run_create_caption_api
 from app.tasks.scrape_my_comments import run_scrape_my_comments
 from app.tasks.generate_reply_comments import run_generate_reply_comments
+from app.tasks.reply_to_comments import reply_to_comments
 from app.tasks.engage_user import run_engage_user
 
 """
@@ -355,5 +356,12 @@ TASK_DEFINITIONS = {
         "description": "件数入力ボックスが表示されないことを確認するためのダミーフローです。",
         "order": 91,
         "flow": [("check-login-status", {})] # フローの内容はシンプルでOK
+    },
+    "reply-to-comment": {
+        "function": reply_to_comments,
+        "name_ja": "コメントへの返信投稿",
+        "description": "「リピーター育成」ページで選択されたコメントに返信を投稿します。",
+        "is_debug": True,
+        "show_in_schedule": False,
     },
 }

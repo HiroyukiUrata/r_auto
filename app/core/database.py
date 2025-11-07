@@ -801,6 +801,27 @@ def ignore_reply(comment_id: int):
     finally:
         conn.close()
 
+def mark_replies_as_posted(comment_ids: list[int]):
+    """
+    指定されたコメントIDのリストについて、返信が投稿されたことを記録する。
+    (reply_posted_at に現在時刻を設定)
+    """
+    if not comment_ids:
+        return 0
+    
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        now_jst_iso = datetime.now(timezone(timedelta(hours=9))).isoformat()
+        placeholders = ','.join('?' for _ in comment_ids)
+        query = f"UPDATE my_post_comments SET reply_posted_at = ? WHERE id IN ({placeholders})"
+        cursor.execute(query, [now_jst_iso] + comment_ids)
+        conn.commit()
+        logging.info(f"{cursor.rowcount}件のコメントを「投稿済み」として日時を更新しました。")
+        return cursor.rowcount
+    finally:
+        conn.close()
+
 def get_commenting_users_summary(limit: int = 50) -> list[dict]:
     """
     コメントしてくれたユーザーのサマリー（合計コメント数、最新コメント日時）を取得する。
@@ -888,17 +909,17 @@ def get_users_for_prompt_creation() -> list[dict]:
 
         cursor.execute("""
             SELECT * FROM user_engagement
-            WHERE profile_page_url IS NOT NULL
-              AND (ai_prompt_updated_at IS NULL OR ai_prompt_updated_at < latest_action_timestamp)
-              AND (
-                  -- コメント返信対象の条件に合致するユーザーのみを対象とする
-                  recent_like_count >= 5
-                  OR (is_following > 0 AND recent_follow_count > 0 AND recent_like_count >= 1)
-              )
-              AND (
-                  last_commented_at IS NULL 
-                  OR last_commented_at < ?
-              )
+            WHERE 
+                profile_page_url IS NOT NULL
+                AND (
+                    -- 条件1: 新規コメント対象 (フォロー済み & 新規フォロー & いいね1件以上)
+                    (last_commented_at IS NULL AND is_following = 1 AND recent_follow_count > 0 AND recent_like_count >= 1)
+                    OR
+                    -- 条件2: 再コメント対象 (最終コメントから3日以上経過 & いいね5件以上)
+                    (last_commented_at IS NOT NULL AND last_commented_at < ? AND recent_like_count >= 5)
+                )
+                -- 既にプロンプトが最新の場合は除外
+                AND (ai_prompt_updated_at IS NULL OR ai_prompt_updated_at < latest_action_timestamp)
         """, (three_days_ago,))
         users = [dict(row) for row in cursor.fetchall()]
         return users

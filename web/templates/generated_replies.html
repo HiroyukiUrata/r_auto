@@ -190,7 +190,10 @@ function fetchGeneratedReplies() {
                     const truncatedStyle = `display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; text-overflow: ellipsis;`;
 
                     postRepliesHtml += `
-                        <div class="list-group-item list-group-item-action" onclick="toggleSelection(this, event)" data-comment-ids='${JSON.stringify(commentIds)}'>
+                        <div class="list-group-item list-group-item-action" 
+                             onclick="toggleSelection(this, event)" 
+                             data-comment-ids='${JSON.stringify(commentIds)}'
+                             data-reply-info='${JSON.stringify({ postUrl: postUrl, replyText: replyText, users: comments.map(c => c.user_name), commentIds: commentIds }).replace(/'/g, '&#39;')}'>
                             <div class="py-1 px-1">
                                 <div class="d-flex justify-content-between align-items-center gap-2">
                                     <input class="form-check-input reply-checkbox" type="checkbox" value="${representativeId}" onclick="event.stopPropagation(); updateBulkActionButtons();">
@@ -303,7 +306,7 @@ function bulkSkip() {
     ignoreReplies(commentIds);
 }
 
-function bulkPost(isDryRun) {
+async function bulkPost(isDryRun) {
     const selectedCards = document.querySelectorAll('.reply-checkbox:checked');
     if (selectedCards.length === 0) return;
 
@@ -311,10 +314,35 @@ function bulkPost(isDryRun) {
     if (!confirm(`${selectedCards.length}件の返信を${modeText}しますか？`)) {
         return;
     }
-
-    // TODO: 実際の投稿タスクを呼び出すAPIを実装する
-    alert(`「${modeText}」タスクは未実装です。\n選択された${selectedCards.length}件の返信を対象に、後ほど投稿タスクを実装します。`);
     
+    const repliesToPost = Array.from(selectedCards).map(checkbox => {
+        const listItem = checkbox.closest('.list-group-item');
+        return JSON.parse(listItem.dataset.replyInfo.replace(/&#39;/g, "'"));
+    });
+
+    // 投稿後はリストから削除する
+    const selectedListItems = Array.from(selectedCards).map(cb => cb.closest('.list-group-item'));
+    selectedListItems.forEach(item => item.remove());
+    updateBulkActionButtons();
+
+    try {
+        const response = await fetch('/api/replies/bulk-post', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ replies: repliesToPost, dry_run: isDryRun })
+        });
+
+        const result = await response.json();
+        if (!response.ok) {
+            throw new Error(result.detail || `「${modeText}」タスクの開始に失敗しました。`);
+        }
+        showToast('タスク開始', result.message);
+        
+        // 投稿後はリストを再読み込みして整合性を保つ
+        fetchGeneratedReplies();
+    } catch (error) {
+        showToast('エラー', error.message, 'error');
+    }
 }
 
 function openDetailModal(buttonElement, replyText, comments) {

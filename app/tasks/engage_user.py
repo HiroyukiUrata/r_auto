@@ -242,25 +242,35 @@ class EngageUserTask(BaseTask):
 
                 # 2. コメント返しの実行可否を判定
                 comment_text = user.get("comment_text")
-                last_commented_at = user.get("last_commented_at")
-                comment_generated_at = user.get("comment_generated_at")
+                last_commented_at_str = user.get("last_commented_at")
 
                 can_comment = False
                 if comment_text:
                     # パターン1: 新規コメント (last_commented_at がない)
-                    if not last_commented_at:
+                    if not last_commented_at_str:
                         can_comment = True
                         logger.info("  -> 新規ユーザーのため、コメント投稿を実行します。")
-                    # パターン2: 再コメント (最終コメント日時とコメント生成日時を比較)
-                    elif comment_generated_at and last_commented_at:
-                        # コメント生成日時が最終コメント日時より新しい場合のみ投稿
-                        if datetime.fromisoformat(comment_generated_at) > datetime.fromisoformat(last_commented_at):
-                            can_comment = True
-                            logger.info("  -> 新しいコメントが生成されているため、再コメントを実行します。")
-                        else:
-                            logger.info("  -> 投稿済みのコメントのため、再コメントはスキップします。")
+                    # パターン2: 再コメント
                     else:
-                        logger.info("  -> コメント投稿に必要な日時情報が不足しているため、スキップします。")
+                        # 条件1: 最終コメントから3日以上経過
+                        three_days_ago = datetime.now() - timedelta(days=3)
+                        last_commented_at = datetime.fromisoformat(last_commented_at_str)
+                        is_after_3_days = last_commented_at < three_days_ago
+                        
+                        # 条件2: 今回のセッションで5件以上いいね
+                        recent_likes = user.get("recent_like_count", 0)
+                        is_enough_likes = recent_likes >= 5
+
+                        if is_after_3_days and is_enough_likes:
+                            can_comment = True
+                            logger.info(f"  -> 再コメント条件を満たしたため、コメント投稿を実行します。(最終コメントから3日以上経過 & いいね{recent_likes}件)")
+                        else:
+                            reasons = []
+                            if not is_after_3_days:
+                                reasons.append("最終コメントから3日経過していない")
+                            if not is_enough_likes:
+                                reasons.append(f"いいねが5件未満({recent_likes}件)")
+                            logger.info(f"  -> 再コメント条件を満たさないため、コメントはスキップします。({', '.join(reasons)})")
 
                 if can_comment and self.engage_mode in ['all', 'comment_only']:
                     logger.debug(f"  -> Mode '{self.engage_mode}' のため、コメント返しを実行します。")

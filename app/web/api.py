@@ -109,6 +109,11 @@ class CommentUpdateRequest(BaseModel):
 class ReplyUpdateRequest(BaseModel):
     reply_text: str
 
+class BulkPostRepliesRequest(BaseModel):
+    replies: list[dict]
+    dry_run: bool = False
+
+
 
 # --- HTML Routes ---
 router = APIRouter()
@@ -846,6 +851,24 @@ async def api_ignore_reply(comment_id: int):
         logging.error(f"コメント(ID: {comment_id})の無視処理中にエラー: {e}", exc_info=True)
         return JSONResponse(status_code=500, content={"status": "error", "message": "処理に失敗しました。"})
 
+@router.post("/api/replies/bulk-post", summary="選択した複数のコメントに返信するタスクを実行")
+async def bulk_post_replies(request: BulkPostRepliesRequest, background_tasks: BackgroundTasks):
+    """
+    選択された複数のコメントに対して、返信投稿タスクを非同期で実行する。
+    """
+    if not request.replies:
+        raise HTTPException(status_code=400, detail="対象の返信が指定されていません。")
+
+    task_manager = TaskManager()
+    background_tasks.add_task(
+        task_manager.run_task_by_tag,
+        "reply-to-comment",
+        replies=request.replies,
+        dry_run=request.dry_run
+    )
+
+    mode_text = "予行投稿" if request.dry_run else "投稿"
+    return {"message": f"{len(request.replies)}件のコメントへの「{mode_text}」タスクを開始しました。"}
 
 @router.post("/api/products/bulk-update-from-json")
 async def bulk_update_from_json(request: JsonImportRequest):
