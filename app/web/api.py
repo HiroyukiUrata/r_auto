@@ -16,8 +16,9 @@ from app.core.task_manager import TaskManager
 from app.core.task_definitions import TASK_DEFINITIONS
 from app.core.database import (get_all_inventory_products, update_product_status, delete_all_products, init_db,
                                delete_product, update_status_for_multiple_products, delete_multiple_products, get_product_count_by_status,
-                               get_error_products_in_last_24h, update_product_priority, update_product_order, bulk_update_products_from_data, commit_user_actions, get_all_user_engagements,
-                               get_users_for_commenting, update_user_comment, get_generated_replies, update_reply_text, ignore_reply, get_commenting_users_summary)
+                               get_error_products_in_last_24h, update_product_priority, update_product_order, bulk_update_products_from_data, commit_user_actions, get_all_user_engagements, get_users_for_commenting,
+                               update_user_comment, get_generated_replies, update_reply_text, ignore_reply, get_commenting_users_summary,
+                               get_table_names, export_tables_as_sql, execute_sql_script)
 from app.tasks.posting import run_posting
 from app.tasks.get_post_url import run_get_post_url
 from app.tasks.import_products import process_and_import_products
@@ -112,6 +113,13 @@ class ReplyUpdateRequest(BaseModel):
 class BulkPostRepliesRequest(BaseModel):
     replies: list[dict]
     dry_run: bool = False
+
+class DbExportRequest(BaseModel):
+    table_names: list[str]
+    include_delete: bool = False
+
+class DbImportRequest(BaseModel):
+    sql_script: str
 
 
 
@@ -869,6 +877,42 @@ async def bulk_post_replies(request: BulkPostRepliesRequest, background_tasks: B
 
     mode_text = "予行投稿" if request.dry_run else "投稿"
     return {"message": f"{len(request.replies)}件のコメントへの「{mode_text}」タスクを開始しました。"}
+
+@router.get("/api/db/tables", summary="DBのテーブル一覧を取得")
+async def api_get_db_tables():
+    """データベースに存在するテーブル名の一覧を返す。"""
+    try:
+        tables = get_table_names()
+        return JSONResponse(content={"tables": tables})
+    except Exception as e:
+        logging.error(f"DBテーブル一覧の取得中にエラー: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="テーブル一覧の取得に失敗しました。")
+
+@router.post("/api/db/export", summary="選択したテーブルをSQLでエクスポート")
+async def api_export_db(request: DbExportRequest):
+    """指定されたテーブルのデータをSQL形式でエクスポートする。"""
+    try:
+        sql_dump = export_tables_as_sql(request.table_names, request.include_delete)
+        return PlainTextResponse(content=sql_dump)
+    except Exception as e:
+        logging.error(f"DBのエクスポート中にエラー: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="エクスポート処理に失敗しました。")
+
+@router.post("/api/db/import", summary="SQLクエリを実行してDBを操作")
+async def api_import_db(request: DbImportRequest):
+    """
+    受け取ったSQLスクリプトを実行する。
+    注意: このエンドポイントは強力な権限を持つため、アクセス制御を適切に行うこと。
+    """
+    if not request.sql_script.strip():
+        raise HTTPException(status_code=400, detail="実行するSQLクエリがありません。")
+    try:
+        execute_sql_script(request.sql_script)
+        return JSONResponse(content={"status": "success", "message": "SQLクエリが正常に実行されました。"})
+    except Exception as e:
+        logging.error(f"DBのインポート(SQL実行)中にエラー: {e}", exc_info=True)
+        # エラーメッセージをフロントに返す
+        raise HTTPException(status_code=500, detail=f"SQLの実行に失敗しました: {str(e)}")
 
 @router.post("/api/products/bulk-update-from-json")
 async def bulk_update_from_json(request: JsonImportRequest):

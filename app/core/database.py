@@ -1301,3 +1301,107 @@ def update_user_comment(user_id: str, comment_text: str):
         conn.commit()
     finally:
         conn.close()
+
+def get_table_names() -> list[str]:
+    """データベース内のすべてのテーブル名を取得する。"""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%';")
+        return [row['name'] for row in cursor.fetchall()]
+    finally:
+        conn.close()
+
+def export_tables_as_sql(table_names: list[str], include_delete: bool) -> str:
+    """
+    指定されたテーブルのデータをSQL形式でエクスポートする。
+    sqlite3のiterdump()を使用し、安全にSQLを生成する。
+    """
+    if not table_names:
+        return "-- テーブルが選択されていません。"
+
+    conn = get_db_connection()
+    try:
+        sql_dump = ["-- R-Auto DB Export", f"-- Generated at: {datetime.now().isoformat()}", "", "BEGIN TRANSACTION;"]
+        
+        # iterdump()はテーブル名がダブルクォートで囲まれるため、それに合わせる
+        # 例: 'CREATE TABLE "products" ...'
+        # iterdump()はテーブル定義(CREATE TABLE)とデータ(INSERT)を両方出力する
+        dump_lines = list(conn.iterdump())
+
+        for table_name in table_names:
+            if include_delete:
+                sql_dump.append(f"DELETE FROM {table_name};")
+            
+            # 指定されたテーブルに関連するINSERT文のみを抽出して追加
+            for line in dump_lines:
+                # INSERT文を INSERT OR IGNORE に置換して、インポート時の重複エラーを防ぐ
+                if line.startswith(f'INSERT INTO "{table_name}"') or line.startswith(f'INSERT INTO {table_name}'):
+                    line = line.replace("INSERT INTO", "INSERT OR IGNORE INTO", 1)
+                    sql_dump.append(line)
+        
+        sql_dump.append("COMMIT;")
+        
+        return "\n".join(sql_dump)
+    finally:
+        conn.close()
+
+def execute_sql_script(sql_script: str) -> bool:
+    """指定されたSQLスクリプトを実行する。"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.executescript(sql_script)
+        conn.commit()
+        return True
+    except sqlite3.IntegrityError as e:
+        # 主にバックアップからの復元時に発生する重複エラーは警告としてログに記録し、処理は成功とみなす
+        logging.warning(f"SQLスクリプトの実行中に重複エラーが発生しましたが、処理を続行します: {e}")
+        return True
+    except sqlite3.DatabaseError as e:
+        logging.error(f"SQLスクリプトの実行中にエラーが発生しました: {e}")
+        # 'database disk image is malformed' エラーの場合、復旧を試みる
+        if "malformed" in str(e):
+            logging.info("データベースが破損している可能性があるため、復旧を試みます...")
+            if recover_database():
+                logging.info("データベースの復旧に成功しました。再度SQLスクリプトを実行します。")
+                # 復旧後、再度実行を試みる
+                conn_new = get_db_connection()
+                try:
+                    cursor_new = conn_new.cursor()
+                    cursor_new.executescript(sql_script)
+                    conn_new.commit()
+                    return True
+                finally:
+                    conn_new.close()
+            else:
+                logging.error("データベースの復旧に失敗しました。")
+        raise e # 他のDBエラーや復旧失敗時は再度例外を発生させる
+    finally:
+        if 'conn' in locals() and conn:
+            conn.close()
+
+def recover_database() -> bool:
+    """破損したデータベースの復旧を試みる"""
+    backup_path = DB_FILE + ".bak"
+    logging.info(f"現在のDBファイルを '{backup_path}' にバックアップします。")
+    if os.path.exists(DB_FILE):
+        os.rename(DB_FILE, backup_path)
+
+    logging.info("新しいDBファイルを作成し、バックアップからデータを復元します。")
+    # sqlite3コマンドを使って、バックアップから新しいDBにデータをダンプする
+    # .dumpは破損していても読める範囲のデータをSQLとして出力する
+    # そのSQLを新しいDBで実行することでデータを復元する
+    dump_command = f'sqlite3 "{backup_path}" .dump | sqlite3 "{DB_FILE}"'
+    result = os.system(dump_command)
+
+    if result == 0:
+        logging.info("DBの復元が正常に完了しました。")
+        # 復元後、スキーマの整合性を保つためにinit_dbを再実行
+        init_db()
+        return True
+    else:
+        logging.error(f"DBの復元に失敗しました。コマンド終了コード: {result}")
+        # 失敗した場合はバックアップを元に戻す
+        os.rename(backup_path, DB_FILE)
+        return False

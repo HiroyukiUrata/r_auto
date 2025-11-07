@@ -74,6 +74,61 @@
             </div>
         </div>
 
+        <!-- データベース管理カード -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-database-gear me-2"></i>データベース管理</h5>
+            </div>
+            <div class="card-body">
+                <div class="accordion" id="dbAccordion">
+                    <!-- エクスポート -->
+                    <div class="accordion-item">
+                        <h2 class="accordion-header" id="headingExport">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseExport" aria-expanded="false" aria-controls="collapseExport">
+                                エクスポート (SQL形式)
+                            </button>
+                        </h2>
+                        <div id="collapseExport" class="accordion-collapse collapse" aria-labelledby="headingExport" data-bs-parent="#dbAccordion">
+                            <div class="accordion-body">
+                                <p class="text-muted small">エクスポートしたいテーブルを選択してください。</p>
+                                <div id="db-tables-container" class="mb-3">
+                                    <!-- テーブル一覧がここに挿入されます -->
+                                </div>
+                                <div class="form-check mb-3">
+                                    <input class="form-check-input" type="checkbox" id="include-delete-switch">
+                                    <label class="form-check-label" for="include-delete-switch">
+                                        <i class="bi bi-info-circle me-1" data-bs-toggle="tooltip" title="インポート時に既存のデータをすべて削除してから新しいデータを挿入する場合にチェックします。"></i>
+                                        DELETE文を含める (データを全削除)
+                                    </label>
+                                </div>
+                                <button class="btn btn-info" onclick="exportDb()"><i class="bi bi-box-arrow-down me-1"></i>エクスポート実行</button>
+                                <hr>
+                                <textarea id="sql-export-output" class="form-control" rows="10" readonly placeholder="ここにSQLが出力されます"></textarea>
+                                <button class="btn btn-sm btn-outline-secondary mt-2" onclick="copySqlOutput()"><i class="bi bi-clipboard me-1"></i>クリップボードにコピー</button>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- インポート -->
+                    <div class="accordion-item">
+                        <h2 class="accordion-header" id="headingImport">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseImport" aria-expanded="false" aria-controls="collapseImport">
+                                インポート (SQL実行)
+                            </button>
+                        </h2>
+                        <div id="collapseImport" class="accordion-collapse collapse" aria-labelledby="headingImport" data-bs-parent="#dbAccordion">
+                            <div class="accordion-body">
+                                <p class="text-muted small">ここに実行したいSQLクエリを貼り付けてください。複数のクエリも実行可能です。</p>
+                                <textarea id="sql-import-input" class="form-control" rows="10" placeholder="-- 例: UPDATE products SET status = '投稿済' WHERE id = 1;"></textarea>
+                                <button class="btn btn-warning mt-3" onclick="importDb()">
+                                    <i class="bi bi-play-fill me-1"></i>SQLを実行
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- シングルタスクカード -->
         <div class="card mb-4">
             <div class="card-header">
@@ -124,6 +179,10 @@
 
 {% block scripts %}
 <script>
+    // Tooltipの初期化
+    const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]');
+    const tooltipList = [...tooltipTriggerList].map(tooltipTriggerEl => new bootstrap.Tooltip(tooltipTriggerEl));
+
     async function fetchGlobalConfig() {
         try {
             const response = await fetch('/api/config');
@@ -266,9 +325,92 @@
         }
     }
 
+    async function fetchDbTables() {
+        try {
+            const response = await fetch('/api/db/tables');
+            const data = await response.json();
+            const container = document.getElementById('db-tables-container');
+            container.innerHTML = '';
+            data.tables.forEach(table => {
+                container.innerHTML += `
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input db-table-checkbox" type="checkbox" value="${table}" id="table-${table}">
+                        <label class="form-check-label" for="table-${table}">${table}</label>
+                    </div>
+                `;
+            });
+        } catch (error) {
+            console.error('DBテーブル一覧の取得に失敗:', error);
+        }
+    }
+
+    async function exportDb() {
+        const selectedTables = Array.from(document.querySelectorAll('.db-table-checkbox:checked')).map(cb => cb.value);
+        if (selectedTables.length === 0) {
+            alert('エクスポートするテーブルを1つ以上選択してください。');
+            return;
+        }
+        const includeDelete = document.getElementById('include-delete-switch').checked;
+        const outputTextarea = document.getElementById('sql-export-output');
+        outputTextarea.value = 'エクスポート中...';
+
+        try {
+            const response = await fetch('/api/db/export', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ table_names: selectedTables, include_delete: includeDelete })
+            });
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.detail || 'エクスポートに失敗しました。');
+            }
+            const sqlDump = await response.text();
+            outputTextarea.value = sqlDump;
+            showToast('成功', 'SQLのエクスポートが完了しました。');
+        } catch (error) {
+            outputTextarea.value = `エラー: ${error.message}`;
+            showToast('エラー', error.message, 'danger');
+        }
+    }
+
+    function copySqlOutput() {
+        const textarea = document.getElementById('sql-export-output');
+        if (!textarea.value) return;
+        navigator.clipboard.writeText(textarea.value).then(() => {
+            showToast('成功', 'クリップボードにコピーしました。');
+        }).catch(err => {
+            showToast('エラー', 'コピーに失敗しました。', 'danger');
+        });
+    }
+
+    async function importDb() {
+        const sqlScript = document.getElementById('sql-import-input').value;
+        if (!sqlScript.trim()) {
+            alert('実行するSQLクエリを入力してください。');
+            return;
+        }
+        if (!confirm('このSQLクエリを実行しますか？データベースが変更される可能性があります。この操作は元に戻せません。')) {
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/db/import', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sql_script: sqlScript })
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.detail || 'SQLの実行に失敗しました。');
+            showToast('成功', result.message, 'success');
+        } catch (error) {
+            showToast('エラー', error.message, 'danger');
+        }
+    }
+
     document.addEventListener('DOMContentLoaded', () => {
         fetchDebugTasks();
         fetchGlobalConfig();
+        fetchDbTables();
     });
 </script>
 {% endblock %}
