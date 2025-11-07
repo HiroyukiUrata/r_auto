@@ -171,11 +171,11 @@ function fetchGeneratedReplies() {
             const posts = data.posts;
             const commentingUsers = data.commenting_users;
             if (Object.keys(posts).length === 0) {
+                listElement.innerHTML = ''; // Clear existing list
                 noDataMessage.style.display = 'block';
-                return;
+            } else {
+                noDataMessage.style.display = 'none';
             }
-
-            noDataMessage.style.display = 'none';
 
             for (const postUrl in posts) {
                 const repliesInPost = posts[postUrl];
@@ -183,7 +183,6 @@ function fetchGeneratedReplies() {
                 let postRepliesHtml = '';
                 for (const replyText in repliesInPost) {
                     const comments = repliesInPost[replyText];
-                    const userNames = comments.map(c => c.user_name).join(', ');
                     const commentIds = comments.map(c => c.id);
                     const representativeId = commentIds[0];
 
@@ -242,6 +241,8 @@ function fetchGeneratedReplies() {
                     `;
                     userTableBody.innerHTML += row;
                 });
+            } else {
+                userTableBody.innerHTML = '<tr><td colspan="3" class="text-center text-muted">サマリー対象のユーザーはいません。</td></tr>';
             }
 
         })

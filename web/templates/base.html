@@ -50,8 +50,9 @@
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="/generated-replies">
+                        <a class="nav-link d-flex align-items-center gap-2" href="/generated-replies">
                             <i class="bi bi-person-heart me-2"></i>リピーター育成
+                            <span id="repeater-badge" class="badge bg-info ms-auto" style="display: none;"></span>
                         </a>
                     </li>
                     <li class="nav-item">
@@ -135,11 +136,31 @@
                     .catch(error => console.error('エンゲージメントサマリーの取得に失敗:', error));
             }
 
+            // リピーター育成対象件数を取得してバッジを更新する関数
+            function updateRepeaterBadge() {
+                // デフォルトの24時間以内のデータを取得
+                fetch('/api/generated-replies?hours_ago=24')
+                    .then(response => response.json())
+                    .then(data => {
+                        const badge = document.getElementById('repeater-badge');
+                        const total = Object.keys(data.posts || {}).length;
+                        if (total > 0) {
+                            badge.textContent = total;
+                            badge.style.display = 'inline-block';
+                        } else {
+                            badge.style.display = 'none';
+                        }
+                    })
+                    .catch(error => console.error('リピーター育成サマリーの取得に失敗:', error));
+            }
+
             updateInventoryBadge(); // 初回実行
             updateEngagementBadge(); // 初回実行
+            updateRepeaterBadge(); // 初回実行
             
             setInterval(updateInventoryBadge, 60000); // 1分ごとに更新
             setInterval(updateEngagementBadge, 60000); // 1分ごとに更新
+            setInterval(updateRepeaterBadge, 60000); // 1分ごとに更新
         });
     </script>
     {% block scripts %}{% endblock %}
