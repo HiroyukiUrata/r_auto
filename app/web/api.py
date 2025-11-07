@@ -814,7 +814,9 @@ async def api_get_generated_replies(request: Request):
         sorted_posts = {item['post_url']: item['replies'] for item in sorted_post_list}
 
         # コメントユーザーのサマリーを取得
-        commenting_users = get_commenting_users_summary(limit=100)
+        commenting_users_raw = get_commenting_users_summary(limit=100)
+        # DBから取得したキー 'user_image_url' を、フロントエンドが期待する 'user_icon_url' に変更する
+        commenting_users = [{**{k: v for k, v in dict(user).items() if k != 'user_image_url'}, 'user_icon_url': user['user_image_url']} for user in commenting_users_raw]
 
         return JSONResponse(content={
             "posts": sorted_posts,

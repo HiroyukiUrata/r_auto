@@ -788,10 +788,11 @@ def get_commenting_users_summary(limit: int = 50) -> list[dict]:
             SELECT
                 user_name,
                 user_page_url,
+                user_image_url,
                 COUNT(*) as total_comments,
                 MAX(post_timestamp) as latest_comment_timestamp
             FROM my_post_comments
-            GROUP BY user_page_url, user_name
+            GROUP BY user_page_url, user_name, user_image_url
             ORDER BY latest_comment_timestamp DESC
             LIMIT ?
         """, (limit,))
