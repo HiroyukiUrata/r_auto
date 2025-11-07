@@ -5,36 +5,35 @@ import json
 from playwright.sync_api import Page, Error as PlaywrightError
 from datetime import datetime, timedelta
 from app.utils.selector_utils import convert_to_robust_selector
-from app.core.database import bulk_insert_my_post_comments, get_latest_comment_timestamps_by_post
+from app.core.database import bulk_insert_my_post_comments, get_latest_comment_details_by_post, get_latest_comment_timestamps_by_post
 from app.core.base_task import BaseTask
 
 logger = logging.getLogger(__name__)
 
-def parse_relative_time(time_str: str) -> str:
+def parse_relative_time(time_str: str, reference_time: datetime) -> str:
     """
     「54分前」「19時間前」「3日前」「10月29日」のような相対的な時間表記を
     ISO 8601形式のタイムスタンプ文字列に変換する。
     """
-    now = datetime.now()
     
     if "分前" in time_str:
         minutes = int(re.search(r'(\d+)', time_str).group(1))
-        dt = now.replace(second=0, microsecond=0) - timedelta(minutes=minutes)
+        dt = reference_time.replace(second=0, microsecond=0) - timedelta(minutes=minutes)
     elif "時間前" in time_str:
         hours = int(re.search(r'(\d+)', time_str).group(1))
-        dt = now.replace(second=0, microsecond=0) - timedelta(hours=hours)
+        dt = reference_time.replace(second=0, microsecond=0) - timedelta(hours=hours)
     elif "日前" in time_str:
         days = int(re.search(r'(\d+)', time_str).group(1))
-        dt = now.replace(second=0, microsecond=0) - timedelta(days=days)
+        dt = reference_time.replace(second=0, microsecond=0) - timedelta(days=days)
     elif "月" in time_str and "日" in time_str:
         match = re.search(r'(\d+)月(\d+)日', time_str)
         month = int(match.group(1))
         day = int(match.group(2))
         # 今年の日付として解釈する
-        dt = now.replace(month=month, day=day, hour=12, minute=0, second=0, microsecond=0)
+        dt = reference_time.replace(year=reference_time.year, month=month, day=day, hour=12, minute=0, second=0, microsecond=0)
     else:
         # 不明な形式の場合は秒とマイクロ秒を丸めた現在時刻を返す
-        return now.replace(second=0, microsecond=0).isoformat()
+        return reference_time.replace(second=0, microsecond=0).isoformat()
         
     return dt.isoformat()
 
@@ -47,13 +46,14 @@ class ScrapeMyCommentsTask(BaseTask):
         self.action_name = "自分の投稿コメント収集"
         self.needs_browser = True
         self.use_auth_profile = True
+        self.task_start_time = datetime.now() # タスク開始時刻を記録
 
     def _execute_main_logic(self):
         page = self.context.new_page()
         total_inserted_count = 0
 
         # タスク開始時に、各投稿の最新コメントタイムスタンプをDBから取得
-        latest_timestamps_map = get_latest_comment_timestamps_by_post()
+        latest_comment_details_map = get_latest_comment_details_by_post() # 修正：新しい関数を呼び出す
 
         try:
             # 1. トップページにアクセス
@@ -102,7 +102,7 @@ class ScrapeMyCommentsTask(BaseTask):
                     time.sleep(5)
 
                     # この投稿の最新処理済みタイムスタンプを取得
-                    latest_timestamp_for_this_post = latest_timestamps_map.get(post_detail_url)
+                    latest_comment_info = latest_comment_details_map.get(post_detail_url) # 修正：新しいマップから情報を取得
 
                     # 詳細ページで「コメント」ボタンをクリック
                     comment_text_pattern = re.compile(r"^コメント\(\d+件\)$")
@@ -119,6 +119,7 @@ class ScrapeMyCommentsTask(BaseTask):
                     spinner_selector = 'svg[class*="spinner---"]'
                     
                     processed_comments = []
+                    # (user_page_url, comment_text, post_detail_url) のタプルで重複を管理
                     processed_ids = set()
                     
                     # --- 1. 初回取得 (スクロールなし) ---
@@ -138,25 +139,35 @@ class ScrapeMyCommentsTask(BaseTask):
                         newly_found_count = 0
                         for item in all_comment_elements:
                             try:
-                                # ユーザーアイコンの画像URLをキーとして使用
-                                user_image_url = item.locator('img').first.get_attribute('src')
-                                if user_image_url in processed_ids:
-                                    continue
-
                                 user_name_element = item.locator(user_name_selector).first
                                 user_name = user_name_element.inner_text()
                                 user_page_url = f"https://room.rakuten.co.jp{user_name_element.get_attribute('href')}"
                                 comment_text = item.locator(comment_text_selector).first.inner_text().replace('\n', ' ')
+                                user_image_url = item.locator('img').first.get_attribute('src')
+
+                                # このコメントのユニークな識別子を作成
+                                comment_unique_id = (user_page_url, comment_text, post_detail_url)
+                                if comment_unique_id in processed_ids:
+                                    continue
+
                                 relative_time_str = item.locator('div[class*="size-x-small--"]').first.inner_text()
-                                post_timestamp = parse_relative_time(relative_time_str)
+                                post_timestamp = parse_relative_time(relative_time_str, self.task_start_time)
 
                                 # --- 処理済みタイムスタンプとの比較 ---
-                                if latest_timestamp_for_this_post and post_timestamp <= latest_timestamp_for_this_post:
-                                    logger.debug(f"    -> 処理済みのコメント(時刻: {post_timestamp})に到達したため、これ以降のコメント収集を停止します。")
-                                    stop_scraping_this_post = True
-                                    break # この投稿のコメント収集ループを抜ける
+                                if latest_comment_info: # 修正：判定ロジックを強化
+                                    # 条件1: タイムスタンプがDBの最新より古いか等しい
+                                    is_older_or_equal_time = datetime.fromisoformat(post_timestamp) <= datetime.fromisoformat(latest_comment_info['post_timestamp'])
+                                    # 条件2: ユーザーとコメント内容がDBの最新と一致する
+                                    is_same_comment = (user_page_url == latest_comment_info['user_page_url'] and comment_text == latest_comment_info['comment_text'])
 
-                                processed_ids.add(user_image_url)
+                                    # タイムスタンプの揺らぎを考慮し、内容が一致する場合も処理済みとみなす
+                                    if is_older_or_equal_time or is_same_comment: # 修正：OR条件で判定
+                                        log_reason = "タイムスタンプ" if is_older_or_equal_time else "コメント内容"
+                                        logger.debug(f"    -> 処理済みのコメントに到達したため({log_reason}一致)、これ以降の収集を停止します。")
+                                        stop_scraping_this_post = True
+                                        break # この投稿のコメント収集ループを抜ける
+
+                                processed_ids.add(comment_unique_id)
                                 comment_data = {
                                     "user_name": user_name,
                                     "user_page_url": user_page_url,
@@ -190,24 +201,27 @@ class ScrapeMyCommentsTask(BaseTask):
                         all_comment_elements_after_scroll = page.locator(comment_item_selector).all()
                         for item in all_comment_elements_after_scroll:
                             try:
+                                user_name_element = item.locator(user_name_selector).first
+                                user_name = user_name_element.inner_text()
+                                user_page_url = f"https://room.rakuten.co.jp{user_name_element.get_attribute('href')}"
+                                comment_text = item.locator(comment_text_selector).first.inner_text().replace('\n', ' ')
                                 user_image_url = item.locator('img').first.get_attribute('src')
-                                if user_image_url not in processed_ids:
-                                    user_name_element = item.locator(user_name_selector).first
-                                    user_name = user_name_element.inner_text()
-                                    user_page_url = f"https://room.rakuten.co.jp{user_name_element.get_attribute('href')}"
-                                    comment_text = item.locator(comment_text_selector).first.inner_text().replace('\n', ' ')
-                                    relative_time_str = item.locator('div[class*="size-x-small--"]').first.inner_text()
-                                    post_timestamp = parse_relative_time(relative_time_str)
 
-                                    processed_ids.add(user_image_url)
-                                    comment_data = {
-                                        "user_name": user_name, "user_page_url": user_page_url,
-                                        "comment_text": comment_text, "post_timestamp": post_timestamp,
-                                        "post_detail_url": post_detail_url,
-                                        "user_image_url": user_image_url
-                                    }
-                                    processed_comments.append(comment_data)
-                                    newly_found_count += 1
+                                comment_unique_id = (user_page_url, comment_text, post_detail_url)
+                                if comment_unique_id in processed_ids:
+                                    continue
+
+                                relative_time_str = item.locator('div[class*="size-x-small--"]').first.inner_text()
+                                post_timestamp = parse_relative_time(relative_time_str, self.task_start_time)
+
+                                processed_ids.add(comment_unique_id)
+                                comment_data = {
+                                    "user_name": user_name, "user_page_url": user_page_url,
+                                    "comment_text": comment_text, "post_timestamp": post_timestamp,
+                                    "post_detail_url": post_detail_url,
+                                    "user_image_url": user_image_url
+                                }
+                                processed_comments.append(comment_data)
                             except PlaywrightError:
                                 continue
                     

@@ -647,6 +647,31 @@ def get_latest_comment_timestamps_by_post() -> dict[str, str]:
     finally:
         conn.close()
 
+def get_latest_comment_details_by_post() -> dict[str, dict]:
+    """
+    各投稿(post_detail_url)ごとに、DBに保存されている最新のコメント情報を取得する。
+    タイムスタンプの揺らぎによる重複収集を防ぐために使用する。
+    :return: { 'post_detail_url': {'post_timestamp': '...', 'user_page_url': '...', 'comment_text': '...'}, ... }
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        # 各投稿ごとに最新のタイムスタンプを持つレコードのIDを取得し、そのレコードの全情報を取得する
+        # (post_detail_url, post_timestamp) の組み合わせで最新の1件を特定する
+        cursor.execute("""
+            SELECT c.*
+            FROM my_post_comments c
+            INNER JOIN (
+                SELECT post_detail_url, MAX(post_timestamp) as max_ts
+                FROM my_post_comments
+                GROUP BY post_detail_url
+            ) AS latest ON c.post_detail_url = latest.post_detail_url AND c.post_timestamp = latest.max_ts
+        """)
+        # 辞書に変換して返す
+        return {row['post_detail_url']: dict(row) for row in cursor.fetchall()}
+    finally:
+        conn.close()
+
 def get_unreplied_comments(limit: int = 20) -> list[dict]:
     """
     返信がまだ生成されていないコメントを取得する (reply_generated_at IS NULL)。
