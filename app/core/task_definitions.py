@@ -18,6 +18,7 @@ from app.tasks.notification_analyzer import run_notification_analyzer
 from app.tasks.rakuten_api_procure import procure_from_rakuten_api
 from app.tasks.create_ai_comment import run_create_ai_comment
 from app.tasks.create_caption_api import run_create_caption_api
+from app.tasks.scrape_my_comments import run_scrape_my_comments
 from app.tasks.engage_user import run_engage_user
 
 """
@@ -294,6 +295,24 @@ TASK_DEFINITIONS = {
         "show_in_schedule": False, # APIからのみ呼び出す
         "description": "指定された複数のユーザーにいいねバックとコメント投稿を行います。",
         "order": 9999,
+    },
+    "_internal-scrape-my-comments": {
+        "name_ja": "（内部処理）自分の投稿からコメント収集",
+        "function": run_scrape_my_comments,
+        "is_debug": False,
+        "show_in_schedule": False,
+        "description": "自分のROOMに移動し、ピン留めされた投稿からコメントを収集してDBに保存します。",
+        "order": 9999,
+    },
+    "scrape-my-comments": {
+        "name_ja": "自分の投稿からコメント収集",
+        "function": None, # フローなので直接の関数はなし
+        "is_debug": False, # 通常タスクとして表示
+        "show_in_schedule": True,
+        "show_count_in_dashboard": False,
+        "description": "ログイン状態を確認後、自分のROOMに移動し、ピン留めされた投稿からコメントを収集してDBに保存します。返信コメント生成の元データになります。",
+        "order": 88,
+        "flow": "check-login-status | _internal-scrape-my-comments"
     },
     "manual-test": {
         "name_ja": "手動テスト",

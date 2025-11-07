@@ -19,7 +19,7 @@ class ManualTestTask(BaseTask):
     def __init__(self, script: str = None, use_auth: bool = True):
         # --- ここで手動テストの挙動を切り替えます ---
         # True: GUIなし / False: GUIあり
-        self.headless_mode = True
+        self.headless_mode = False
 
         # True: ログイン情報を引き継ぐ / False: 新規セッションで起動
         # コマンドライン引数 `use_auth` で制御される

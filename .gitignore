@@ -23,4 +23,4 @@ docker-compose.override.yml
 
 test/ # testディレクトリ全体を無視
 test_scripts/screenshots/ # test_scripts内のscreenshotsディレクトリを無視
-test_scripts/output/ # test_scripts内のoutputディレクトリを無視
+test_scripts/output/

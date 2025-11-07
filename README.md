@@ -77,4 +77,9 @@ python run_task.py check-login-status
 PWDEBUG=1 python run_task.py manual-test --script "test_scripts/highlight_first_card.py"
 ```
 
+**Power Shell:**
+```bash
+$env:PWDEBUG="1"; python run_task.py manual-test --script test_scripts/test_myroom_navigation.py  
+```
+
 Inspectorの「Record」機能で操作を記録したり、「Explore」機能でセレクタを調査したりすることで、開発効率が飛躍的に向上します。

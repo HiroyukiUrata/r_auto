@@ -150,6 +150,23 @@ def init_db():
         add_column_to_engagement_if_not_exists(cursor, 'recent_follow_count', 'INTEGER')
         add_column_to_engagement_if_not_exists(cursor, 'last_commented_post_url', 'TEXT')
 
+        # --- my_post_comments テーブルの作成 ---
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS my_post_comments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                post_detail_url TEXT NOT NULL,
+                user_page_url TEXT NOT NULL,
+                user_name TEXT,
+                comment_text TEXT,
+                post_timestamp TEXT NOT NULL,
+                reply_text TEXT,
+                reply_generated_at TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE (post_detail_url, user_page_url, post_timestamp)
+            )
+        ''')
+        logging.info("my_post_commentsテーブルが正常に初期化されました。")
+
         # --- 既存タイムスタンプのフォーマットをISO 8601に統一するマイグレーション処理 ---
         # この処理は一度実行されると、次回以降は更新対象がなくなる
         timestamp_columns = ['created_at', 'post_url_updated_at', 'ai_caption_created_at', 'posted_at']
@@ -560,6 +577,61 @@ def bulk_update_products_from_data(products_data: list[dict]):
         conn.close()
 
     return updated_count, failed_count
+
+def bulk_insert_my_post_comments(comments_data: list[dict]) -> int:
+    """
+    収集した自分の投稿へのコメントデータを一括でDBに保存する。
+    重複するデータは無視される。
+    :param comments_data: スクレイピングしたコメントデータのリスト
+    :return: 新規に挿入された行数
+    """
+    if not comments_data:
+        return 0
+
+    # JSTのタイムゾーンを定義
+    jst = timezone(timedelta(hours=9))
+    # JSTの現在時刻をISO 8601形式の文字列で取得
+    created_at_jst = datetime.now(jst).isoformat()
+
+    records_to_insert = [
+        (
+            d.get('post_detail_url'),
+            d.get('user_page_url'),
+            d.get('user_name'),
+            d.get('comment_text'),
+            d.get('post_timestamp'),
+            created_at_jst # JSTのタイムスタンプを追加
+        ) for d in comments_data
+    ]
+
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.executemany("""
+            INSERT OR IGNORE INTO my_post_comments (post_detail_url, user_page_url, user_name, comment_text, post_timestamp, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, records_to_insert)
+        conn.commit()
+        return cursor.rowcount
+    finally:
+        conn.close()
+
+def get_latest_comment_timestamps_by_post() -> dict[str, str]:
+    """
+    各投稿(post_detail_url)ごとに、DBに保存されている最新のコメントタイムスタンプを取得する。
+    :return: { 'post_detail_url': 'latest_post_timestamp', ... } という形式の辞書
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT post_detail_url, MAX(post_timestamp) as latest_timestamp
+            FROM my_post_comments
+            GROUP BY post_detail_url
+        """)
+        return {row['post_detail_url']: row['latest_timestamp'] for row in cursor.fetchall()}
+    finally:
+        conn.close()
 
 # --- User Engagement Table Functions ---
 

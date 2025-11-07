@@ -9,3 +9,4 @@ from app.tasks.restore_auth_state import run_restore_auth_state
 from app.tasks.commit_stale_actions import run_commit_stale_actions
 from app.tasks.manual_test import run_manual_test
 from app.tasks.procure_from_user_page import run_procure_from_user_page
+from app.tasks.scrape_my_comments import run_scrape_my_comments
