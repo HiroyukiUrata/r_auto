@@ -150,6 +150,16 @@ def init_db():
         add_column_to_engagement_if_not_exists(cursor, 'recent_follow_count', 'INTEGER')
         add_column_to_engagement_if_not_exists(cursor, 'last_commented_post_url', 'TEXT')
 
+        def add_column_to_my_post_comments_if_not_exists(cursor, column_name, column_type):
+            cursor.execute("PRAGMA table_info(my_post_comments)")
+            columns = [row['name'] for row in cursor.fetchall()]
+            if column_name not in columns:
+                try:
+                    cursor.execute(f"ALTER TABLE my_post_comments ADD COLUMN {column_name} {column_type}")
+                    logging.info(f"my_post_commentsテーブルに '{column_name}' カラムを追加しました。")
+                except sqlite3.Error as e:
+                    logging.error(f"'{column_name}' カラムの追加に失敗しました: {e}")
+
         # --- my_post_comments テーブルの作成 ---
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS my_post_comments (
@@ -161,11 +171,15 @@ def init_db():
                 post_timestamp TEXT NOT NULL,
                 reply_text TEXT,
                 reply_generated_at TIMESTAMP,
+                reply_posted_at TIMESTAMP,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE (post_detail_url, user_page_url, post_timestamp)
             )
         ''')
         logging.info("my_post_commentsテーブルが正常に初期化されました。")
+
+        # --- my_post_comments テーブルのマイグレーション ---
+        add_column_to_my_post_comments_if_not_exists(cursor, 'reply_posted_at', 'TIMESTAMP')
 
         # --- 既存タイムスタンプのフォーマットをISO 8601に統一するマイグレーション処理 ---
         # この処理は一度実行されると、次回以降は更新対象がなくなる
@@ -632,6 +646,173 @@ def get_latest_comment_timestamps_by_post() -> dict[str, str]:
         return {row['post_detail_url']: row['latest_timestamp'] for row in cursor.fetchall()}
     finally:
         conn.close()
+
+def get_unreplied_comments(limit: int = 20) -> list[dict]:
+    """
+    返信がまだ生成されていないコメントを取得する (reply_generated_at IS NULL)。
+    新しいコメントから順に取得する。
+    :param limit: 取得する最大件数
+    :return: コメントデータの辞書のリスト
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT * FROM my_post_comments
+            WHERE reply_generated_at IS NULL
+            ORDER BY post_timestamp DESC
+            LIMIT ?
+        """, (limit,))
+        return [dict(row) for row in cursor.fetchall()]
+    finally:
+        conn.close()
+
+def bulk_update_comment_replies(replies: list[dict]):
+    """
+    AIが生成した返信テキストと関連情報をDBに一括で更新する。
+    :param replies: 'reply_text', 'replied_user_names', 'id' を含む辞書のリスト
+    """
+    if not replies:
+        return 0
+
+    now_jst_iso = datetime.now(timezone(timedelta(hours=9))).isoformat()
+    
+    # replied_user_names をキーに、reply_text と timestamp を持つ辞書を作成
+    reply_map = {}
+    for reply in replies:
+        # frozenset を使うことで、順序が違っても同じグループとして扱える
+        key = frozenset(reply['replied_user_names'])
+        if key not in reply_map:
+            reply_map[key] = {'text': reply['reply_text'], 'ts': now_jst_iso}
+
+    # 更新用データを作成
+    update_data = []
+    for user_names_set, reply_info in reply_map.items():
+        for user_name in user_names_set:
+            update_data.append((reply_info['text'], reply_info['ts'], user_name))
+
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        # user_name を使って更新する
+        cursor.executemany("""
+            UPDATE my_post_comments SET reply_text = ?, reply_generated_at = ?
+            WHERE user_name = ? AND reply_generated_at IS NULL
+        """, update_data)
+        conn.commit()
+        return cursor.rowcount
+    finally:
+        conn.close()
+
+def get_post_urls_with_unreplied_comments() -> list[str]:
+    """
+    返信がまだ生成されていないコメントを持つ投稿のURLリストを、
+    最新の未返信コメント日時が新しい順に取得する。
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT post_detail_url
+            FROM my_post_comments
+            WHERE reply_generated_at IS NULL
+            GROUP BY post_detail_url
+            ORDER BY MAX(post_timestamp) DESC
+        """)
+        return [row['post_detail_url'] for row in cursor.fetchall()]
+    finally:
+        conn.close()
+
+def get_unreplied_comments_for_post(post_detail_url: str) -> list[dict]:
+    """指定された投稿URLについて、返信がまだ生成されていないコメントを取得する。"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM my_post_comments WHERE post_detail_url = ? AND reply_generated_at IS NULL ORDER BY post_timestamp DESC", (post_detail_url,))
+    comments = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+    return comments
+
+def bulk_update_comment_replies(replies: list[dict]):
+    """
+    AIが生成した返信テキストと関連情報をDBに一括で更新する。
+    :param replies: 'reply_text', 'replied_user_names', 'id' を含む辞書のリスト
+    """
+    if not replies:
+        return 0
+
+    now_jst_iso = datetime.now(timezone(timedelta(hours=9))).isoformat()
+    
+    # 更新用データのリストを作成
+    update_data = []
+    for reply in replies:
+        comment_id = reply.get('id')
+        reply_text = reply.get('reply_text')
+        if comment_id and reply_text:
+            update_data.append((reply_text, now_jst_iso, comment_id))
+
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        # comment_id を使って正確に更新する
+        cursor.executemany("""
+            UPDATE my_post_comments SET reply_text = ?, reply_generated_at = ?
+            WHERE id = ? AND reply_generated_at IS NULL
+        """, update_data)
+        conn.commit()
+        return cursor.rowcount
+    finally:
+        conn.close()
+
+def get_generated_replies(hours_ago: int = 24) -> list[dict]:
+    """
+    生成済みで、まだ投稿されていない返信コメントを取得する。
+    (reply_text IS NOT NULL AND reply_posted_at IS NULL)
+    :param hours_ago: 何時間前までに生成されたコメントを対象とするか
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        threshold_time = (datetime.now(timezone.utc) - timedelta(hours=hours_ago)).isoformat()
+
+        cursor.execute("""
+            SELECT * FROM my_post_comments
+            WHERE reply_text IS NOT NULL 
+              AND reply_text != '[SKIPPED]' AND reply_posted_at IS NULL
+              AND reply_generated_at >= ?
+            ORDER BY reply_generated_at, post_timestamp DESC
+        """, (threshold_time,))
+        return [dict(row) for row in cursor.fetchall()]
+    finally:
+        conn.close()
+
+def update_reply_text(comment_id: int, new_text: str):
+    """
+    指定されたコメントIDの返信テキストを更新する。
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE my_post_comments SET reply_text = ? WHERE id = ?", (new_text, comment_id))
+        conn.commit()
+        logging.info(f"コメント(ID: {comment_id})の返信テキストを更新しました。")
+    finally:
+        conn.close()
+
+def ignore_reply(comment_id: int):
+    """
+    指定されたコメントIDの返信を無視する（reply_textにスキップマーカーを設定し、処理済みとする）。
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        # スキップした日時も記録することで、再生成の対象から外す
+        now_jst_iso = datetime.now(timezone(timedelta(hours=9))).isoformat()
+        cursor.execute("UPDATE my_post_comments SET reply_text = '[SKIPPED]', reply_generated_at = ? WHERE id = ?", (now_jst_iso, comment_id,))
+        conn.commit()
+        logging.info(f"コメント(ID: {comment_id})を返信対象から除外しました。")
+    finally:
+        conn.close()
+
 
 # --- User Engagement Table Functions ---
 
