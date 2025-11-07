@@ -22,10 +22,10 @@ def parse_relative_time(time_str: str) -> str:
         dt = now.replace(second=0, microsecond=0) - timedelta(minutes=minutes)
     elif "時間前" in time_str:
         hours = int(re.search(r'(\d+)', time_str).group(1))
-        dt = now.replace(minute=0, second=0, microsecond=0) - timedelta(hours=hours)
+        dt = now.replace(second=0, microsecond=0) - timedelta(hours=hours)
     elif "日前" in time_str:
         days = int(re.search(r'(\d+)', time_str).group(1))
-        dt = now.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=days)
+        dt = now.replace(second=0, microsecond=0) - timedelta(days=days)
     elif "月" in time_str and "日" in time_str:
         match = re.search(r'(\d+)月(\d+)日', time_str)
         month = int(match.group(1))
@@ -138,9 +138,9 @@ class ScrapeMyCommentsTask(BaseTask):
                         newly_found_count = 0
                         for item in all_comment_elements:
                             try:
-                                # ユーザーアイコンの画像URLをユニークIDとして使用
-                                unique_id = item.locator('img').first.get_attribute('src')
-                                if unique_id in processed_ids:
+                                # ユーザーアイコンの画像URLをキーとして使用
+                                user_image_url = item.locator('img').first.get_attribute('src')
+                                if user_image_url in processed_ids:
                                     continue
 
                                 user_name_element = item.locator(user_name_selector).first
@@ -150,19 +150,20 @@ class ScrapeMyCommentsTask(BaseTask):
                                 relative_time_str = item.locator('div[class*="size-x-small--"]').first.inner_text()
                                 post_timestamp = parse_relative_time(relative_time_str)
 
-                                # --- ★★★ 処理済みタイムスタンプとの比較 ★★★ ---
+                                # --- 処理済みタイムスタンプとの比較 ---
                                 if latest_timestamp_for_this_post and post_timestamp <= latest_timestamp_for_this_post:
                                     logger.debug(f"    -> 処理済みのコメント(時刻: {post_timestamp})に到達したため、これ以降のコメント収集を停止します。")
                                     stop_scraping_this_post = True
                                     break # この投稿のコメント収集ループを抜ける
 
-                                processed_ids.add(unique_id)
+                                processed_ids.add(user_image_url)
                                 comment_data = {
                                     "user_name": user_name,
                                     "user_page_url": user_page_url,
                                     "comment_text": comment_text,
                                     "post_timestamp": post_timestamp,
-                                    "post_detail_url": post_detail_url
+                                    "post_detail_url": post_detail_url,
+                                    "user_image_url": user_image_url
                                 }
                                 processed_comments.append(comment_data)
                                 newly_found_count += 1
@@ -189,8 +190,8 @@ class ScrapeMyCommentsTask(BaseTask):
                         all_comment_elements_after_scroll = page.locator(comment_item_selector).all()
                         for item in all_comment_elements_after_scroll:
                             try:
-                                unique_id = item.locator('img').first.get_attribute('src')
-                                if unique_id not in processed_ids:
+                                user_image_url = item.locator('img').first.get_attribute('src')
+                                if user_image_url not in processed_ids:
                                     user_name_element = item.locator(user_name_selector).first
                                     user_name = user_name_element.inner_text()
                                     user_page_url = f"https://room.rakuten.co.jp{user_name_element.get_attribute('href')}"
@@ -198,11 +199,12 @@ class ScrapeMyCommentsTask(BaseTask):
                                     relative_time_str = item.locator('div[class*="size-x-small--"]').first.inner_text()
                                     post_timestamp = parse_relative_time(relative_time_str)
 
-                                    processed_ids.add(unique_id)
+                                    processed_ids.add(user_image_url)
                                     comment_data = {
                                         "user_name": user_name, "user_page_url": user_page_url,
                                         "comment_text": comment_text, "post_timestamp": post_timestamp,
-                                        "post_detail_url": post_detail_url
+                                        "post_detail_url": post_detail_url,
+                                        "user_image_url": user_image_url
                                     }
                                     processed_comments.append(comment_data)
                                     newly_found_count += 1

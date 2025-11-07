@@ -19,6 +19,7 @@ from app.tasks.rakuten_api_procure import procure_from_rakuten_api
 from app.tasks.create_ai_comment import run_create_ai_comment
 from app.tasks.create_caption_api import run_create_caption_api
 from app.tasks.scrape_my_comments import run_scrape_my_comments
+from app.tasks.generate_reply_comments import run_generate_reply_comments
 from app.tasks.engage_user import run_engage_user
 
 """
@@ -308,11 +309,49 @@ TASK_DEFINITIONS = {
         "name_ja": "自分の投稿からコメント収集",
         "function": None, # フローなので直接の関数はなし
         "is_debug": False, # 通常タスクとして表示
-        "show_in_schedule": True,
+        "show_in_schedule": False,
         "show_count_in_dashboard": False,
         "description": "ログイン状態を確認後、自分のROOMに移動し、ピン留めされた投稿からコメントを収集してDBに保存します。返信コメント生成の元データになります。",
         "order": 88,
         "flow": "check-login-status | _internal-scrape-my-comments"
+    },
+    "generate-reply-comments": {
+        "name_ja": "自分の投稿への返信コメント生成",
+        "function": run_generate_reply_comments,
+        "is_debug": False,
+        "show_in_schedule": False,
+        "show_count_in_dashboard": False,
+        "description": "DBに保存された、自分の投稿への新しいコメントを元に、AIが返信コメントを生成します。",
+        "order": 89,
+    },
+    "generate-my-room-replies": {
+        "name_ja": "自分の投稿への返信生成フロー",
+        "function": None,
+        "default_kwargs": {"dummy_arg_to_hide_count": None}, # UIに件数入力が不要であることを明示するためのダミー引数
+        "default_kwargs": {"_": None}, # UIに件数入力が不要であることを明示するためのダミー引数
+        "is_debug": False,
+        "show_in_schedule": True,
+        "show_count_in_dashboard": False,
+        "show_count_in_schedule": False, # スケジュール設定画面で件数入力を非表示にする
+        "description": "自分の投稿への新しいコメントを収集し、それに対する返信コメントをAIで生成します。",
+        "order": 90,
+        "flow": [
+            ("check-login-status", {}),
+            ("_internal-scrape-my-comments", {}),
+            ("generate-reply-comments", {})
+        ]
+    },
+    "dummy-flow-no-count": {
+        "name_ja": "（ダミー）件数表示なしフロー",
+        "function": None,
+        "default_kwargs": {"hours_ago": 0}, # countキーを含まない引数を定義することで、UIに件数入力が不要と伝える
+        "is_debug": True, # UIで確認できるように表示
+        "show_in_schedule": True,
+        "show_count_in_dashboard": False,
+        "show_count_in_schedule": False,
+        "description": "件数入力ボックスが表示されないことを確認するためのダミーフローです。",
+        "order": 91,
+        "flow": [("check-login-status", {})] # フローの内容はシンプルでOK
     },
     "manual-test": {
         "name_ja": "手動テスト",

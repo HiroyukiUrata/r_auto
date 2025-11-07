@@ -165,20 +165,25 @@ def init_db():
             CREATE TABLE IF NOT EXISTS my_post_comments (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 post_detail_url TEXT NOT NULL,
-                user_page_url TEXT NOT NULL,
+                user_page_url TEXT,
                 user_name TEXT,
+                user_image_url TEXT,
                 comment_text TEXT,
                 post_timestamp TEXT NOT NULL,
                 reply_text TEXT,
                 reply_generated_at TIMESTAMP,
                 reply_posted_at TIMESTAMP,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE (post_detail_url, user_page_url, post_timestamp)
+                UNIQUE (user_image_url, post_timestamp)
             )
         ''')
         logging.info("my_post_commentsテーブルが正常に初期化されました。")
 
         # --- my_post_comments テーブルのマイグレーション ---
+        # 過去のバージョンでDBが作成された場合でも、カラムがなければ追加する
+        add_column_to_my_post_comments_if_not_exists(cursor, 'user_page_url', 'TEXT')
+        add_column_to_my_post_comments_if_not_exists(cursor, 'user_image_url', 'TEXT')
+        add_column_to_my_post_comments_if_not_exists(cursor, 'reply_generated_at', 'TIMESTAMP')
         add_column_to_my_post_comments_if_not_exists(cursor, 'reply_posted_at', 'TIMESTAMP')
 
         # --- 既存タイムスタンプのフォーマットをISO 8601に統一するマイグレーション処理 ---
@@ -592,39 +597,34 @@ def bulk_update_products_from_data(products_data: list[dict]):
 
     return updated_count, failed_count
 
-def bulk_insert_my_post_comments(comments_data: list[dict]) -> int:
+def bulk_insert_my_post_comments(comments_data: list[dict]) -> int | None:
     """
     収集した自分の投稿へのコメントデータを一括でDBに保存する。
-    重複するデータは無視される。
+    (user_image_url, post_timestamp) の組み合わせで重複をチェックし、重複データは無視される。
     :param comments_data: スクレイピングしたコメントデータのリスト
     :return: 新規に挿入された行数
     """
     if not comments_data:
         return 0
 
-    # JSTのタイムゾーンを定義
-    jst = timezone(timedelta(hours=9))
-    # JSTの現在時刻をISO 8601形式の文字列で取得
-    created_at_jst = datetime.now(jst).isoformat()
+    # 最初のデータからカラム名を取得し、created_atを追加
+    columns = list(comments_data[0].keys())
+    if 'created_at' not in columns:
+        columns.append('created_at')
+    
+    col_str = ", ".join(columns)
+    placeholders = ", ".join(["?"] * len(columns))
 
-    records_to_insert = [
-        (
-            d.get('post_detail_url'),
-            d.get('user_page_url'),
-            d.get('user_name'),
-            d.get('comment_text'),
-            d.get('post_timestamp'),
-            created_at_jst # JSTのタイムスタンプを追加
-        ) for d in comments_data
-    ]
+    # 挿入用データを作成（created_atを追加）
+    created_at_jst = datetime.now(timezone(timedelta(hours=9))).isoformat()
+    data_to_insert = [tuple(d.get(col, created_at_jst) for col in columns) for d in comments_data]
+
+    sql = f"INSERT OR IGNORE INTO my_post_comments ({col_str}) VALUES ({placeholders})"
 
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
-        cursor.executemany("""
-            INSERT OR IGNORE INTO my_post_comments (post_detail_url, user_page_url, user_name, comment_text, post_timestamp, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, records_to_insert)
+        cursor.executemany(sql, data_to_insert)
         conn.commit()
         return cursor.rowcount
     finally:
@@ -667,43 +667,6 @@ def get_unreplied_comments(limit: int = 20) -> list[dict]:
     finally:
         conn.close()
 
-def bulk_update_comment_replies(replies: list[dict]):
-    """
-    AIが生成した返信テキストと関連情報をDBに一括で更新する。
-    :param replies: 'reply_text', 'replied_user_names', 'id' を含む辞書のリスト
-    """
-    if not replies:
-        return 0
-
-    now_jst_iso = datetime.now(timezone(timedelta(hours=9))).isoformat()
-    
-    # replied_user_names をキーに、reply_text と timestamp を持つ辞書を作成
-    reply_map = {}
-    for reply in replies:
-        # frozenset を使うことで、順序が違っても同じグループとして扱える
-        key = frozenset(reply['replied_user_names'])
-        if key not in reply_map:
-            reply_map[key] = {'text': reply['reply_text'], 'ts': now_jst_iso}
-
-    # 更新用データを作成
-    update_data = []
-    for user_names_set, reply_info in reply_map.items():
-        for user_name in user_names_set:
-            update_data.append((reply_info['text'], reply_info['ts'], user_name))
-
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        # user_name を使って更新する
-        cursor.executemany("""
-            UPDATE my_post_comments SET reply_text = ?, reply_generated_at = ?
-            WHERE user_name = ? AND reply_generated_at IS NULL
-        """, update_data)
-        conn.commit()
-        return cursor.rowcount
-    finally:
-        conn.close()
-
 def get_post_urls_with_unreplied_comments() -> list[str]:
     """
     返信がまだ生成されていないコメントを持つ投稿のURLリストを、
@@ -734,7 +697,7 @@ def get_unreplied_comments_for_post(post_detail_url: str) -> list[dict]:
 
 def bulk_update_comment_replies(replies: list[dict]):
     """
-    AIが生成した返信テキストと関連情報をDBに一括で更新する。
+    AIが生成した返信テキストと関連情報をDBに一括で更新する。comment_idをキーに更新する。
     :param replies: 'reply_text', 'replied_user_names', 'id' を含む辞書のリスト
     """
     if not replies:
@@ -813,6 +776,28 @@ def ignore_reply(comment_id: int):
     finally:
         conn.close()
 
+def get_commenting_users_summary(limit: int = 50) -> list[dict]:
+    """
+    コメントしてくれたユーザーのサマリー（合計コメント数、最新コメント日時）を取得する。
+    最新コメント日時が新しい順にソートする。
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT
+                user_name,
+                user_page_url,
+                COUNT(*) as total_comments,
+                MAX(post_timestamp) as latest_comment_timestamp
+            FROM my_post_comments
+            GROUP BY user_page_url, user_name
+            ORDER BY latest_comment_timestamp DESC
+            LIMIT ?
+        """, (limit,))
+        return [dict(row) for row in cursor.fetchall()]
+    finally:
+        conn.close()
 
 # --- User Engagement Table Functions ---
 

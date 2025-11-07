@@ -16,8 +16,8 @@ from app.core.task_manager import TaskManager
 from app.core.task_definitions import TASK_DEFINITIONS
 from app.core.database import (get_all_inventory_products, update_product_status, delete_all_products, init_db,
                                delete_product, update_status_for_multiple_products, delete_multiple_products, get_product_count_by_status,
-                               get_error_products_in_last_24h, update_product_priority, update_product_order, bulk_update_products_from_data, commit_user_actions, get_all_user_engagements, 
-                               get_users_for_commenting, update_user_comment)
+                               get_error_products_in_last_24h, update_product_priority, update_product_order, bulk_update_products_from_data, commit_user_actions, get_all_user_engagements,
+                               get_users_for_commenting, update_user_comment, get_generated_replies, update_reply_text, ignore_reply, get_commenting_users_summary)
 from app.tasks.posting import run_posting
 from app.tasks.get_post_url import run_get_post_url
 from app.tasks.import_products import process_and_import_products
@@ -105,6 +105,9 @@ class KeywordsUpdateRequest(BaseModel):
 class CommentUpdateRequest(BaseModel):
     user_id: str
     comment_text: str
+
+class ReplyUpdateRequest(BaseModel):
+    reply_text: str
 
 
 # --- HTML Routes ---
@@ -212,6 +215,11 @@ async def read_error_management(request: Request):
 async def prompts_editor(request: Request):
     """プロンプト編集ページを表示する"""
     return request.app.state.templates.TemplateResponse("prompts.html", {"request": request})
+
+@router.get("/generated-replies", response_class=HTMLResponse)
+async def read_generated_replies(request: Request):
+    """生成済みコメント確認ページを表示する"""
+    return request.app.state.templates.TemplateResponse("generated_replies.html", {"request": request})
 
 # --- API Routes ---
 @router.get("/api/schedules")
@@ -758,6 +766,76 @@ async def patch_user_comment(request: CommentUpdateRequest):
         logging.error(f"ユーザー(ID: {request.user_id})のコメント更新中にエラーが発生しました: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="サーバーエラーによりコメントの更新に失敗しました。")
 
+@router.get("/api/generated-replies")
+async def api_get_generated_replies(request: Request):
+    """生成済みの返信コメントをグループ化して取得する"""
+    try:
+        hours_ago_str = request.query_params.get('hours_ago', '24')
+        try:
+            hours_ago = int(hours_ago_str)
+        except ValueError:
+            hours_ago = 24 # デフォルト値
+        comments = get_generated_replies(hours_ago=hours_ago)
+        
+        # post_detail_url ごとにグループ化し、その中で reply_text ごとにグループ化する
+        posts = {}
+        for comment in comments:
+            post_url = comment['post_detail_url']
+            if post_url not in posts:
+                posts[post_url] = {}
+            
+            reply_text = comment.get('reply_text', '（返信テキストなし）')
+            if reply_text not in posts[post_url]:
+                posts[post_url][reply_text] = []
+            
+            posts[post_url][reply_text].append(dict(comment))
+
+        # 投稿ごとに最新の reply_generated_at を見つけてソートするためのリストを作成
+        sorted_post_list = []
+        for post_url, replies in posts.items():
+            latest_ts = None
+            for reply_text, comments in replies.items():
+                for comment in comments:
+                    if not latest_ts or comment['reply_generated_at'] > latest_ts:
+                        latest_ts = comment['reply_generated_at']
+            sorted_post_list.append({'post_url': post_url, 'replies': replies, 'latest_ts': latest_ts})
+        
+        # 最新のタイムスタンプが新しい順にソート
+        sorted_post_list.sort(key=lambda x: x['latest_ts'], reverse=True)
+
+        # ソート後のデータを再構築
+        sorted_posts = {item['post_url']: item['replies'] for item in sorted_post_list}
+
+        # コメントユーザーのサマリーを取得
+        commenting_users = get_commenting_users_summary(limit=100)
+
+        return JSONResponse(content={
+            "posts": sorted_posts,
+            "commenting_users": commenting_users
+        })
+    except Exception as e:
+        logging.error(f"生成済みコメントの取得中にエラー: {e}", exc_info=True)
+        return JSONResponse(status_code=500, content={"error": "データの取得に失敗しました。"})
+
+@router.patch("/api/generated-replies/{representative_id}")
+async def api_update_reply(comment_id: int, request: ReplyUpdateRequest):
+    """特定のコメントの返信テキストを更新する"""
+    try:
+        update_reply_text(comment_id, request.reply_text)
+        return JSONResponse(content={"status": "success"})
+    except Exception as e:
+        logging.error(f"コメント(ID: {comment_id})の更新中にエラー: {e}", exc_info=True)
+        return JSONResponse(status_code=500, content={"status": "error", "message": "更新に失敗しました。"})
+
+@router.delete("/api/generated-replies/{comment_id}")
+async def api_ignore_reply(comment_id: int):
+    """特定のコメントを返信対象から除外する"""
+    try:
+        ignore_reply(comment_id)
+        return JSONResponse(content={"status": "success"})
+    except Exception as e:
+        logging.error(f"コメント(ID: {comment_id})の無視処理中にエラー: {e}", exc_info=True)
+        return JSONResponse(status_code=500, content={"status": "error", "message": "処理に失敗しました。"})
 
 
 @router.post("/api/products/bulk-update-from-json")
@@ -1034,7 +1112,12 @@ def _run_task_internal(tag: str, is_part_of_flow: bool, **kwargs):
 
                     sub_task_def = TASK_DEFINITIONS[sub_task_id]
                     logging.debug(f"  フロー実行中 ({i+1}/{len(tasks_in_flow)}): 「{sub_task_def['name_ja']}」")
-                    sub_task_func = sub_task_def["function"]
+                    # --- ★★★ 修正点 ★★★ ---
+                    # フロー内のサブタスクIDから直接関数を取得する
+                    sub_task_func = TASK_DEFINITIONS.get(sub_task_id, {}).get("function")
+                    if not sub_task_func:
+                        logging.error(f"フロー内のタスク '{sub_task_id}' に実行可能な関数が定義されていません。")
+                        break
                     
                     # 引数を解決
                     final_kwargs = sub_task_def.get("default_kwargs", {}).copy()

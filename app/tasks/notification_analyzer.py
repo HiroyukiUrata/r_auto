@@ -440,7 +440,7 @@ class NotificationAnalyzerTask(BaseTask):
                         messages.append("過去にも「いいね」をしてくれたことがあります。")
                     messages.append(f"今回も{recent_likes}件の「いいね」をしてくれました。")
                 else:  # 今回が初めての「いいね」の場合
-                    messages.append(f"今回、新たに{recent_likes}件の「いいね」をしてくれました。")
+                    messages.append(f"今回、初めて{recent_likes}件の「いいね」をしてくれました。")
 
 
             user['ai_prompt_message'] = " ".join(messages)
