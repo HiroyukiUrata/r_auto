@@ -65,7 +65,10 @@
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="/error-management"><i class="bi bi-exclamation-triangle me-1"></i>エラー管理</a>
+                        <a class="nav-link d-flex align-items-center gap-2" href="/error-management">
+                            <i class="bi bi-exclamation-triangle me-1"></i>エラー管理
+                            <span id="error-badge" class="badge bg-danger ms-auto" style="display: none;"></span>
+                        </a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="/prompts"><i class="bi bi-pencil-square me-1"></i>プロンプト</a>
@@ -172,13 +175,35 @@
                     .catch(error => console.error('リピーター育成サマリーの取得に失敗:', error));
             }
 
+            // エラー管理バッジを更新する関数
+            function updateErrorBadge() {
+                // 両方のAPIを並行して呼び出す
+                fetch('/api/errors/summary')
+                    .then(res => res.json())
+                    .then(summary => {
+                    const badge = document.getElementById('error-badge');
+                    const errorProductCount = summary.error_product_count || 0;
+                    const screenshotCount = summary.screenshot_count || 0;
+                    const total = errorProductCount + screenshotCount;
+
+                    if (total > 0) {
+                        badge.textContent = total;
+                        badge.style.display = 'inline-block';
+                    } else {
+                        badge.style.display = 'none';
+                    }
+                }).catch(error => console.error('エラー管理サマリーの取得に失敗:', error));
+            }
+
             updateInventoryBadge(); // 初回実行
             updateEngagementBadge(); // 初回実行
             updateRepeaterBadge(); // 初回実行
+            updateErrorBadge(); // 初回実行
             
             setInterval(updateInventoryBadge, 60000); // 1分ごとに更新
             setInterval(updateEngagementBadge, 60000); // 1分ごとに更新
             setInterval(updateRepeaterBadge, 60000); // 1分ごとに更新
+            setInterval(updateErrorBadge, 60000); // 1分ごとに更新
         });
     </script>
     {% block scripts %}{% endblock %}

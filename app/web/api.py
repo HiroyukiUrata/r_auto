@@ -132,6 +132,9 @@ class DbImportRequest(BaseModel):
 # --- HTML Routes ---
 router = APIRouter()
 
+# ★★★ デバッグ用ログ ★★★
+logging.warning("--- api.py is being loaded by the application. ---")
+
 @router.get("/", response_class=RedirectResponse)
 async def redirect_to_dashboard():
     """ルートURLからダッシュボードへリダイレクトする"""
@@ -482,6 +485,28 @@ async def get_error_products():
     products = get_error_products_in_last_24h()
     # get_error_products_in_last_24h は既に辞書のリストを返す
     return JSONResponse(content=products)
+
+@router.get("/api/errors/summary")
+async def get_errors_summary():
+    """エラー商品数とスクリーンショット数の合計を返す"""
+    try:
+        # エラー商品数を取得
+        error_products = get_error_products_in_last_24h()
+        error_product_count = len(error_products)
+
+        # スクリーンショット数を取得
+        screenshot_count = 0
+        screenshot_path = Path(SCREENSHOT_DIR)
+        if screenshot_path.exists():
+            screenshot_count = len([name for name in os.listdir(screenshot_path) if os.path.isfile(os.path.join(screenshot_path, name)) and name.lower().endswith('.png')])
+        
+        return JSONResponse(content={
+            "error_product_count": error_product_count,
+            "screenshot_count": screenshot_count
+        })
+    except Exception as e:
+        logging.error(f"エラーサマリーの取得中にエラー: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="エラーサマリーの取得に失敗しました。")
 
 @router.get("/api/inventory/summary")
 async def get_inventory_summary():
