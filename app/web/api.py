@@ -188,7 +188,7 @@ async def read_error_management(request: Request):
     # グループ: 1:type, 2:action, 3:details, 4:timestamp
     # 新しいファイル形式 `login_check_redirect_...` にも対応できるよう正規表現を修正
     # `type` と `action` をまとめて `prefix` としてキャプチャし、後から判定する
-    filename_pattern = re.compile(r'^(?P<prefix>[a-zA-Z0-9_-]+)_(?P<details>.+?)_(?P<timestamp>\d{8}-\d{6})\.png$')
+    filename_pattern = re.compile(r'^(?P<prefix>[a-zA-Z0-9_-]+)_(?P<details>.+?)_(?P<timestamp>\d{4,8}-\d{6})\.png$')
 
     all_files = []
     file_details = {}
@@ -902,6 +902,25 @@ async def bulk_post_replies(request: BulkPostRepliesRequest, background_tasks: B
 
     mode_text = "予行投稿" if request.dry_run else "投稿"
     return {"message": f"{len(request.replies)}件のコメントへの「{mode_text}」タスクを開始しました。"}
+
+@router.post("/api/users/bulk-like-back", summary="選択した複数のユーザーにいいね返しタスクを実行")
+async def bulk_like_back_users(request: UserBulkLikeBack, background_tasks: BackgroundTasks):
+    """
+    選択された複数のユーザーに対して、いいね返しタスクを非同期で実行する。
+    主にリピーター育成画面のサマリーからの実行を想定。
+    """
+    if not request.user_ids:
+        raise HTTPException(status_code=400, detail="対象ユーザーが指定されていません。")
+
+    task_manager = TaskManager()
+    background_tasks.add_task(
+        task_manager.run_task_by_tag,
+        "like-back",
+        user_ids=request.user_ids,
+        like_count=request.like_count,
+        dry_run=request.dry_run
+    )
+    return {"message": f"{len(request.user_ids)}件のユーザーへの「いいね返し」タスクを開始しました。"}
 
 @router.get("/api/db/tables", summary="DBのテーブル一覧を取得")
 async def api_get_db_tables():

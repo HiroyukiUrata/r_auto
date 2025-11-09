@@ -854,6 +854,31 @@ def get_commenting_users_summary(limit: int = 50) -> list[dict]:
     finally:
         conn.close()
 
+def get_user_details_for_like_back(user_names: list[str]) -> list[dict]:
+    """
+    指定されたユーザー名のリストに基づいて、いいね返しに必要なユーザー詳細を取得する。
+    my_post_commentsテーブルから情報を取得する。
+    :param user_names: ユーザー名のリスト
+    :return: ユーザー詳細の辞書のリスト
+    """
+    if not user_names:
+        return []
+    
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        placeholders = ','.join('?' for _ in user_names)
+        # my_post_commentsテーブルから最新の情報を取得する
+        # user_idとしてuser_page_urlをエイリアスで設定し、タスク側との互換性を保つ
+        query = f"""
+            SELECT DISTINCT user_name, user_page_url, user_page_url as user_id
+            FROM my_post_comments WHERE user_name IN ({placeholders})
+        """
+        cursor.execute(query, user_names)
+        return [dict(row) for row in cursor.fetchall()]
+    finally:
+        conn.close()
+
 # --- User Engagement Table Functions ---
 
 def get_latest_engagement_timestamp() -> datetime:

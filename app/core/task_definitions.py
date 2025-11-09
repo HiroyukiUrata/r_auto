@@ -22,6 +22,7 @@ from app.tasks.scrape_my_comments import run_scrape_my_comments
 from app.tasks.generate_reply_comments import run_generate_reply_comments
 from app.tasks.reply_to_comments import reply_to_comments
 from app.tasks.engage_user import run_engage_user
+from app.tasks.like_back_task import run_like_back
 
 """
 システム内の全タスクの定義を一元管理する。
@@ -363,6 +364,13 @@ TASK_DEFINITIONS = {
         "description": "「リピーター育成」ページで選択されたコメントに返信を投稿します。",
         "is_debug": True,
         "show_in_schedule": False,
+    },
+    "like-back": {
+        "function": run_like_back,
+        "name_ja": "いいね返し実行",
+        "description": "「リピーター育成」画面から指定されたユーザーにいいね返しを行います。",
+        "is_debug": False,
+        "show_in_schedule": False, # APIからのみ呼び出す
     },
         "manual-test": {
         "name_ja": "手動テスト",
