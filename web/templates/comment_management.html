@@ -18,16 +18,11 @@
     .search-box .form-control {
         padding-left: 2.5rem;
     }
-    /* スマートフォン表示でヘッダーを非表示にする */
+    /* スマートフォン表示でヘッダーのテキストのみを非表示にする */
     @media (max-width: 767.98px) {
         thead {
-            display: none;
+            font-size: 0; /* テキストを非表示にし、高さをなくす */
         }
-        /* 各列の幅を再調整 */
-        tbody tr td:nth-child(1) { width: 17%; } /* アイコン */
-        tbody tr td:nth-child(2) { width: 55%; } /* ユーザー情報 */
-        tbody tr td:nth-child(3) { width: 18%; } /* アクション */
-        tbody tr td:nth-child(4) { width: 10%; } /* 詳細 */
     }
     /* 選択された行のスタイル */
     tr.selected {
@@ -119,16 +114,16 @@
 
 <!-- いいね返し用アクションバー (全員表示時のみ) -->
 <div id="like-back-actions-container" class="mb-3" style="display: none;">
-    <div class="d-flex justify-content-end align-items-center gap-2">
+    <div class="d-flex justify-content-end align-items-center gap-2 flex-wrap">
         <button type="button" class="btn btn-sm btn-outline-secondary" id="select-all-toggle-btn-for-like-back" onclick="toggleSelectAll()" title="すべて選択/解除">
-            <i class="bi bi-check-square"></i> 全選択
+            <i class="bi bi-check-square"></i><span class="d-none d-md-inline ms-1">全選択</span>
         </button>
         <div class="input-group input-group-sm" style="width: auto;">
             <span class="input-group-text">いいね数</span>
             <input type="number" class="form-control" id="like-back-count-input" value="3" min="1" style="width: 60px;">
             <div class="btn-group">
                 <button class="btn btn-sm btn-danger" id="bulk-like-back-btn" onclick="bulkLikeBack(false)" disabled>
-                    <i class="bi bi-heart-fill"></i> いいね返し実行
+                    <i class="bi bi-heart-fill"></i><span class="d-none d-md-inline ms-1">いいね返し</span>
                 </button>
                 <button type="button" class="btn btn-sm btn-danger dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-expanded="false" id="bulk-like-back-dropdown-btn" disabled>
                     <span class="visually-hidden">Toggle Dropdown</span>
@@ -147,8 +142,8 @@
         <thead>
             <tr>
                 <th scope="col" style="width: 70px;">アイコン</th>
-                <th scope="col" style="width: 60%;">ユーザー情報</th>
-                <th scope="col" style="width: 20%;">アクション</th>
+                <th scope="col" style="width: 65%;">ユーザー情報</th>
+                <th scope="col" style="width: 30%;">アクション</th>
                 <th scope="col" style="width: 10%;">詳細</th>
             </tr>
         </thead>

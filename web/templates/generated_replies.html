@@ -83,8 +83,8 @@
         <h2 class="mb-2 mb-md-0"><i class="bi bi-person-heart me-2"></i>リピーター育成
             <small class="text-muted fw-normal d-none d-lg-inline" style="font-size: 0.75rem;">(自分の投稿へのコメント返信)</small>
         </h2>
-        <div class="d-flex align-items-center gap-3 flex-wrap">
-            <div class="btn-toolbar" id="bulk-actions-wrapper">
+        <div class="d-flex align-items-center gap-3 flex-wrap justify-content-end">
+            <div class="btn-toolbar" id="bulk-actions-wrapper" role="toolbar">
                 <div class="d-flex flex-nowrap gap-2" id="bulk-action-buttons" data-bs-toggle="tooltip" data-bs-title="生成された返信コメントに対する一括操作">
                     <button type="button" class="btn btn-sm btn-outline-secondary" id="select-all-toggle-btn" onclick="toggleSelectAll()" title="すべて選択/解除" data-bs-toggle="tooltip">
                         <i class="bi bi-check-square"></i><span class="d-none d-md-inline ms-1">全選択</span>
@@ -172,24 +172,26 @@
         <h2 class="mb-2 mb-md-0"><i class="bi bi-people-fill me-2"></i>コメントユーザーサマリー
             <span id="user-summary-count" class="badge bg-secondary ms-2 align-middle" style="font-size: 0.8rem;">0</span>
         </h2>
-        <div id="user-summary-actions" class="d-flex align-items-center gap-2" style="z-index: 1019;">
-            <button type="button" class="btn btn-sm btn-outline-secondary" id="summary-select-all-btn" onclick="toggleSelectAllSummaryUsers()" title="サマリー内のユーザーを全選択/解除" data-bs-toggle="tooltip">
-                <i class="bi bi-check2-square"></i> 全選択
-            </button>
-            <div class="input-group input-group-sm" style="width: auto;">
-                <span class="input-group-text">いいね数</span>
-                <input type="number" class="form-control" id="like-back-count-input" value="3" min="1" style="width: 60px;">
-                <div class="btn-group">
-                    <button class="btn btn-sm btn-danger" id="bulk-like-back-btn" onclick="bulkLikeBack(false)" disabled>
-                        <i class="bi bi-heart-fill"></i> いいね返し実行
-                    </button>
-                    <button type="button" class="btn btn-sm btn-danger dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-expanded="false" id="bulk-like-back-dropdown-btn" disabled>
-                        <span class="visually-hidden">Toggle Dropdown</span>
-                    </button>
-                    <ul class="dropdown-menu">
-                        <li><a class="dropdown-item" href="#" onclick="event.preventDefault(); bulkLikeBack(true)"><i class="bi bi-send-slash-fill me-2"></i>いいね返し (予行)</a></li>
-                        <li><a class="dropdown-item" href="#" onclick="event.preventDefault(); bulkLikeBack(false)"><i class="bi bi-send-fill me-2"></i>いいね返し (本実行)</a></li>
-                    </ul>
+        <div id="user-summary-actions" class="d-flex align-items-center gap-2 flex-wrap justify-content-end" style="z-index: 1019;">
+            <div class="btn-toolbar" role="toolbar">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="summary-select-all-btn" onclick="toggleSelectAllSummaryUsers()" title="サマリー内のユーザーを全選択/解除" data-bs-toggle="tooltip">
+                    <i class="bi bi-check-square"></i><span class="d-none d-md-inline ms-1">全選択</span>
+                </button>
+                <div class="input-group input-group-sm ms-2" style="width: auto;">
+                    <span class="input-group-text">いいね数</span>
+                    <input type="number" class="form-control" id="like-back-count-input" value="3" min="1" style="width: 60px;">
+                    <div class="btn-group">
+                        <button class="btn btn-sm btn-danger" id="bulk-like-back-btn" onclick="bulkLikeBack(false)" disabled>
+                            <i class="bi bi-heart-fill"></i><span class="d-none d-md-inline ms-1">いいね返し</span>
+                        </button>
+                        <button type="button" class="btn btn-sm btn-danger dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-expanded="false" id="bulk-like-back-dropdown-btn" disabled>
+                            <span class="visually-hidden">Toggle Dropdown</span>
+                        </button>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="#" onclick="event.preventDefault(); bulkLikeBack(true)"><i class="bi bi-send-slash-fill me-2"></i>いいね返し (予行)</a></li>
+                            <li><a class="dropdown-item" href="#" onclick="event.preventDefault(); bulkLikeBack(false)"><i class="bi bi-send-fill me-2"></i>いいね返し (本実行)</a></li>
+                        </ul>
+                    </div>
                 </div>
             </div>
         </div>
