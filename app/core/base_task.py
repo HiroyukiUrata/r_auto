@@ -171,8 +171,10 @@ class BaseTask(ABC):
         if self.page:
             try:
                 os.makedirs(SCREENSHOT_DIR, exist_ok=True)
-                timestamp = time.strftime("%Y%m%d-%H%M%S") 
-                safe_action_name = "".join(c for c in self.action_name if c.isalnum() or c in (' ', '_')).rstrip() 
+                timestamp = time.strftime("%Y%m%d-%H%M%S")
+                # 日本語のアクション名ではなく、一意のタスクID(tag)を使用する
+                # これにより、エラー管理画面でタスク名を正確に逆引きできるようになる
+                safe_action_name = getattr(self, 'tag', self.action_name)
                 screenshot_path = os.path.join(SCREENSHOT_DIR, f"{prefix}_{safe_action_name}_{timestamp}.png")
 
                 # 当初のシンプルなスクリーンショット撮影処理に戻す

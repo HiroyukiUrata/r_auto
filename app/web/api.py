@@ -178,8 +178,11 @@ async def read_error_management(request: Request):
     """エラー管理ページを表示する"""
     # 例: error_post_comment_user123_20231027-103000.png
     # 例: dry_run_engage-user_user123_20231027-103000.png
+    # 例: login_check_redirect_ログイン状態チェック_20251109-075422.png
     # グループ: 1:type, 2:action, 3:details, 4:timestamp
-    filename_pattern = re.compile(r'^(?P<type>dry_run|error)_(?P<action>[a-zA-Z0-9_-]+)_(?P<details>.+?)_(?P<timestamp>\d{8}-\d{6})\.png$')
+    # 新しいファイル形式 `login_check_redirect_...` にも対応できるよう正規表現を修正
+    # `type` と `action` をまとめて `prefix` としてキャプチャし、後から判定する
+    filename_pattern = re.compile(r'^(?P<prefix>[a-zA-Z0-9_-]+)_(?P<details>.+?)_(?P<timestamp>\d{8}-\d{6})\.png$')
 
     all_files = []
     file_details = {}
@@ -209,10 +212,25 @@ async def read_error_management(request: Request):
                 match = filename_pattern.match(filename)
                 if match:
                     parsed_data = match.groupdict()
-                    file_type = parsed_data.get('type', 'unknown')
-                    action_tag = parsed_data.get('action')
-                    action_name = TASK_DEFINITIONS.get(action_tag, {}).get('name_ja', action_tag)
+                    prefix = parsed_data.get('prefix', '')
                     details_display = parsed_data.get('details', '')
+
+                    # prefixからtypeとactionを判定
+                    if prefix.startswith('dry_run'):
+                        file_type = 'dry_run'
+                        action_tag = prefix.replace('dry_run_', '')
+                        # タスク定義から日本語名を取得しようと試み、見つからなければタグをそのまま表示
+                        definition = TASK_DEFINITIONS.get(action_tag)
+                        action_name = definition.get('name_ja') if definition else action_tag
+
+                    elif prefix.startswith('login_check_redirect'):
+                        file_type = 'error'
+                        action_name = "ログイン失敗" # 専用の分かりやすい名前を付ける
+                    else: # 'error_...' やその他の形式
+                        file_type = 'error'
+                        action_tag = prefix.replace('error_', '')
+                        action_name = TASK_DEFINITIONS.get(action_tag, {}).get('name_ja', action_tag)
+
                     raw_timestamp = parsed_data['timestamp']
                     try:
                         dt_obj = datetime.strptime(raw_timestamp, '%Y%m%d-%H%M%S')
