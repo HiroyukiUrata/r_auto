@@ -104,6 +104,7 @@
         <div class="col-5">
             <select class="form-select" id="sort-select" onchange="fetchUsers()">
                 <option value="all" selected>🕒新しい順</option>
+                <option value="like_back_ready">❤️返し👍</option>
                 <option value="like_count_desc">❤️多い順</option>
                 <option value="commented_at_desc">💬新しい順</option>
                 <option value="commented_at_asc">💬古い順</option>
@@ -530,12 +531,19 @@
     function updateViewOptions() {
         const showAll = document.getElementById('show-all-users-switch').checked;
         const filterContainer = document.getElementById('filter-container');
-        const bulkActionsWrapper = document.getElementById('bulk-actions-wrapper');
-
         const likeBackActionsContainer = document.getElementById('like-back-actions-container');
+        const bulkActionsWrapper = document.getElementById('bulk-actions-wrapper');
+        const sortBy = document.getElementById('sort-select').value;
 
         filterContainer.style.display = showAll ? 'block' : 'none';
-        likeBackActionsContainer.style.display = showAll ? 'flex' : 'none';
+
+        // 「全員表示」がONで、かつソートが「いいね返し可」の時だけ、いいね返し用のアクションバーを表示
+        if (showAll && sortBy === 'like_back_ready') {
+            likeBackActionsContainer.style.display = 'flex';
+        } else {
+            likeBackActionsContainer.style.display = 'none';
+        }
+
         // Bootstrapのクラスを使って表示/非表示を切り替える
         bulkActionsWrapper.classList.toggle('d-none', showAll);
     }
@@ -544,11 +552,13 @@
         const showAll = document.getElementById('show-all-users-switch').checked;
         let apiUrl = showAll ? '/api/comment-targets?all=true' : '/api/comment-targets';
         const searchKeyword = document.getElementById('user-search-input').value;
+        const sortBy = document.getElementById('sort-select').value;
 
         if (showAll) {
-            const sortBy = document.getElementById('sort-select').value;
             apiUrl = `/api/comment-targets?all=true&sort=${sortBy}&search=${encodeURIComponent(searchKeyword)}`;
         }
+        // 表示オプションを更新（ソート条件が変わった場合に対応）
+        updateViewOptions();
 
         // テーブルをローディング状態にする
         const tableBody = document.getElementById('user-table-body');

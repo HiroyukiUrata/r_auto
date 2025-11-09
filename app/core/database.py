@@ -1336,6 +1336,9 @@ def get_all_user_engagements(sort_by: str = 'recent_action', limit: int = 100, s
         elif sort_by == 'commented_at_desc':
             where_clauses.append("last_commented_at IS NOT NULL")
             order_by_clause = "ORDER BY last_commented_at DESC"
+        elif sort_by == 'like_back_ready':
+            where_clauses.append("profile_page_url IS NOT NULL AND profile_page_url != '取得失敗'")
+            order_by_clause = "ORDER BY latest_action_timestamp DESC" # いいね返し対象も最新アクション順で表示
         elif sort_by == 'commented_at_asc':
             where_clauses.append("last_commented_at IS NOT NULL")
             order_by_clause = "ORDER BY last_commented_at ASC"
@@ -1357,8 +1360,9 @@ def get_all_user_engagements(sort_by: str = 'recent_action', limit: int = 100, s
 
         # 「全員表示」の場合は絞り込みを行わず、全ユーザーを返す
         # それ以外（コメント対象者表示など）の場合は、エンゲージメントタイプを判定して絞り込む
-        if sort_by not in ['all', 'recent_action', 'like_count_desc', 'commented_at_desc', 'commented_at_asc']:
-             users = _add_engagement_type_to_users(users)
+        # `like_back_ready` も全員表示のソートオプションなので、絞り込み対象から除外する
+        if sort_by not in ['all', 'recent_action', 'like_count_desc', 'commented_at_desc', 'commented_at_asc', 'like_back_ready']:
+            users = _add_engagement_type_to_users(users)
 
         return users
     finally:
