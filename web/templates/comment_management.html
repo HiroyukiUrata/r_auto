@@ -29,6 +29,10 @@
         tbody tr td:nth-child(3) { width: 18%; } /* アクション */
         tbody tr td:nth-child(4) { width: 10%; } /* 詳細 */
     }
+    /* 選択された行のスタイル */
+    tr.selected {
+        background-color: #cfe2ff !important;
+    }
 </style>
 {% endblock %}
 
@@ -104,6 +108,22 @@
                 <option value="commented_at_desc">💬新しい順</option>
                 <option value="commented_at_asc">💬古い順</option>
             </select>
+        </div>
+    </div>
+</div>
+
+<!-- いいね返し用アクションバー (全員表示時のみ) -->
+<div id="like-back-actions-container" class="mb-3" style="display: none;">
+    <div class="d-flex justify-content-end align-items-center gap-2">
+        <button type="button" class="btn btn-sm btn-outline-secondary" id="select-all-toggle-btn-for-like-back" onclick="toggleSelectAll()" title="すべて選択/解除">
+            <i class="bi bi-check-square"></i> 全選択
+        </button>
+        <div class="input-group input-group-sm" style="width: auto;">
+            <span class="input-group-text">いいね数</span>
+            <input type="number" class="form-control" id="like-back-count-input" value="3" min="1" style="width: 60px;">
+            <button class="btn btn-sm btn-danger" id="bulk-like-back-btn" onclick="bulkLikeBack()" disabled>
+                <i class="bi bi-heart-fill"></i> いいね返し実行
+            </button>
         </div>
     </div>
 </div>
@@ -364,12 +384,6 @@
         }
     }
 
-    function getSelectedUserIds() {
-        return Array.from(document.querySelectorAll('#user-table-body tr.selected')).map(row => {
-            return row.id.replace('user-row-', '');
-        });
-    }
-
     function updateBulkActionButtons() {
         const selectedIds = getSelectedUserIds();
         const disabled = selectedIds.length === 0;
@@ -378,16 +392,11 @@
         document.getElementById('bulk-dryrun-dropdown-btn').disabled = disabled;
         document.getElementById('bulk-execute-dropdown-btn').disabled = disabled;
         document.getElementById('bulk-skip-btn').disabled = disabled;
-    }
-
-    function toggleSelectAll() {
-        const allRows = document.querySelectorAll('#user-table-body tr');
-        const isAllSelected = getSelectedUserIds().length === allRows.length;
-
-        allRows.forEach(row => {
-            row.classList.toggle('selected', !isAllSelected);
-        });
-        updateBulkActionButtons();
+        // 全員表示時のいいね返しボタン
+        const likeBackBtn = document.getElementById('bulk-like-back-btn');
+        if (likeBackBtn) {
+            likeBackBtn.disabled = disabled;
+        }
     }
 
     function getSelectedUsers() {
@@ -491,12 +500,29 @@
         }
     }
 
+    function getSelectedUserIds() {
+        return Array.from(document.querySelectorAll('#user-table-body tr.selected')).map(row => {
+            return row.id.replace('user-row-', '');
+        });
+    }
+
+    function toggleSelectAll() {
+        const allRows = document.querySelectorAll('#user-table-body tr');
+        const isAllSelected = getSelectedUserIds().length === allRows.length;
+
+        allRows.forEach(row => row.classList.toggle('selected', !isAllSelected));
+        updateBulkActionButtons();
+    }
+
     function updateViewOptions() {
         const showAll = document.getElementById('show-all-users-switch').checked;
         const filterContainer = document.getElementById('filter-container');
         const bulkActionsWrapper = document.getElementById('bulk-actions-wrapper');
 
+        const likeBackActionsContainer = document.getElementById('like-back-actions-container');
+
         filterContainer.style.display = showAll ? 'block' : 'none';
+        likeBackActionsContainer.style.display = showAll ? 'flex' : 'none';
         // Bootstrapのクラスを使って表示/非表示を切り替える
         bulkActionsWrapper.classList.toggle('d-none', showAll);
     }
@@ -712,22 +738,66 @@
                 row.classList.toggle('selected');
                 lastSelectedRowIndex = currentIndex;
             } else {
-                // 通常のクリック: チェックボックスのように選択/選択解除をトグルする
-                row.classList.toggle('selected');
+                // 通常のクリック: 他の選択を解除して、現在の行のみ選択
+                rows.forEach(r => r.classList.remove('selected'));
+                row.classList.add('selected');
                 lastSelectedRowIndex = currentIndex;
             }
             updateBulkActionButtons();
         });
+
+        // 検索ボックスの入力イベントリスナー
+        let searchTimeout;
+        document.getElementById('user-search-input').addEventListener('input', function() {
+            clearTimeout(searchTimeout);
+            // ユーザーの入力を待つ（300ミリ秒）
+            searchTimeout = setTimeout(() => {
+                fetchUsers();
+            }, 300);
+        });
     });
 
-    // 検索ボックスの入力イベントリスナー
-    let searchTimeout;
-    document.getElementById('user-search-input').addEventListener('input', function() {
-        clearTimeout(searchTimeout);
-        // ユーザーの入力を待つ（300ミリ秒）
-        searchTimeout = setTimeout(() => {
+    async function bulkLikeBack() {
+        const selectedUserIds = getSelectedUserIds();
+        const likeCount = parseInt(document.getElementById('like-back-count-input').value, 10);
+
+        if (selectedUserIds.length === 0) return;
+        if (isNaN(likeCount) || likeCount < 1) {
+            alert('いいね数には1以上の数値を入力してください。');
+            return;
+        }
+
+        if (!confirm(`${selectedUserIds.length}人のユーザーに ${likeCount}件の「いいね返し」を実行しますか？`)) {
+            return;
+        }
+
+        // UIから選択された行を削除
+        selectedUserIds.forEach(id => {
+            const row = document.getElementById(`user-row-${id}`);
+            if (row) row.remove();
+        });
+        updateBulkActionButtons();
+
+        try {
+            const response = await fetch('/api/users/bulk-like-back', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_ids: selectedUserIds, like_count: likeCount })
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.detail || 'いいね返しタスクの開始に失敗しました。');
+            // 成功時はToast通知を表示
+            if (typeof showToast === 'function') {
+                showToast('タスク開始', result.message, 'success');
+            } else {
+                alert(result.message);
+            }
+        } catch (error) {
+            // エラー時はアラートで表示
+            alert(`エラー: ${error.message}`);
+            // エラーが発生した場合は、リストを再読み込みして整合性を保つ
             fetchUsers();
-        }, 300);
-    });
+        }
+    }
 </script>
 {% endblock %}
