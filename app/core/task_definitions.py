@@ -79,7 +79,7 @@ from app.tasks.like_back_task import run_like_back
 
 TASK_DEFINITIONS = {
     "procure-products-flow": {
-        "name_ja": "商品調達フロー",
+        "name_ja": "商品調達",
         "function": None, # フローなので関数はなし
         "is_debug": False, # スケジュール専用なのでUIには表示しない
         "default_kwargs": {"count": 3}, # フロー全体のデフォルト件数を設定
@@ -201,7 +201,7 @@ TASK_DEFINITIONS = {
         "order": 42,
     },
     "backup-database": {
-        "name_ja": "データベースのバックアップ",
+        "name_ja": "バックアップ",
         "function": run_backup_database,
         "is_debug": True,
         "show_in_schedule": True,
@@ -330,9 +330,8 @@ TASK_DEFINITIONS = {
         "order": 89,
     },
     "generate-my-room-replies": {
-        "name_ja": "自分の投稿への返信生成フロー",
+        "name_ja": "ホームコメント分析",
         "function": None,
-        "default_kwargs": {"dummy_arg_to_hide_count": None}, # UIに件数入力が不要であることを明示するためのダミー引数
         "default_kwargs": {"_": None}, # UIに件数入力が不要であることを明示するためのダミー引数
         "is_debug": False,
         "show_in_schedule": True,
