@@ -39,7 +39,7 @@ class GenerateReplyCommentsTask(BaseTask):
         self.needs_browser = False
 
     def _execute_main_logic(self):
-        logger.info(f"--- {self.action_name}タスクを開始します ---")
+        logger.debug(f"--- {self.action_name}タスクを開始します ---")
 
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
@@ -59,13 +59,13 @@ class GenerateReplyCommentsTask(BaseTask):
             logger.info("返信対象の新しいコメントはありませんでした。")
             return True
 
-        logger.info(f"{len(post_urls_to_process)}件の投稿に未返信のコメントがあります。")
+        logger.debug(f"{len(post_urls_to_process)}件の投稿に未返信のコメントがあります。")
         total_updated_count = 0
         client = genai.Client(api_key=api_key)
 
         # 2. 投稿ごとにループ処理
         for i, post_url in enumerate(post_urls_to_process):
-            logger.info(f"--- 投稿 {i+1}/{len(post_urls_to_process)} の処理を開始: {post_url} ---")
+            logger.debug(f"--- 投稿 {i+1}/{len(post_urls_to_process)} の処理を開始: {post_url} ---")
             
             # 3. 投稿ごとの未返信コメントを取得
             comments_data = get_unreplied_comments_for_post(post_url)
@@ -73,7 +73,7 @@ class GenerateReplyCommentsTask(BaseTask):
                 logger.warning(f"  -> 対象コメントが見つかりませんでした。スキップします。")
                 continue
             
-            logger.info(f"  -> {len(comments_data)}件の未返信コメントを処理します。")
+            logger.debug(f"  -> {len(comments_data)}件の未返信コメントを処理します。")
 
             # 4. プロンプトの準備
             recent_examples_list = []
@@ -88,7 +88,7 @@ class GenerateReplyCommentsTask(BaseTask):
             full_prompt = prompt_template.replace("{{ recent_examples }}", recent_examples_str).replace("{{ target_comments_json }}", target_comments_json_str)
 
             # 5. AIにリクエスト
-            logger.info("  -> AIによる返信コメントの生成を開始します...")
+            logger.debug("  -> AIによる返信コメントの生成を開始します...")
             response_text = _call_gemini_api_with_retry_sync(client, full_prompt, f"返信コメント生成 - 投稿 {i+1}")
 
             # 6. AIの応答をパース
@@ -101,7 +101,7 @@ class GenerateReplyCommentsTask(BaseTask):
 
             # 7. 結果をDBに保存
             updated_count = bulk_update_comment_replies(generated_data)
-            logger.info(f"  -> {updated_count}件のコメントに返信を生成し、DBを更新しました。")
+            logger.debug(f"  -> {updated_count}件のコメントに返信を生成し、DBを更新しました。")
             total_updated_count += updated_count
 
             # ログ出力用にマージ処理
@@ -112,11 +112,11 @@ class GenerateReplyCommentsTask(BaseTask):
                 if reply_text not in merged_replies: merged_replies[reply_text] = set()
                 for name in item.get("replied_user_names", []): merged_replies[reply_text].add(name)
 
-            logger.info("  --- 生成された返信サマリー ---")
+            logger.debug("  --- 生成された返信サマリー ---")
             for text, names in merged_replies.items():
-                logger.info(f"    -> To: {', '.join(sorted(list(names)))}")
-                logger.info(f"       Reply: {text}")
-            logger.info("  --------------------------")
+                logger.debug(f"    -> To: {', '.join(sorted(list(names)))}")
+                logger.debug(f"       Reply: {text}")
+            logger.debug("  --------------------------")
         
         logger.info(f"[Action Summary] name=返信コメント生成, count={total_updated_count}")
         return True
