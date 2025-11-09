@@ -210,17 +210,17 @@
         <table class="table table-striped table-sm table-hover">
             <thead class="table-light sticky-top" style="z-index: 1018;">
                 <tr id="user-summary-table-header">
-                    <th scope="col" style="cursor: pointer;" onclick="sortSummaryTable(1, 'string')" data-bs-toggle="tooltip" title="ユーザー名">ユーザー</th>
+                    <th scope="col" style="cursor: pointer;" onclick="sortSummaryTable(1, 'string')" data-bs-toggle="tooltip" title="ユーザー名">ユーザー <i class="bi bi-arrow-down-up small sort-indicator"></i></th>
                     <th scope="col" class="text-center" data-bs-toggle="tooltip" title="コメント数 / 最新コメント日時">
                         <span class="d-none d-md-inline" style="cursor: pointer;" onclick="sortSummaryTable(2, 'number')">コメント数</span>
-                        <span class="d-md-none"><i class="bi bi-chat-dots-fill sort-icon" onclick="event.stopPropagation(); sortSummaryTable(2, 'number');"></i> / <i class="bi bi-clock-fill sort-icon" onclick="event.stopPropagation(); sortSummaryTable(3, 'date');"></i></span>
+                        <span class="d-md-none"><i class="bi bi-chat-dots-fill sort-icon" onclick="event.stopPropagation(); sortSummaryTable(2, 'number');"></i> / <i class="bi bi-clock-fill sort-icon" onclick="event.stopPropagation(); sortSummaryTable(3, 'date');"></i></span> <i class="bi bi-arrow-down-up small sort-indicator d-none d-md-inline"></i>
                     </th>
                     <th scope="col" class="text-center" data-bs-toggle="tooltip" title="いいね返し数 / 最終いいね返し日時">
                         <span class="d-none d-md-inline" style="cursor: pointer;" onclick="sortSummaryTable(4, 'number')">いいね返し</span>
-                        <span class="d-md-none"><i class="bi bi-heart-fill sort-icon" onclick="event.stopPropagation(); sortSummaryTable(4, 'number');"></i> / <i class="bi bi-clock-fill sort-icon" onclick="event.stopPropagation(); sortSummaryTable(5, 'date');"></i></span>
+                        <span class="d-md-none"><i class="bi bi-heart-fill sort-icon" onclick="event.stopPropagation(); sortSummaryTable(4, 'number');"></i> / <i class="bi bi-clock-fill sort-icon" onclick="event.stopPropagation(); sortSummaryTable(5, 'date');"></i></span> <i class="bi bi-arrow-down-up small sort-indicator d-none d-md-inline"></i>
                     </th>
-                    <th scope="col" style="cursor: pointer;" onclick="sortSummaryTable(3, 'date')" data-bs-toggle="tooltip" title="最新コメント日時" class="d-none d-md-table-cell">最新コメント日時</th> <!-- PC表示用 -->
-                    <th scope="col" style="cursor: pointer;" onclick="sortSummaryTable(5, 'date')" data-bs-toggle="tooltip" title="最終いいね返し日時" class="d-none d-md-table-cell">最終いいね返し日時</th>
+                    <th scope="col" style="cursor: pointer;" onclick="sortSummaryTable(3, 'date')" data-bs-toggle="tooltip" title="最新コメント日時" class="d-none d-md-table-cell">最新コメント日時 <i class="bi bi-arrow-down-up small sort-indicator"></i></th> <!-- PC表示用 -->
+                    <th scope="col" style="cursor: pointer;" onclick="sortSummaryTable(5, 'date')" data-bs-toggle="tooltip" title="最終いいね返し日時" class="d-none d-md-table-cell">最終いいね返し日時 <i class="bi bi-arrow-down-up small sort-indicator"></i></th>
                 </tr>
             </thead>
             <tbody id="user-summary-table-body">
@@ -748,7 +748,7 @@ function sortSummaryTable(columnIndex, type) {
     const rows = Array.from(tableBody.querySelectorAll('tr'));
 
     // 現在のソート方向を取得（未定義なら 'desc'）
-    const direction = sortDirections[columnIndex] === 'asc' ? 'desc' : 'asc';
+    const direction = sortDirections[columnIndex] === 'desc' ? 'asc' : 'desc';
     // 他の列のソート方向はリセットし、現在の列の方向を保存
     Object.keys(sortDirections).forEach(key => {
         sortDirections[key] = undefined;
@@ -789,12 +789,14 @@ function sortSummaryTable(columnIndex, type) {
     // ヘッダーのアイコンを更新
     const headers = document.querySelectorAll('#user-summary-table-header th');
     headers.forEach((th) => {
-        const icon = th.querySelector('.sort-indicator');
-        if (th.getAttribute('onclick').includes(`sortSummaryTable(${columnIndex},`)) {
-            icon.className = direction === 'asc' ? 'bi bi-sort-up small' : 'bi bi-sort-down small';
-        } else {
-            icon.className = 'bi bi-arrow-down-up small sort-indicator';
-        }
+        th.querySelectorAll('.sort-indicator').forEach(icon => {
+            // PC表示用のヘッダーテキストの横にあるアイコンのみを対象とする
+            if (th.getAttribute('onclick')?.includes(`sortSummaryTable(${columnIndex},`)) {
+                icon.className = direction === 'asc' ? 'bi bi-sort-up small sort-indicator' : 'bi bi-sort-down small sort-indicator';
+            } else {
+                icon.className = 'bi bi-arrow-down-up small sort-indicator';
+            }
+        });
     });
 }
 </script>
