@@ -45,7 +45,7 @@ class LikeBackTask(BaseTask):
                 liked_cards_locator.evaluate_all("nodes => nodes.forEach(n => n.style.display = 'none')")
                 logger.debug(f"合計 {count} 件のカードを非表示にしました。")
 
-            time.sleep(1) # 視覚的な確認のための待機
+            time.sleep(3) # 視覚的な確認のための待機
         except Exception as e:
             logger.error(f"エラー: 「いいね済み」の処理中に問題が発生しました。タイムアウトしたか、セレクタが古い可能性があります。")
             logger.error(f"詳細: {e}") # 詳細なエラーメッセージを出力
@@ -71,8 +71,8 @@ class LikeBackTask(BaseTask):
                 self._execute_action(unliked_button_locator, "click", action_name=f"like_back_{safe_user_id}_{liked_count + 1}", screenshot_locator=target_card)
                 liked_count += 1
                 if not self.dry_run:
-                    time.sleep(random.uniform(1, 3)) # 連続クリックを避けるための短い待機
-                
+                   time.sleep(20) # 連続クリックを避けるための待機
+                 
                 target_card.evaluate("node => { node.style.display = 'none'; }")
 
         except Exception as e:
