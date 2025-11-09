@@ -340,10 +340,15 @@ function fetchGeneratedReplies() {
                     `;
                     userTableBody.appendChild(row);
                     // 行クリックでチェックボックスをトグル
-                    row.addEventListener('click', (e) => {
-                        if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'A') {
-                            row.querySelector('.summary-user-checkbox').click();
+                    row.addEventListener('click', function(event) {
+                        // クリックされたのがリンク(<a>)またはその子要素の場合
+                        if (event.target.closest('a')) {
+                            // ただし、それが画像アイコンでない場合は、リンク遷移をキャンセル
+                            if (!event.target.classList.contains('user-summary-icon')) {
+                                event.preventDefault();
+                            }
                         }
+                        row.querySelector('.summary-user-checkbox').click();
                     });
                 });
             } else {
