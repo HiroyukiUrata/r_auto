@@ -106,7 +106,7 @@ def get_recent_activities_from_log(limit=5, max_lines=1000):
                     if message:
                         activities.append({"name": ui_name, "timestamp": timestamp_iso, "status": "success", "message": message})
                     elif count_str:
-                        activities.append({"name": ui_name, "timestamp": timestamp_iso, "status": "success", "message": f"{int(count_str)}件の処理が完了しました。"})
+                        activities.append({"name": ui_name, "timestamp": timestamp_iso, "status": "success", "message": f"{int(count_str)}件 完了"})
                     processed_actions[ui_name] = dt_obj # 処理済みアクションとして記録
                     continue # この行でアクティビティを見つけたら次の行へ
 
@@ -118,7 +118,7 @@ def get_recent_activities_from_log(limit=5, max_lines=1000):
                         if action_name in processed_actions and (processed_actions[action_name] - dt_obj).total_seconds() < 60:
                             continue
                         simple_action_name = action_name.split('(')[0].strip()
-                        activities.append({"name": simple_action_name, "timestamp": timestamp_iso, "status": "error", "message": f"処理中にエラーが発生しました。"})
+                        activities.append({"name": simple_action_name, "timestamp": timestamp_iso, "status": "error", "message": f"処理中にエラー発生"})
                         processed_actions[action_name] = dt_obj # 処理済みアクションとして記録
         return activities
     except Exception as e:

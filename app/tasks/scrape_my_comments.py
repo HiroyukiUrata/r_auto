@@ -58,26 +58,26 @@ class ScrapeMyCommentsTask(BaseTask):
         try:
             # 1. トップページにアクセス
             target_url = f"https://room.rakuten.co.jp/items"
-            logger.info(f"トップページ「{target_url}」に移動します...")
+            logger.debug(f"トップページ「{target_url}」に移動します...")
             page.goto(target_url, wait_until="domcontentloaded")
             time.sleep(2)
 
             # 2. My ROOM リンクをクリック
             myroom_link = page.locator('a:has-text("my ROOM")').first
-            logger.info("「my ROOM」リンクをクリックし、自己ルームに遷移します。")
+            logger.debug("「my ROOM」リンクをクリックし、自己ルームに遷移します。")
             myroom_link.wait_for(state='visible', timeout=10000)
             myroom_link.click()
             page.wait_for_load_state("domcontentloaded", timeout=15000)
-            logger.info(f"ページ遷移成功。現在のURL: {page.url}")
+            logger.debug(f"ページ遷移成功。現在のURL: {page.url}")
             my_room_url = page.url # 自分のROOMのURLを保存
 
             # 3. 「ピン」アイコンを持つカードを探す
             card_selector = convert_to_robust_selector('div[class*="container--JAywt"]')
-            logger.info("投稿カードが読み込まれるのを待ちます...")
+            logger.debug("投稿カードが読み込まれるのを待ちます...")
             page.locator(card_selector).first.wait_for(state="visible", timeout=30000)
             page.wait_for_timeout(2000) # Masonryレイアウトの安定を待つ
 
-            logger.info("ピン留めされた投稿からコメントを収集します...")
+            logger.debug("ピン留めされた投稿からコメントを収集します...")
             pin_icon_selector = convert_to_robust_selector('div.pin-icon--1FR8u')
             
             pinned_cards = page.locator(f"{card_selector}:has({pin_icon_selector})").all()
@@ -86,7 +86,7 @@ class ScrapeMyCommentsTask(BaseTask):
                 logger.warning("ピン留めされた投稿が見つかりませんでした。")
                 return True
 
-            logger.info(f"{len(pinned_cards)}件のピン留めされた投稿を発見しました。最大3件を処理します。")
+            logger.debug(f"{len(pinned_cards)}件のピン留めされた投稿を発見しました。最大3件を処理します。")
             
             # 最大3件までをループ処理
             for i, card in enumerate(pinned_cards[:3]):
@@ -94,12 +94,12 @@ class ScrapeMyCommentsTask(BaseTask):
 
                 # カードをクリックして詳細ページに遷移
                 try:
-                    logger.info(f"  -> {i+1}件目のピン留め投稿を処理します。")
+                    logger.debug(f"  -> {i+1}件目のピン留め投稿を処理します。")
                     image_link_selector = convert_to_robust_selector("a[class*='link-image--']")
                     card.locator(image_link_selector).first.click()
                     page.wait_for_load_state("domcontentloaded", timeout=20000)
                     post_detail_url = page.url
-                    logger.info(f"  -> 詳細ページに遷移しました: {post_detail_url}")
+                    logger.debug(f"  -> 詳細ページに遷移しました: {post_detail_url}")
                     time.sleep(5)
 
                     # この投稿の最新処理済みタイムスタンプを取得
@@ -112,7 +112,7 @@ class ScrapeMyCommentsTask(BaseTask):
                     comment_button_selector.click()
                     
                     # --- コメントリストのスクレイピング処理 ---
-                    logger.info("  -> コメントリストの全件取得を開始します。")
+                    logger.debug("  -> コメントリストの全件取得を開始します。")
                     comment_list_container_selector = 'div#contentList'
                     user_name_selector = 'a[class*="user-name--"]'
                     comment_text_selector = 'div[class*="social-text-area--"]'
@@ -127,7 +127,7 @@ class ScrapeMyCommentsTask(BaseTask):
                     try:
                         page.locator(comment_item_selector).first.wait_for(state="visible", timeout=15000)
                     except PlaywrightError:
-                        logger.info("    -> コメントが見つかりませんでした。次の投稿に進みます。")
+                        logger.debug("    -> コメントが見つかりませんでした。次の投稿に進みます。")
                         page.go_back(wait_until="domcontentloaded")
                         page.wait_for_timeout(2000)
                         continue
@@ -191,7 +191,7 @@ class ScrapeMyCommentsTask(BaseTask):
                             break # スクロールループも抜ける
 
                         if newly_found_count > 0:
-                            logger.info(f"    -> {newly_found_count}件の新規コメントを取得 (累計: {len(processed_comments)}件)")
+                            logger.debug(f"    -> {newly_found_count}件の新規コメントを取得 (累計: {len(processed_comments)}件)")
 
                         # --- スクロール実行とスピナー待機 ---
                         page.locator(comment_list_container_selector).evaluate("node => node.scrollTop = node.scrollHeight")
@@ -200,7 +200,7 @@ class ScrapeMyCommentsTask(BaseTask):
                             page.wait_for_timeout(1500)
                             time.sleep(5)
                         except PlaywrightError:
-                            logger.info("    -> スピナーが表示されませんでした。ページの終端と判断します。")
+                            logger.debug("    -> スピナーが表示されませんでした。ページの終端と判断します。")
                             break
 
                         # --- ★★★ 実装漏れ修正: スクロール後に新しく読み込まれたコメントを処理 ★★★ ---
@@ -236,7 +236,7 @@ class ScrapeMyCommentsTask(BaseTask):
                             except PlaywrightError:
                                 continue
                     
-                    logger.info(f"  -> 投稿のコメント取得完了。合計 {len(processed_comments)} 件")
+                    logger.debug(f"  -> 投稿のコメント取得完了。合計 {len(processed_comments)} 件")
 
                     # --- 取得結果をDBに保存 ---
                     if processed_comments:
@@ -244,10 +244,10 @@ class ScrapeMyCommentsTask(BaseTask):
                             comments_data=processed_comments
                         )
                         if inserted_count is not None:
-                            logger.info(f"  -> DBに新規コメントを{inserted_count}件保存しました。")
+                            logger.debug(f"  -> DBに新規コメントを{inserted_count}件保存しました。")
                             total_inserted_count += inserted_count
 
-                    logger.info("  -> 元のページに戻ります。")
+                    logger.debug("  -> 元のページに戻ります。")
                     page.go_back(wait_until="domcontentloaded")
                     page.wait_for_timeout(2000)
                 except PlaywrightError as click_error:

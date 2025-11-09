@@ -44,7 +44,7 @@ class ReplyToCommentsTask(BaseTask):
                 logger.warning(f"[{i+1}/{total_replies}] 投稿URLまたは返信テキストが不足しているためスキップします。")
                 continue
 
-            logger.info(f"[{i+1}/{total_replies}] 投稿ページに移動します: {post_url}")
+            logger.debug(f"[{i+1}/{total_replies}] 投稿ページに移動します: {post_url}")
             page.goto(post_url, wait_until="domcontentloaded", timeout=60000)
             time.sleep(random.uniform(3, 5))
 
@@ -74,7 +74,7 @@ class ReplyToCommentsTask(BaseTask):
                     # 投稿完了を待機
                     time.sleep(3)
                     #logger.info(f"  -> コメント返しが完了しました。投稿URL: {page.url}")
-                    logger.info(f"  -> コメントの投稿が完了しました。")
+                    logger.debug(f"  -> コメントの投稿が完了しました。")
                     
                     # DBの投稿日時を更新
                     if comment_ids:
@@ -92,7 +92,7 @@ class ReplyToCommentsTask(BaseTask):
                 self._take_screenshot_on_error(prefix=f"error_unexpected_for_{'_'.join(target_users)}")
                 continue # 次の返信へ
 
-        logger.info("すべてのコメント返信タスクが完了しました。")
+        logger.debug("すべてのコメント返信タスクが完了しました。")
         return True
 
 if __name__ == '__main__':

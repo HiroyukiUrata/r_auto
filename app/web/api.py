@@ -1156,12 +1156,14 @@ def _run_task_internal(tag: str, is_part_of_flow: bool, **kwargs):
         logging.debug(f"--- 新フロー実行: 「{definition['name_ja']}」を開始します。 ---")
 
         def run_flow():
+            flow_succeeded = True # フローが成功したかどうかを追跡するフラグ
             import inspect
             # flow_definitionが文字列かリストか判定
             if isinstance(flow_definition, str):
                 tasks_in_flow = [(task.strip(), {}) for task in flow_definition.split('|')]
             else: # リスト形式の場合
                 tasks_in_flow = flow_definition
+
 
             for i, (sub_task_id, sub_task_args) in enumerate(tasks_in_flow):
                 if sub_task_id in TASK_DEFINITIONS:
@@ -1221,12 +1223,18 @@ def _run_task_internal(tag: str, is_part_of_flow: bool, **kwargs):
 
                     if task_result is False: # 明示的にFalseの場合のみ失敗とみなす
                         logging.error(f"フロー内のタスク「{sub_task_def['name_ja']}」が失敗しました。フローを中断します。")
+                        flow_succeeded = False
                         break # forループを抜ける
                 else:
                     logging.error(f"フロー内のタスク「{sub_task_id}」が見つかりません。フローを中断します。")
+                    flow_succeeded = False
                     break
-            else: # ループが正常に完了した場合
-                logging.debug(f"--- 新フロー実行: 「{definition['name_ja']}」が正常に完了しました。 ---")
+            
+            # フロー全体の最終結果をログに出力
+            if flow_succeeded:
+                logging.info(f"--- フロー完了: 「{definition['name_ja']}」が正常に完了しました。 ---")
+            else:
+                logging.error(f"--- フロー中断: 「{definition['name_ja']}」は途中で失敗しました。 ---")
         
         run_threaded(run_flow)
         return {"status": "success", "message": f"タスクフロー「{definition['name_ja']}」(件数: {flow_kwargs.get('count')})の実行を開始しました。"}
