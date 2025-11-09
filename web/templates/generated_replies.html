@@ -68,11 +68,21 @@
 
     /* PC表示時 (768px以上) のデフォルトスタイル */
     @media (min-width: 768px) {
-        #user-summary-table-header th:nth-child(1) { width: 40%; } /* ユーザー */
-        #user-summary-table-header th:nth-child(2) { width: 10%; } /* コメント数 */
-        #user-summary-table-header th:nth-child(3) { width: 20%; } /* 最新コメント日時 */
-        #user-summary-table-header th:nth-child(4) { width: 10%; } /* いいね返し */
-        #user-summary-table-header th:nth-child(5) { width: 20%; } /* 最終いいね返し日時 */
+        /* Flexboxを使って列の順序を制御 */
+        #user-summary-table-header, #user-summary-table-body tr {
+            display: flex;
+            width: 100%;
+        }
+        #user-summary-table-header th, #user-summary-table-body td {
+            display: block; /* or flex, etc. */
+        }
+        /* 列の幅と順序を指定 */
+        #user-summary-table-header th:nth-child(1), .user-summary-row td:nth-child(2) { width: 40%; order: 1; } /* ユーザー */
+        #user-summary-table-header th:nth-child(2), .user-summary-row td:nth-child(3) { width: 10%; order: 2; text-align: center; } /* コメント数 */
+        #user-summary-table-header th:nth-child(4), .user-summary-row td:nth-child(5) { width: 20%; order: 3; } /* 最新コメント日時 */
+        #user-summary-table-header th:nth-child(3), .user-summary-row td:nth-child(4) { width: 10%; order: 4; text-align: center; } /* いいね返し */
+        #user-summary-table-header th:nth-child(5), .user-summary-row td:nth-child(6) { width: 20%; order: 5; } /* 最終いいね返し日時 */
+        .user-summary-row td:nth-child(1) { display: none; } /* チェックボックス列は常に非表示 */
     }
 </style>
 {% endblock %}
@@ -209,7 +219,7 @@
                         <span class="d-none d-md-inline" style="cursor: pointer;" onclick="sortSummaryTable(4, 'number')">いいね返し</span>
                         <span class="d-md-none"><i class="bi bi-heart-fill sort-icon" onclick="event.stopPropagation(); sortSummaryTable(4, 'number');"></i> / <i class="bi bi-clock-fill sort-icon" onclick="event.stopPropagation(); sortSummaryTable(5, 'date');"></i></span>
                     </th>
-                    <th scope="col" style="cursor: pointer;" onclick="sortSummaryTable(3, 'date')" data-bs-toggle="tooltip" title="最新コメント日時" class="d-none d-md-table-cell">最新コメント日時</th>
+                    <th scope="col" style="cursor: pointer;" onclick="sortSummaryTable(3, 'date')" data-bs-toggle="tooltip" title="最新コメント日時" class="d-none d-md-table-cell">最新コメント日時</th> <!-- PC表示用 -->
                     <th scope="col" style="cursor: pointer;" onclick="sortSummaryTable(5, 'date')" data-bs-toggle="tooltip" title="最終いいね返し日時" class="d-none d-md-table-cell">最終いいね返し日時</th>
                 </tr>
             </thead>
@@ -428,8 +438,8 @@ function fetchGeneratedReplies() {
                             </td>
                             <!-- PC表示用のセル -->
                             <td class="text-center d-none d-md-table-cell">${isLayoutDebug ? '99' : user.total_comments}</td>
-                            <td class="d-none d-md-table-cell" title="${new Date(user.latest_comment_timestamp).toLocaleString()}">${isLayoutDebug ? '99日前' : formatRelativeTime(user.latest_comment_timestamp)}</td>
                             <td class="text-center d-none d-md-table-cell">${isLayoutDebug ? '99' : (user.like_back_count || 0)}</td>
+                            <td class="d-none d-md-table-cell" title="${new Date(user.latest_comment_timestamp).toLocaleString()}">${isLayoutDebug ? '99日前' : formatRelativeTime(user.latest_comment_timestamp)}</td>
                             <td class="d-none d-md-table-cell">${isLayoutDebug ? '99日前' : lastLikeBackAt}</td>
                             <!-- スマホ表示用のセル -->
                             <td class="d-md-none text-center">

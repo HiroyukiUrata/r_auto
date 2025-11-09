@@ -33,6 +33,18 @@
         opacity: 0.6;
         cursor: not-allowed;
     }
+    /* PC表示用のテーブル列幅調整 */
+    @media (min-width: 768px) {
+        .col-user-info {
+            width: auto !important; /* 残りの幅をすべて使用 */
+        }
+        .col-action {
+            width: 150px !important; /* 固定幅 */
+        }
+        .col-details {
+            width: 60px !important; /* 固定幅 */
+        }
+    }
 </style>
 {% endblock %}
 
@@ -142,10 +154,10 @@
     <table class="table table-striped table-sm align-middle" style="table-layout: fixed; width: 100%;">
         <thead>
             <tr>
-                <th scope="col" style="width: 70px;">アイコン</th>
-                <th scope="col" style="width: 65%;">ユーザー情報</th>
-                <th scope="col" style="width: 30%;">アクション</th>
-                <th scope="col" style="width: 10%;">詳細</th>
+                <th scope="col" style="width: 70px;">アイコン</th> <!-- 固定幅 -->
+                <th scope="col" class="col-user-info" style="width: 65%;">ユーザー情報</th> <!-- スマホ: 65%, PC: auto -->
+                <th scope="col" class="col-action" style="width: 30%;">アクション</th> <!-- スマホ: 30%, PC: 150px -->
+                <th scope="col" class="col-details" style="width: 10%;">詳細</th> <!-- スマホ: 10%, PC: 60px -->
             </tr>
         </thead>
         <tbody id="user-table-body">
