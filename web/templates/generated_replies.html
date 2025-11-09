@@ -154,11 +154,12 @@
     <div class="table-responsive" style="max-height: 400px;">
         <table class="table table-striped table-sm table-hover">
             <thead class="table-light sticky-top">
-                <tr>
-                    <th scope="col" style="width: 60%;">ユーザー</th>
-                    <th scope="col" class="text-center">合計コメント数</th>
-                    <th scope="col" class="text-center">いいね返し</th>
-                    <th scope="col">最新コメント日時</th>
+                <tr id="user-summary-table-header">
+                    <th scope="col" style="width: 40%; cursor: pointer;" onclick="sortSummaryTable(1, 'string')">ユーザー <i class="bi bi-arrow-down-up small"></i></th>
+                    <th scope="col" class="text-center" style="width: 10%; cursor: pointer;" onclick="sortSummaryTable(2, 'number')">コメント数 <i class="bi bi-arrow-down-up small"></i></th>
+                    <th scope="col" class="text-center" style="width: 10%; cursor: pointer;" onclick="sortSummaryTable(3, 'number')">いいね返し <i class="bi bi-arrow-down-up small"></i></th>
+                    <th scope="col" style="width: 20%; cursor: pointer;" onclick="sortSummaryTable(4, 'date')">最新コメント日時 <i class="bi bi-arrow-down-up small"></i></th>
+                    <th scope="col" style="width: 20%; cursor: pointer;" onclick="sortSummaryTable(5, 'date')">最終いいね返し日時 <i class="bi bi-arrow-down-up small"></i></th>
                 </tr>
             </thead>
             <tbody id="user-summary-table-body">
@@ -314,14 +315,15 @@ function fetchGeneratedReplies() {
                     const isActionDone = user.last_like_back_at;
                     const row = document.createElement('tr');
                     row.className = `user-summary-row ${isActionDone ? 'action-done' : ''}`;
+                    const lastLikeBackAt = user.last_like_back_at ? new Date(user.last_like_back_at).toLocaleString() : '<span class="text-muted">---</span>';
                     if (isActionDone) {
                         const lastActionDate = new Date(user.last_like_back_at).toLocaleString();
                         row.title = `最終いいね返し: ${lastActionDate}`;
                     }
 
-                    row.dataset.userName = user.user_name; // user_idからuser_nameに変更
+                    row.dataset.userPageUrl = user.user_page_url;
                     row.innerHTML = `
-                            <td class="d-none"><input class="form-check-input summary-user-checkbox" type="checkbox" value="${user.user_name}" onchange="updateSummaryActionButtons()"></td>
+                            <td class="d-none"><input class="form-check-input summary-user-checkbox" type="checkbox" value="${user.user_page_url}" onchange="updateSummaryActionButtons()"></td>
                             <td>
                                 <div class="d-flex align-items-center">                                    
                                     <a href="${user.user_page_url}" target="_blank" rel="noopener noreferrer">
@@ -333,6 +335,7 @@ function fetchGeneratedReplies() {
                             <td class="text-center">${user.total_comments}</td>
                             <td class="text-center">${user.like_back_count || 0}</td>
                             <td>${new Date(user.latest_comment_timestamp).toLocaleString()}</td>
+                            <td>${lastLikeBackAt}</td>
                         </tr>
                     `;
                     userTableBody.appendChild(row);
@@ -578,17 +581,17 @@ function toggleSelectAllSummaryUsers(forceState) {
 }
 
 async function bulkLikeBack(isDryRun = false) {
-    const selectedUserNames = Array.from(document.querySelectorAll('.summary-user-checkbox:checked')).map(cb => cb.value);
+    const selectedUserPageUrls = Array.from(document.querySelectorAll('.summary-user-checkbox:checked')).map(cb => cb.value);
     const likeCount = parseInt(document.getElementById('like-back-count-input').value, 10);
 
-    if (selectedUserNames.length === 0) return;
+    if (selectedUserPageUrls.length === 0) return;
     if (isNaN(likeCount) || likeCount < 1) {
         alert('いいね数には1以上の数値を入力してください。');
         return;
     }
 
     const actionText = isDryRun ? "予行" : "本実行";
-    if (!confirm(`${selectedUserNames.length}人のユーザーに ${likeCount}件の「いいね返し」を${actionText}しますか？`)) {
+    if (!confirm(`${selectedUserPageUrls.length}人のユーザーに ${likeCount}件の「いいね返し」を${actionText}しますか？`)) {
         return;
     }
 
@@ -596,7 +599,7 @@ async function bulkLikeBack(isDryRun = false) {
         const response = await fetch('/api/users/bulk-like-back', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ user_ids: selectedUserNames, like_count: likeCount, dry_run: isDryRun })
+            body: JSON.stringify({ user_ids: selectedUserPageUrls, like_count: likeCount, dry_run: isDryRun })
         });
         const result = await response.json();
         if (!response.ok) throw new Error(result.detail || 'いいね返しタスクの開始に失敗しました。');
@@ -605,14 +608,70 @@ async function bulkLikeBack(isDryRun = false) {
         showToast('タスク開始', result.message, 'success');
         // ドライランでない場合のみUIを更新
         if (!isDryRun) {
-            selectedUserNames.forEach(userName => {
-                const row = document.querySelector(`.user-summary-row[data-user-name="${userName}"]`);
+            selectedUserPageUrls.forEach(url => {
+                const row = document.querySelector(`.user-summary-row[data-user-page-url="${url}"]`);
                 if (row) row.classList.add('action-done');
             });
         }
     } catch (error) {
         showToast('エラー', error.message, 'danger');
     }
+}
+
+let sortDirections = {}; // 各列のソート方向を保持するオブジェクト
+
+function sortSummaryTable(columnIndex, type) {
+    const tableBody = document.getElementById('user-summary-table-body');
+    const rows = Array.from(tableBody.querySelectorAll('tr'));
+
+    // 現在のソート方向を取得（未定義なら 'desc'）
+    const direction = sortDirections[columnIndex] === 'asc' ? 'desc' : 'asc';
+    // 他の列のソート方向はリセットし、現在の列の方向を保存
+    Object.keys(sortDirections).forEach(key => {
+        sortDirections[key] = undefined;
+    });
+    sortDirections[columnIndex] = direction;
+
+    rows.sort((a, b) => {
+        const cellA = a.cells[columnIndex].innerText.trim();
+        const cellB = b.cells[columnIndex].innerText.trim();
+
+        let valA, valB;
+
+        if (type === 'number') {
+            valA = parseInt(cellA, 10) || 0;
+            valB = parseInt(cellB, 10) || 0;
+        } else if (type === 'date') {
+            // '---' は過去の日付として扱う
+            valA = cellA === '---' ? new Date(0) : new Date(cellA);
+            valB = cellB === '---' ? new Date(0) : new Date(cellB);
+        } else { // string
+            valA = cellA.toLowerCase();
+            valB = cellB.toLowerCase();
+        }
+
+        if (valA < valB) {
+            return direction === 'asc' ? -1 : 1;
+        }
+        if (valA > valB) {
+            return direction === 'asc' ? 1 : -1;
+        }
+        return 0;
+    });
+
+    // ソートされた行をテーブルに再挿入
+    rows.forEach(row => tableBody.appendChild(row));
+
+    // ヘッダーのアイコンを更新
+    const headers = document.querySelectorAll('#user-summary-table-header th');
+    headers.forEach((th, index) => {
+        const icon = th.querySelector('i');
+        if (index === columnIndex - 1) { // 非表示列の分、インデックスを調整
+            icon.className = direction === 'asc' ? 'bi bi-sort-up small' : 'bi bi-sort-down small';
+        } else {
+            icon.className = 'bi bi-arrow-down-up small';
+        }
+    });
 }
 </script>
 {% endblock %}

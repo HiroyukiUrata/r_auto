@@ -835,18 +835,30 @@ def get_commenting_users_summary(limit: int = 50) -> list[dict]:
     try:
         cursor = conn.cursor()
         cursor.execute("""
+            WITH RankedUsers AS (
+                SELECT
+                    user_name,
+                    user_page_url,
+                    user_image_url,
+                    post_timestamp,
+                    like_back_count,
+                    last_like_back_at,
+                    ROW_NUMBER() OVER(PARTITION BY user_page_url ORDER BY post_timestamp DESC) as rn
+                FROM my_post_comments
+                WHERE user_page_url IS NOT NULL AND user_page_url != ''
+            )
             SELECT
-                user_name,
-                user_page_url,
-                user_page_url as user_id, -- フロントエンドが user_id を期待しているためエイリアスを設定
-                user_image_url,
-                COUNT(*) as total_comments,
-                MAX(post_timestamp) as latest_comment_timestamp,
-                MAX(like_back_count) as like_back_count, -- 全レコードで同じ値のはずなのでMAXで取得
-                MAX(last_like_back_at) as last_like_back_at -- 全レコードで同じ値のはずなのでMAXで取得
-            FROM my_post_comments
-            GROUP BY user_page_url, user_name, user_image_url
-            HAVING user_page_url IS NOT NULL AND user_page_url != '' -- URLがないユーザーは除外
+                (SELECT user_name FROM RankedUsers WHERE user_page_url = ru.user_page_url AND rn = 1) as user_name,
+                ru.user_page_url,
+                ru.user_page_url as user_id,
+                (SELECT user_image_url FROM RankedUsers WHERE user_page_url = ru.user_page_url AND rn = 1) as user_image_url,
+                COUNT(ru.user_page_url) as total_comments,
+                MAX(ru.post_timestamp) as latest_comment_timestamp,
+                MAX(ru.like_back_count) as like_back_count,
+                MAX(ru.last_like_back_at) as last_like_back_at
+            FROM my_post_comments ru
+            WHERE ru.user_page_url IS NOT NULL AND ru.user_page_url != ''
+            GROUP BY ru.user_page_url
             ORDER BY latest_comment_timestamp DESC
             LIMIT ?
         """, (limit,))
@@ -854,28 +866,59 @@ def get_commenting_users_summary(limit: int = 50) -> list[dict]:
     finally:
         conn.close()
 
-def get_user_details_for_like_back(user_names: list[str]) -> list[dict]:
+def get_user_details_for_like_back(user_page_urls: list[str]) -> list[dict]:
     """
-    指定されたユーザー名のリストに基づいて、いいね返しに必要なユーザー詳細を取得する。
+    指定されたユーザーページのURLリストに基づいて、いいね返しに必要なユーザー詳細を取得する。
     my_post_commentsテーブルから情報を取得する。
-    :param user_names: ユーザー名のリスト
+    :param user_page_urls: ユーザーページのURLリスト
     :return: ユーザー詳細の辞書のリスト
     """
-    if not user_names:
+    if not user_page_urls:
         return []
     
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
-        placeholders = ','.join('?' for _ in user_names)
+        placeholders = ','.join('?' for _ in user_page_urls)
         # my_post_commentsテーブルから最新の情報を取得する
         # user_idとしてuser_page_urlをエイリアスで設定し、タスク側との互換性を保つ
         query = f"""
             SELECT DISTINCT user_name, user_page_url, user_page_url as user_id
-            FROM my_post_comments WHERE user_name IN ({placeholders})
+            FROM my_post_comments WHERE user_page_url IN ({placeholders})
         """
-        cursor.execute(query, user_names)
+        cursor.execute(query, user_page_urls)
         return [dict(row) for row in cursor.fetchall()]
+    finally:
+        conn.close()
+
+def update_like_back_status(user_page_url: str, like_count: int):
+    """
+    指定されたユーザーページのURLに紐づくすべてのコメントレコードに対して、
+    いいね返しの累計数と最終実行日時を更新する。
+    :param user_page_url: 更新対象のユーザーページURL
+    :param like_count: 今回実行したいいね数
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        
+        # 1. 現在の累計いいね数を取得
+        cursor.execute("SELECT MAX(like_back_count) FROM my_post_comments WHERE user_page_url = ?", (user_page_url,))
+        current_total = cursor.fetchone()[0]
+        if current_total is None:
+            current_total = 0
+            
+        # 2. 新しい累計数を計算
+        new_total = current_total + like_count
+        
+        # 3. 最終実行日時と新しい累計数で、該当ユーザーの全レコードを更新
+        now_jst_iso = datetime.now(timezone(timedelta(hours=9))).isoformat()
+        cursor.execute("""
+            UPDATE my_post_comments
+            SET like_back_count = ?, last_like_back_at = ?
+            WHERE user_page_url = ?
+        """, (new_total, now_jst_iso, user_page_url))
+        conn.commit()
     finally:
         conn.close()
 

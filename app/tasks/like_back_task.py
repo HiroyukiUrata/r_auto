@@ -5,7 +5,7 @@ from playwright.sync_api import Page, Error as PlaywrightError
 import re
 from app.utils.selector_utils import convert_to_robust_selector
 from app.core.base_task import BaseTask
-from app.core.database import get_user_details_for_like_back, update_engagement_error, commit_user_actions
+from app.core.database import get_user_details_for_like_back, update_engagement_error, commit_user_actions, update_like_back_status
 
 logger = logging.getLogger(__name__)
 
@@ -98,7 +98,12 @@ class LikeBackTask(BaseTask):
             try:
                 page.goto(user['user_page_url'], wait_until="domcontentloaded")
                 if self._execute_like_action(page, user['user_id'], user['user_name']):
-                    self._execute_side_effect(commit_user_actions, user_ids=[user['user_id']], is_comment_posted=False, action_name="commit_like_back_action")
+                    # いいね返しが成功したら、DBのステータスを更新する
+                    self._execute_side_effect(
+                        update_like_back_status,
+                        user_page_url=user['user_page_url'],
+                        like_count=self.like_count
+                    )
             finally:
                 page.close()
         return True
