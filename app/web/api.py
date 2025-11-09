@@ -89,10 +89,16 @@ class BulkUpdateRequest(BaseModel):
 class UserIdsRequest(BaseModel):
     user_ids: list[str]
 
-class BulkEngagePayload(BaseModel):
+class BulkEngageRequest(BaseModel):
     users: list[dict]
     dry_run: bool = False
     engage_mode: str = 'all'
+    like_count: int | None = None
+
+class UserBulkLikeBack(BaseModel):
+    user_ids: list[str]
+    like_count: int
+    dry_run: bool = False
 
 class BulkStatusUpdateRequest(BaseModel):
     product_ids: list[int]
@@ -771,23 +777,24 @@ async def bulk_skip_users(request: UserIdsRequest):
         raise HTTPException(status_code=500, detail="サーバーエラーが発生しました。")
 
 @router.post("/api/users/bulk-engage", summary="選択した複数のユーザーにエンゲージメントタスクを実行")
-async def engage_with_multiple_users(payload: BulkEngagePayload, background_tasks: BackgroundTasks):
+async def engage_with_multiple_users(request: BulkEngageRequest, background_tasks: BackgroundTasks):
     """
     選択された複数のユーザーに対して、いいねバックとコメント投稿のタスクを非同期で実行する。
     """
-    if not payload.users:
+    if not request.users:
         raise HTTPException(status_code=400, detail="対象ユーザーが指定されていません。")
 
     task_manager = TaskManager()
     background_tasks.add_task(
         task_manager.run_task_by_tag, 
         "engage-user", 
-        users=payload.users, 
-        dry_run=payload.dry_run, 
-        engage_mode=payload.engage_mode
+        users=request.users, 
+        dry_run=request.dry_run, 
+        engage_mode=request.engage_mode,
+        like_count=request.like_count
     )
 
-    return {"message": f"{len(payload.users)}件のユーザーへのエンゲージメントタスクを開始しました。(Mode: {payload.engage_mode}, Dry Run: {payload.dry_run})"}
+    return {"message": f"{len(request.users)}件のユーザーへのエンゲージメントタスクを開始しました。(Mode: {request.engage_mode}, Dry Run: {request.dry_run})"}
 
 @router.patch("/api/users/update-comment", summary="指定されたユーザーのコメントを更新")
 async def patch_user_comment(request: CommentUpdateRequest):

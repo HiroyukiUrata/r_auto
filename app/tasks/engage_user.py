@@ -13,7 +13,7 @@ class EngageUserTask(BaseTask):
     """
     指定されたユーザーに対して「いいねバック」と「コメント投稿」を行うタスク。
     """
-    def __init__(self, users: list[dict], dry_run: bool = False, engage_mode: str = 'all'):
+    def __init__(self, users: list[dict], dry_run: bool = False, engage_mode: str = 'all', like_count: int = None):
         super().__init__(count=None, dry_run=dry_run)
         self.action_name = f"複数ユーザーへのエンゲージメント ({len(users)}人)"
         self.needs_browser = True
@@ -22,12 +22,23 @@ class EngageUserTask(BaseTask):
         # タスク実行に必要な引数を設定
         self.users = users
         self.engage_mode = engage_mode # 'all', 'like_only', 'comment_only'
-        logger.debug(f"EngageUserTaskが初期化されました。Mode: {self.engage_mode}, DryRun: {self.dry_run}")
+        self.like_count = like_count # 画面から指定されたいいね数
+        logger.debug(f"EngageUserTaskが初期化されました。Mode: {self.engage_mode}, DryRun: {self.dry_run}, LikeCount: {self.like_count}")
 
     def _like_back(self, page: Page, user_id: str, user_name: str, like_back_count: int):
         """いいね返し処理"""
-        # いいねのお返しは最大5件までとする
-        target_like_count = min(like_back_count, 5)
+        # APIからlike_countが指定されている場合（画面入力がある場合）は、その値を最優先する
+        if self.like_count is not None and self.like_count > 0:
+            target_like_count = self.like_count
+            logger.debug(f"「全員表示ON」モードのため、APIから指定されたいいね数 ({self.like_count}件) を使用します。")
+        # APIから指定がない場合（全員表示OFFモード）、通知から得られたいいね数（like_back_count）を元に決定する
+        elif like_back_count > 0:
+            target_like_count = min(like_back_count, 5)
+            logger.debug(f"「全員表示OFF」モードのため、通知ベースのいいね返しを実行します (recent_like_count: {like_back_count}件)。上限5件適用後: {target_like_count}件")
+        else:
+            # APIからの指定もなく、通知からのいいねもない場合（新規フォロワーなど）は0件とする
+            target_like_count = 0
+            logger.debug(f"「全員表示OFF」モードで、いいね返し対象外のため、いいねは実行しません。")
 
         if target_like_count <= 0:
             logger.debug(f"いいね返しの対象件数が0のため、スキップします。")
@@ -319,7 +330,7 @@ class EngageUserTask(BaseTask):
 
         return True
 
-def run_engage_user(users: list[dict], dry_run: bool = False, engage_mode: str = 'all'):
+def run_engage_user(users: list[dict], dry_run: bool = False, engage_mode: str = 'all', like_count: int = None):
     """ラッパー関数"""
-    task = EngageUserTask(users=users, dry_run=dry_run, engage_mode=engage_mode)
+    task = EngageUserTask(users=users, dry_run=dry_run, engage_mode=engage_mode, like_count=like_count)
     return task.run()

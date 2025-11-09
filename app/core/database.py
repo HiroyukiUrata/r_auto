@@ -174,6 +174,8 @@ def init_db():
                 reply_generated_at TIMESTAMP,
                 reply_posted_at TIMESTAMP,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                like_back_count INTEGER,
+                last_like_back_at TIMESTAMP,
                 UNIQUE (user_image_url, post_timestamp)
             )
         ''')
@@ -185,6 +187,8 @@ def init_db():
         add_column_to_my_post_comments_if_not_exists(cursor, 'user_image_url', 'TEXT')
         add_column_to_my_post_comments_if_not_exists(cursor, 'reply_generated_at', 'TIMESTAMP')
         add_column_to_my_post_comments_if_not_exists(cursor, 'reply_posted_at', 'TIMESTAMP')
+        add_column_to_my_post_comments_if_not_exists(cursor, 'like_back_count', 'INTEGER')
+        add_column_to_my_post_comments_if_not_exists(cursor, 'last_like_back_at', 'TIMESTAMP')
 
         # --- 既存タイムスタンプのフォーマットをISO 8601に統一するマイグレーション処理 ---
         # この処理は一度実行されると、次回以降は更新対象がなくなる
@@ -834,11 +838,15 @@ def get_commenting_users_summary(limit: int = 50) -> list[dict]:
             SELECT
                 user_name,
                 user_page_url,
+                user_page_url as user_id, -- フロントエンドが user_id を期待しているためエイリアスを設定
                 user_image_url,
                 COUNT(*) as total_comments,
-                MAX(post_timestamp) as latest_comment_timestamp
+                MAX(post_timestamp) as latest_comment_timestamp,
+                MAX(like_back_count) as like_back_count, -- 全レコードで同じ値のはずなのでMAXで取得
+                MAX(last_like_back_at) as last_like_back_at -- 全レコードで同じ値のはずなのでMAXで取得
             FROM my_post_comments
             GROUP BY user_page_url, user_name, user_image_url
+            HAVING user_page_url IS NOT NULL AND user_page_url != '' -- URLがないユーザーは除外
             ORDER BY latest_comment_timestamp DESC
             LIMIT ?
         """, (limit,))

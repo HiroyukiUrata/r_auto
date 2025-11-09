@@ -22,6 +22,15 @@
         padding: 1px;
     }
     .summary-user-checkbox { display: none; } /* チェックボックスを非表示にする */
+    .user-summary-row.action-done {
+        background-color: #e9ecef; /* アクション済みの行をグレーアウト */
+        opacity: 0.7;
+    }
+    /* ドロップダウンメニューがテーブルヘッダーに隠れないようにする */
+    #user-summary-actions .btn-group {
+        position: relative;
+        z-index: 10;
+    }
 </style>
 {% endblock %}
 
@@ -118,16 +127,25 @@
 <div class="container-fluid mb-5">
     <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap">
         <h2 class="mb-2 mb-md-0"><i class="bi bi-people-fill me-2"></i>コメントユーザーサマリー</h2>
-        <div id="user-summary-actions" class="d-flex align-items-center gap-2">
+        <div id="user-summary-actions" class="d-flex align-items-center gap-2" style="z-index: 1030;">
             <button type="button" class="btn btn-sm btn-outline-secondary" id="summary-select-all-btn" onclick="toggleSelectAllSummaryUsers()" title="サマリー内のユーザーを全選択/解除" data-bs-toggle="tooltip">
                 <i class="bi bi-check2-square"></i> 全選択
             </button>
             <div class="input-group input-group-sm" style="width: auto;">
                 <span class="input-group-text">いいね数</span>
                 <input type="number" class="form-control" id="like-back-count-input" value="3" min="1" style="width: 60px;">
-                <button class="btn btn-sm btn-danger" id="bulk-like-back-btn" onclick="bulkLikeBack()" disabled>
-                    <i class="bi bi-heart-fill"></i> いいね返し実行
-                </button>
+                <div class="btn-group">
+                    <button class="btn btn-sm btn-danger" id="bulk-like-back-btn" onclick="bulkLikeBack(false)" disabled>
+                        <i class="bi bi-heart-fill"></i> いいね返し実行
+                    </button>
+                    <button type="button" class="btn btn-sm btn-danger dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-expanded="false" id="bulk-like-back-dropdown-btn" disabled>
+                        <span class="visually-hidden">Toggle Dropdown</span>
+                    </button>
+                    <ul class="dropdown-menu">
+                        <li><a class="dropdown-item" href="#" onclick="event.preventDefault(); bulkLikeBack(true)"><i class="bi bi-send-slash-fill me-2"></i>いいね返し (予行)</a></li>
+                        <li><a class="dropdown-item" href="#" onclick="event.preventDefault(); bulkLikeBack(false)"><i class="bi bi-send-fill me-2"></i>いいね返し (本実行)</a></li>
+                    </ul>
+                </div>
             </div>
         </div>
     </div>
@@ -137,6 +155,7 @@
                 <tr>
                     <th scope="col" style="width: 60%;">ユーザー</th>
                     <th scope="col" class="text-center">合計コメント数</th>
+                    <th scope="col" class="text-center">いいね返し</th>
                     <th scope="col">最新コメント日時</th>
                 </tr>
             </thead>
@@ -226,6 +245,10 @@ function fetchGeneratedReplies() {
 
             for (const postUrl in posts) {
                 const repliesInPost = posts[postUrl];
+
+                // 返信先URLがない場合は選択不可とする
+                const isSelectable = postUrl && postUrl !== 'null' && postUrl !== 'undefined';
+                const cardDisabledClass = isSelectable ? '' : 'disabled';
                 
                 let postRepliesHtml = '';
                 for (const replyText in repliesInPost) {
@@ -237,7 +260,7 @@ function fetchGeneratedReplies() {
                     const truncatedStyle = `display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; text-overflow: ellipsis;`;
 
                     postRepliesHtml += `
-                        <div class="list-group-item list-group-item-action" 
+                        <div class="list-group-item list-group-item-action ${cardDisabledClass}" 
                              onclick="toggleSelection(this, event)" 
                              data-comment-ids='${JSON.stringify(commentIds)}'
                              data-reply-info='${JSON.stringify({ postUrl: postUrl, replyText: replyText, users: comments.map(c => c.user_name), commentIds: commentIds }).replace(/'/g, '&#39;')}'>
@@ -257,13 +280,17 @@ function fetchGeneratedReplies() {
                 }
 
                 const postCard = document.createElement('div');
-                postCard.className = 'card mb-3'; // mb-4からmb-3に少し詰める
+                postCard.className = `card mb-3 ${cardDisabledClass}`; // mb-4からmb-3に少し詰める
                 postCard.innerHTML = `
                     <div class="card-header d-flex justify-content-between align-items-center py-2 px-3">
-                        <h5 class="mb-0">対象投稿ページ</h5>
-                        <a href="${postUrl}" target="_blank" class="btn btn-sm btn-outline-secondary" title="投稿ページを開く">
-                            <i class="bi bi-box-arrow-up-right"></i>
-                        </a>
+                        <h5 class="mb-0">${isSelectable ? '対象投稿ページ' : '<span class="text-danger">返信先URL不明</span>'}</h5>
+                        ${isSelectable ? `
+                            <a href="${postUrl}" target="_blank" class="btn btn-sm btn-outline-secondary" title="投稿ページを開く">
+                                <i class="bi bi-box-arrow-up-right"></i>
+                            </a>
+                        ` : `
+                            <i class="bi bi-exclamation-triangle-fill text-danger" title="このグループは返信先が不明なため投稿できません。"></i>
+                        `}
                     </div>
                     ${postRepliesHtml}
                 `;
@@ -275,8 +302,14 @@ function fetchGeneratedReplies() {
             userTableBody.innerHTML = '';
             if (commentingUsers && commentingUsers.length > 0) {
                 commentingUsers.forEach(user => {
+                    const isActionDone = user.last_like_back_at;
                     const row = document.createElement('tr');
-                    row.className = 'user-summary-row';
+                    row.className = `user-summary-row ${isActionDone ? 'action-done' : ''}`;
+                    if (isActionDone) {
+                        const lastActionDate = new Date(user.last_like_back_at).toLocaleString();
+                        row.title = `最終いいね返し: ${lastActionDate}`;
+                    }
+
                     row.dataset.userId = user.user_id;
                     row.innerHTML = `
                             <td class="d-none"><input class="form-check-input summary-user-checkbox" type="checkbox" value="${user.user_id}" onchange="updateSummaryActionButtons()"></td>
@@ -289,6 +322,7 @@ function fetchGeneratedReplies() {
                                 </div>
                             </td>
                             <td class="text-center">${user.total_comments}</td>
+                            <td class="text-center">${user.like_back_count || 0}</td>
                             <td>${new Date(user.latest_comment_timestamp).toLocaleString()}</td>
                         </tr>
                     `;
@@ -312,6 +346,11 @@ function fetchGeneratedReplies() {
 }
 
 function toggleSelection(element, event) {
+    // disabledクラスを持つ要素は選択不可
+    if (element.classList.contains('disabled')) {
+        return;
+    }
+
     // 詳細ボタンのクリックは無視
     if (event.target.closest('button') || event.target.closest('a')) {
         return;
@@ -345,7 +384,8 @@ function updateBulkActionButtons() {
 }
 
 function toggleSelectAll() {
-    const allCheckboxes = document.querySelectorAll('.reply-checkbox');
+    // 選択可能なチェックボックスのみを対象にする
+    const allCheckboxes = document.querySelectorAll('.list-group-item:not(.disabled) .reply-checkbox');
     // 1つでもチェックが外れていれば、isAllSelectedはfalseになる
     const isAllSelected = allCheckboxes.length > 0 && Array.from(allCheckboxes).every(cb => cb.checked);
     const nextState = !isAllSelected;
@@ -498,6 +538,7 @@ function ignoreReplies(commentIds) {
 function updateSummaryActionButtons() {
     const selectedCount = document.querySelectorAll('.summary-user-checkbox:checked').length;
     document.getElementById('bulk-like-back-btn').disabled = selectedCount === 0;
+    document.getElementById('bulk-like-back-dropdown-btn').disabled = selectedCount === 0;
 
     // 全選択チェックボックスの状態を更新
     const allCheckboxes = document.querySelectorAll('.summary-user-checkbox');
@@ -527,7 +568,7 @@ function toggleSelectAllSummaryUsers(forceState) {
     updateSummaryActionButtons();
 }
 
-async function bulkLikeBack() {
+async function bulkLikeBack(isDryRun = false) {
     const selectedUserIds = Array.from(document.querySelectorAll('.summary-user-checkbox:checked')).map(cb => cb.value);
     const likeCount = parseInt(document.getElementById('like-back-count-input').value, 10);
 
@@ -537,7 +578,8 @@ async function bulkLikeBack() {
         return;
     }
 
-    if (!confirm(`${selectedUserIds.length}人のユーザーに ${likeCount}件の「いいね返し」を実行しますか？`)) {
+    const actionText = isDryRun ? "予行" : "本実行";
+    if (!confirm(`${selectedUserIds.length}人のユーザーに ${likeCount}件の「いいね返し」を${actionText}しますか？`)) {
         return;
     }
 
@@ -545,11 +587,20 @@ async function bulkLikeBack() {
         const response = await fetch('/api/users/bulk-like-back', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ user_ids: selectedUserIds, like_count: likeCount })
+            body: JSON.stringify({ user_ids: selectedUserIds, like_count: likeCount, dry_run: isDryRun })
         });
         const result = await response.json();
         if (!response.ok) throw new Error(result.detail || 'いいね返しタスクの開始に失敗しました。');
+        
+        // 成功したらUIを更新
         showToast('タスク開始', result.message, 'success');
+        // ドライランでない場合のみUIを更新
+        if (!isDryRun) {
+            selectedUserIds.forEach(userId => {
+                const row = document.querySelector(`.user-summary-row[data-user-id="${userId}"]`);
+                if (row) row.classList.add('action-done');
+            });
+        }
     } catch (error) {
         showToast('エラー', error.message, 'danger');
     }

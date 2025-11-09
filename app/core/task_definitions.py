@@ -294,11 +294,11 @@ TASK_DEFINITIONS = {
         "order": 90,
     },
     "engage-user": {
-        "name_ja": "ユーザーエンゲージメント実行",
+        "name_ja": "（内部処理）ユーザーエンゲージメント実行",
         "function": run_engage_user,
         "is_debug": False,
         "show_in_schedule": False, # APIからのみ呼び出す
-        "description": "指定された複数のユーザーにいいねバックとコメント投稿を行います。",
+        "description": "（内部処理用）指定された複数のユーザーにいいねバックとコメント投稿を行います。",
         "order": 9999,
     },
     "_internal-scrape-my-comments": {

@@ -33,6 +33,11 @@
     tr.selected {
         background-color: #cfe2ff !important;
     }
+    tr.disabled {
+        background-color: #f8f9fa;
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
 </style>
 {% endblock %}
 
@@ -121,9 +126,18 @@
         <div class="input-group input-group-sm" style="width: auto;">
             <span class="input-group-text">いいね数</span>
             <input type="number" class="form-control" id="like-back-count-input" value="3" min="1" style="width: 60px;">
-            <button class="btn btn-sm btn-danger" id="bulk-like-back-btn" onclick="bulkLikeBack()" disabled>
-                <i class="bi bi-heart-fill"></i> いいね返し実行
-            </button>
+            <div class="btn-group">
+                <button class="btn btn-sm btn-danger" id="bulk-like-back-btn" onclick="bulkLikeBack(false)" disabled>
+                    <i class="bi bi-heart-fill"></i> いいね返し実行
+                </button>
+                <button type="button" class="btn btn-sm btn-danger dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-expanded="false" id="bulk-like-back-dropdown-btn" disabled>
+                    <span class="visually-hidden">Toggle Dropdown</span>
+                </button>
+                <ul class="dropdown-menu">
+                    <li><a class="dropdown-item" href="#" onclick="event.preventDefault(); bulkLikeBack(true)"><i class="bi bi-send-slash-fill me-2"></i>いいね返し (予行)</a></li>
+                    <li><a class="dropdown-item" href="#" onclick="event.preventDefault(); bulkLikeBack(false)"><i class="bi bi-send-fill me-2"></i>いいね返し (本実行)</a></li>
+                </ul>
+            </div>
         </div>
     </div>
 </div>
@@ -397,6 +411,10 @@
         if (likeBackBtn) {
             likeBackBtn.disabled = disabled;
         }
+        const likeBackDropdownBtn = document.getElementById('bulk-like-back-dropdown-btn');
+        if (likeBackDropdownBtn) {
+            likeBackDropdownBtn.disabled = disabled;
+        }
     }
 
     function getSelectedUsers() {
@@ -507,10 +525,10 @@
     }
 
     function toggleSelectAll() {
-        const allRows = document.querySelectorAll('#user-table-body tr');
-        const isAllSelected = getSelectedUserIds().length === allRows.length;
+        const selectableRows = document.querySelectorAll('#user-table-body tr:not(.disabled)');
+        const isAllSelected = getSelectedUserIds().length === selectableRows.length;
 
-        allRows.forEach(row => row.classList.toggle('selected', !isAllSelected));
+        selectableRows.forEach(row => row.classList.toggle('selected', !isAllSelected));
         updateBulkActionButtons();
     }
 
@@ -568,6 +586,10 @@
                 let allRowsHtml = '';
                 data.forEach(user => {
                     // HTML属性に設定するため、JSON文字列内のシングルクォートをエスケープする
+                    // URLがないユーザーは選択不可とする
+                    const isSelectable = user.profile_page_url && user.profile_page_url !== '取得失敗';
+                    const rowDisabledClass = isSelectable ? '' : 'disabled';
+
                     const escapedUserJson = JSON.stringify(user).replace(/'/g, '&#39;');
 
                     const lastCommented = user.last_commented_at ? new Date(user.last_commented_at).toLocaleDateString('ja-JP') : 'なし';
@@ -651,6 +673,7 @@
 
                     const row = `
                         <tr id="user-row-${user.id}" data-user='${escapedUserJson}'>
+                        <tr id="user-row-${user.id}" data-user='${escapedUserJson}' class="${rowDisabledClass}">
                             <td class="align-middle text-center">
                                 <div class="icon-container">
                                     <a href="${user.profile_page_url || '#'}" target="_blank" rel="noopener noreferrer">
@@ -680,6 +703,9 @@
                 });
                 // 生成したすべての行HTMLを一度にテーブルに挿入する
                 tableBody.innerHTML = allRowsHtml;
+
+                // ★★★ 修正点: ユーザーリストの再描画後にボタンの状態を更新する
+                updateBulkActionButtons();
             })
             .catch(error => {
                 console.error('Error:', error);
@@ -713,36 +739,24 @@
         tableBody.addEventListener('click', function (e) {
             const rows = Array.from(tableBody.querySelectorAll('tr'));
             const row = e.target.closest('tr');
-            if (!row) return;
-
-            // 詳細ボタン列(4番目)またはリンクのクリックは無視
-            const cell = e.target.closest('td');
-            if (e.target.closest('a') || (cell && cell.cellIndex === 3)) {
+            if (!row) {
                 return;
             }
 
-            const currentIndex = rows.indexOf(row);
-
-            if (e.shiftKey && lastSelectedRowIndex !== null) {
-                // Shift + Click: 範囲選択
-                const start = Math.min(currentIndex, lastSelectedRowIndex);
-                const end = Math.max(currentIndex, lastSelectedRowIndex);
-                rows.forEach((r, index) => {
-                    if (index >= start && index <= end) {
-                        r.classList.add('selected');
-                    }
-                });
-                lastSelectedRowIndex = currentIndex; // Shift選択後もlastSelectedを更新
-            } else if (e.ctrlKey || e.metaKey) {
-                // Ctrl/Cmd + Click: 個別選択/選択解除
-                row.classList.toggle('selected');
-                lastSelectedRowIndex = currentIndex;
-            } else {
-                // 通常のクリック: 他の選択を解除して、現在の行のみ選択
-                rows.forEach(r => r.classList.remove('selected'));
-                row.classList.add('selected');
-                lastSelectedRowIndex = currentIndex;
+            // disabledクラスを持つ行は選択不可
+            if (row.classList.contains('disabled')) {
+                return;
             }
+
+            // 行内のボタンやリンクをクリックした場合は、行選択の処理をスキップする
+            if (e.target.closest('a') || e.target.closest('button')) {
+                return;
+            }
+
+            // クリックされた行の 'selected' クラスをトグル（付け外し）する
+            row.classList.toggle('selected');
+
+            // 一括操作ボタンの状態を更新
             updateBulkActionButtons();
         });
 
@@ -757,32 +771,42 @@
         });
     });
 
-    async function bulkLikeBack() {
-        const selectedUserIds = getSelectedUserIds();
+    async function bulkLikeBack(isDryRun = false) {
+        const selectedUsers = getSelectedUsers();
         const likeCount = parseInt(document.getElementById('like-back-count-input').value, 10);
 
-        if (selectedUserIds.length === 0) return;
+        if (selectedUsers.length === 0) return;
         if (isNaN(likeCount) || likeCount < 1) {
             alert('いいね数には1以上の数値を入力してください。');
             return;
         }
 
-        if (!confirm(`${selectedUserIds.length}人のユーザーに ${likeCount}件の「いいね返し」を実行しますか？`)) {
+        const actionText = isDryRun ? "予行" : "本実行";
+        if (!confirm(`${selectedUsers.length}人のユーザーに ${likeCount}件の「いいね返し」を${actionText}しますか？`)) {
             return;
         }
 
-        // UIから選択された行を削除
-        selectedUserIds.forEach(id => {
-            const row = document.getElementById(`user-row-${id}`);
-            if (row) row.remove();
-        });
-        updateBulkActionButtons();
+        // ドライランでない場合のみUIから行を削除
+        if (!isDryRun) {
+            selectedUsers.forEach(user => {
+                const id = user.id;
+                const row = document.getElementById(`user-row-${id}`);
+                if (row) row.remove();
+            });
+            updateBulkActionButtons();
+        }
 
+        // 「いいねのみ」と同じ /api/users/bulk-engage API を使用するように変更
         try {
-            const response = await fetch('/api/users/bulk-like-back', {
+            const response = await fetch('/api/users/bulk-engage', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ user_ids: selectedUserIds, like_count: likeCount })
+                body: JSON.stringify({ 
+                    users: selectedUsers, 
+                    dry_run: isDryRun, 
+                    engage_mode: 'like_only',
+                    like_count: likeCount // いいね数をペイロードに含める
+                })
             });
             const result = await response.json();
             if (!response.ok) throw new Error(result.detail || 'いいね返しタスクの開始に失敗しました。');
