@@ -32,16 +32,19 @@ class CheckLoginStatusTask(BaseTask): # Class name is already correct
             elif "https://login.account.rakuten.com/" in current_url:
                 # 失敗パターン1: ログインページへのリダイレクト
                 logging.error(f"失敗: ログインページにリダイレクトされました。 (URL: {current_url})")
+                logging.error("[Action Summary] name=ログイン失敗, message='ログインページにリダイレクトされました'")
                 self._take_screenshot_on_error(prefix="login_check_redirect")
                 return False
             else:
                 # 失敗パターン2: 予期しないページへの遷移
                 logging.error(f"失敗: 予期しないページに遷移しました。 (URL: {current_url})")
+                logging.error("[Action Summary] name=ログイン失敗, message='予期しないページに遷移しました'")
                 self._take_screenshot_on_error(prefix="login_check_unexpected_page")
                 return False
         except TimeoutError:
             # 失敗パターン3: 「my ROOM」リンクが見つからない
             logging.error("失敗: 「my ROOM」リンクが見つかりませんでした。ログインしていない可能性があります。")
+            logging.error("[Action Summary] name=ログイン失敗, message='my ROOMリンクが見つかりませんでした'")
             self._take_screenshot_on_error(prefix="login_check_link_not_found")
             return False
 
