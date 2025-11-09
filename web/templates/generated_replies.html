@@ -312,7 +312,16 @@ function fetchGeneratedReplies() {
             userTableBody.innerHTML = '';
             if (commentingUsers && commentingUsers.length > 0) {
                 commentingUsers.forEach(user => {
-                    const isActionDone = user.last_like_back_at;
+                    let isActionDone = false;
+                    if (user.last_like_back_at) {
+                        const lastActionDate = new Date(user.last_like_back_at);
+                        const threeDaysAgo = new Date();
+                        threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+                        // 最終アクションが3日以内であれば「アクション済み」とみなす
+                        if (lastActionDate > threeDaysAgo) {
+                            isActionDone = true;
+                        }
+                    }
                     const row = document.createElement('tr');
                     row.className = `user-summary-row ${isActionDone ? 'action-done' : ''}`;
                     const lastLikeBackAt = user.last_like_back_at ? new Date(user.last_like_back_at).toLocaleString() : '<span class="text-muted">---</span>';
