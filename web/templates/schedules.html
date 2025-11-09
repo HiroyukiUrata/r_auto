@@ -271,6 +271,10 @@
 
             const datasets = [];
             schedules.forEach(job => {
+                // スケジュールが無効な場合はグラフに表示しない
+                if (!job.enabled) {
+                    return;
+                }
                 // 散布図用のデータを作成
                 // x: 時刻, y: タスク名
                 const dataPoints = job.times.map(entry => {
@@ -584,7 +588,7 @@
 
             // 'notification-analyzer' タスクの場合、特別な引数をボディに含める
             if (tag === 'notification-analyzer') {
-                fetchOptions.body = JSON.stringify({ hours_ago: 0.5 });
+                fetchOptions.body = JSON.stringify({ hours_ago: 12 });
             }
 
             try {

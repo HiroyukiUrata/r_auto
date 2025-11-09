@@ -93,19 +93,28 @@ class LikeBackTask(BaseTask):
             logger.warning(f"フロントエンドから渡されたID(URL): {self.user_ids}")
             return True # エラーではないため正常終了とする
         
+        like_back_processed_count = 0
+        like_back_error_count = 0
+
         for user in users_details:
             page = self.context.new_page()
             try:
                 page.goto(user['user_page_url'], wait_until="domcontentloaded")
                 if self._execute_like_action(page, user['user_id'], user['user_name']):
+                    like_back_processed_count += 1
                     # いいね返しが成功したら、DBのステータスを更新する
                     self._execute_side_effect(
                         update_like_back_status,
                         user_page_url=user['user_page_url'],
                         like_count=self.like_count
                     )
+                else:
+                    like_back_error_count += 1
             finally:
                 page.close()
+
+        if like_back_processed_count > 0 or like_back_error_count > 0:
+            logger.info(f"[Action Summary] name=いいね返し, count={like_back_processed_count}, errors={like_back_error_count}")
         return True
 
 def run_like_back(user_ids: list[str], like_count: int, dry_run: bool = False):

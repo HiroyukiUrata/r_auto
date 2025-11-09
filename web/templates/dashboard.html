@@ -71,15 +71,16 @@
 
 <div class="row row-cols-2 row-cols-md-3 g-3 mb-4" id="activity-summary"></div>
 
-<h4 id="recent-keywords-title">最近使ったキーワード</h4>
-<div class="mb-4" id="recent-keywords-container">
-    <!-- Recent keywords will be inserted here by JavaScript -->
-</div>
-
-
 <h4 id="inventory-title">現在の在庫状況</h4>
 <div class="row row-cols-2 row-cols-md-4 row-cols-lg-5 g-3" id="inventory-summary">
     <!-- Inventory cards will be inserted here -->
+</div>
+
+<hr class="my-4">
+
+<h4 id="recent-keywords-title">最近使ったキーワード</h4>
+<div class="mb-4" id="recent-keywords-container">
+    <!-- Recent keywords will be inserted here by JavaScript -->
 </div>
 
 <script>
@@ -232,7 +233,10 @@ document.addEventListener('DOMContentLoaded', function () {
             // 次の予定を1つのカードにまとめて追加
             activityContainer.innerHTML += createNextSchedulesSummaryCard(summaryData.next_schedules);
             for (const [action, data] of Object.entries(summaryData.actions)) {
-                activityContainer.innerHTML += createCard(action, data.count, data.errors);
+                // 「自分の投稿への返信コメント生成」は表示しない
+                if (action !== '自分の投稿への返信コメント生成') {
+                    activityContainer.innerHTML += createCard(action, data.count, data.errors);
+                }
             }
 
             console.log("[DASHBOARD_JS] APIから受け取った在庫データ:", inventoryData);

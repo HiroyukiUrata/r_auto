@@ -235,13 +235,20 @@ def get_log_summary(period='24h', max_lines_to_scan=20000):
                 # エラーの集計
                 error_match = generic_error_pattern.search(line)
                 if error_match:
-                    action_name_from_log = error_match.group('name').strip()
+                    action_name_from_log = error_match.group('name')
                     # "投稿文作成 (Gemini)" のような詳細名を "投稿文作成" に丸める
+                    # ★★★ 修正点: action_name_from_logがNoneの場合はスキップ ★★★
+                    if not action_name_from_log:
+                        logger.warning(f"エラーログ行からアクション名を取得できませんでした。スキップします: {line.strip()}")
+                        continue
+
+                    action_name_from_log = action_name_from_log.strip()
                     simple_action_name = action_name_from_log.split('(')[0].strip()
                     
                     # マッピングを元にUI表示名を取得
                     ui_name = log_name_to_ui_name.get(simple_action_name)
-                    if ui_name and ui_name in actions:
+                    # ★★★ 修正点: ui_nameがNoneでないことを確認 ★★★
+                    if ui_name:
                         actions[ui_name]["errors"] += 1
                     # 「返信コメント生成」フローに含まれるタスクのエラーを集約
                     elif simple_action_name in ["通知分析", "AIコメント作成"] and "返信コメント生成" in actions:
