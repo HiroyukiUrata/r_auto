@@ -1,6 +1,37 @@
 {% extends "base.html" %}
 
 {% block title %}スケジュール設定 - {{ super() }}{% endblock %}
+{% block styles %}
+    <style>
+        .time-list-container {
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .time-list-container .time-entry:last-child {
+            border-bottom: none !important;
+        }
+        .card.disabled {
+            opacity: 0.5;
+            pointer-events: none;
+        }
+        .time-display {
+            cursor: pointer;
+        }
+        /* デフォルト（モバイル）のスタイル */
+        .chart-container {
+            position: relative;
+            min-width: 540px; /* スマホ用の最小幅 (800px * 2/3) */
+            height: 170px;
+        }
+        /* PC表示時 (768px以上) のみ高さを上書き */
+        @media (min-width: 768px) {
+            .chart-container {
+                min-width: 800px; /* PC用の最小幅 */
+                height: 340px; /* PC用の高さを設定 (170px * 2) */
+            }
+        }
+    </style>
+{% endblock %}
 {% block content %}
         <div class="row mb-4">
             <div class="accordion" id="topSectionsAccordion">
@@ -27,12 +58,16 @@
                 <div class="accordion-item">
                     <h2 class="accordion-header" id="headingScheduleOverview">
                         <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseScheduleOverview" aria-expanded="false" aria-controls="collapseScheduleOverview">
-                            <i class="bi bi-bar-chart-line-fill me-2"></i>スケジュール概要
+                            <i class="bi bi-bar-chart-line-fill me-2"></i>スケジュールチャート
                         </button>
                     </h2>
                     <div id="collapseScheduleOverview" class="accordion-collapse collapse" aria-labelledby="headingScheduleOverview" data-bs-parent="#topSectionsAccordion">
                         <div class="accordion-body">
-                            <canvas id="scheduleChart" style="max-height: 250px;"></canvas>
+                            <div style="width: 100%; overflow-x: auto;">
+                                <div class="chart-container">
+                                    <canvas id="scheduleChart"></canvas>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -94,6 +129,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
     <script>
         async function saveSchedule(tag, isEnabled, times) {
             try {
@@ -201,34 +237,6 @@
         }
 
         let scheduleChartInstance = null;
-        // グラフの棒の先端に円を描画するカスタムプラグイン
-        const matchstickPlugin = {
-            id: 'matchstick',
-            afterDatasetsDraw(chart) {
-                const { ctx } = chart;
-
-                // データセット（タスクごと）にループ
-                chart.data.datasets.forEach((dataset, i) => {
-                    const meta = chart.getDatasetMeta(i);
-                    // 凡例クリックで非表示にされていないデータセットのみ描画
-                    if (meta.visible) {
-                        // データセット内の各データポイント（棒グラフ）にループ
-                        meta.data.forEach(point => {
-                            // 枠線と塗りの色を設定
-                            ctx.strokeStyle = dataset.backgroundColor;
-                            ctx.fillStyle = dataset.backgroundColor;
-                            ctx.lineWidth =12; // 枠線の太さ
-
-                            // 棒の先端に円を描画
-                            ctx.beginPath();
-                            ctx.arc(point.x, point.y, point.width / 2, 0, 12 * Math.PI);
-                            ctx.fill();
-                            ctx.stroke();
-                        });
-                    }
-                });
-            }
-        };
         function renderScheduleChart(schedules) {
             const ctx = document.getElementById('scheduleChart').getContext('2d');
 
@@ -238,64 +246,94 @@
                 'run-like-action': 'rgb(54, 162, 235)',
                 'run-follow-action': 'rgb(75, 192, 192)',
                 'procure-products-flow': 'rgb(255, 206, 86)',
+                'notification-analyzer': 'rgb(201, 203, 207)',
+                'generate-my-room-replies': 'rgb(255, 159, 64)',
+                'backup-database': 'rgb(153, 102, 255)', // 紫
                 'default': 'rgb(153, 102, 255)'
             };
 
             // 現在時刻を示すためのアノテーションプラグイン設定
             const annotation = {
                 type: 'line',
-                borderColor: 'red',
+                borderColor: 'rgba(255, 0, 0, 0.5)',
                 borderWidth: 2,
+                borderDash: [6, 6],
                 scaleID: 'x',
-                value: new Date() // 現在時刻
+                value: new Date(), // 現在時刻
+                label: {
+                    content: '現在時刻',
+                    enabled: true,
+                    position: 'start',
+                    font: { size: 10 },
+                    backgroundColor: 'rgba(255, 0, 0, 0.5)'
+                }
             };
 
             const datasets = [];
             schedules.forEach(job => {
-                // 棒グラフ用のデータを作成
-                // x: 時刻, y: 件数
-                const dataPoints = job.times.map(entry => ({
-                    x: entry.time,
-                    y: entry.count
-                }));
+                // 散布図用のデータを作成
+                // x: 時刻, y: タスク名
+                const dataPoints = job.times.map(entry => {
+                    // 'HH:mm' 形式の文字列を今日のDateオブジェクトに変換
+                    const [hours, minutes] = entry.time.split(':');
+                    const date = new Date();
+                    date.setHours(hours, minutes, 0, 0);
+
+                    return { x: date.getTime(), y: job.name_ja };
+                });
                 datasets.push({
                     label: job.name_ja,
                     data: dataPoints,
                     tag: job.tag, // ハイライト機能のためにタグを追加
-                    backgroundColor: (colors[job.tag] || colors.default).replace(')', ', 0.7)').replace('rgb', 'rgba'),
-                    barPercentage: 0.7, // バーの幅を少し太くする
+                    backgroundColor: (colors[job.tag] || colors.default),
+                    pointRadius: 8, // 点の半径
+                    pointHoverRadius: 10, // ホバー時の半径
                 });
             });
+
+            // Y軸に表示するタスク名のリストを作成
+            const yLabels = [...new Set(schedules.map(job => job.name_ja))];
 
             if (scheduleChartInstance) {
                 scheduleChartInstance.destroy();
             }
 
             scheduleChartInstance = new Chart(ctx, {
-                type: 'bar',
-                plugins: [matchstickPlugin], // マッチ棒プラグインを登録
+                type: 'scatter', // グラフの種類を散布図に変更
                 data: {
                     datasets: datasets
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    interaction: {
-                        mode: 'index',
-                        intersect: false,
-                    },
                     plugins: {
-                        legend: {
-                            display: false // 凡例を非表示にする
+                        datalabels: {
+                            display: function(context) {
+                                // 画面幅が768px未満の場合のみラベルを表示
+                                return window.innerWidth < 768;
+                            },
+                            formatter: function(value, context) {
+                                // タスク名の最初の1文字を返す
+                                return context.dataset.label.substring(0, 1);
+                            },
+                            color: 'white',
+                            font: { weight: 'bold', size: 10 }
                         },
-                        title: { display: true, text: 'タスク実行時刻と目標件数' },
+                        legend: {
+                            // 画面幅が768px以上の場合は凡例を表示、それ以外は非表示
+                            display: window.innerWidth >= 768,
+                            position: 'bottom'
+                        },
+                        title: { display: true, text: 'タスク実行時刻' },
                         tooltip: {
                             callbacks: {
                                 title: function(context) {
-                                    return `${context[0].dataset.label} @ ${context[0].label}`;
+                                    // ツールチップのタイトルにタスク名を表示
+                                    return context[0].dataset.label;
                                 },
                                 label: function(tooltipItem) {
-                                    return `目標件数: ${tooltipItem.raw.y}`;
+                                    // ツールチップのラベルに実行時刻を表示
+                                    return `実行時刻: ${tooltipItem.label}`;
                                 }
                             }
                         },
@@ -308,30 +346,35 @@
                         x: {
                             type: 'time',
                             time: {
-                                parser: 'HH:mm',
                                 unit: 'hour',
                                 displayFormats: {
-                                    minute: 'HH:mm',
                                     hour: 'HH:mm'
-                                }
+                                },
+                                tooltipFormat: 'HH:mm' // ツールチップの時刻フォーマット
                             },
-                            grid: { display: false } // X軸のグリッド線を非表示にして見やすくする
+                            grid: { display: true }, // X軸のグリッド線を表示する
+                            ticks: {
+                                font: {
+                                    // 画面幅が768px未満の場合、フォントサイズを小さくする
+                                    size: window.innerWidth < 768 ? 9 : 12
+                                }
+                            }
                         },
                         y: {
-                            type: 'logarithmic',
-                            ticks: {
-                                callback: function(value, index, values) {
-                                    const log10 = Math.log10(value);
-                                    if (log10 === Math.floor(log10) || Math.log10(value / 2) === Math.floor(Math.log10(value / 2)) || Math.log10(value / 5) === Math.floor(Math.log10(value / 5))) { return Number(value.toPrecision(3)); }
-                                    return null;
-                                }
+                            type: 'category', // Y軸をカテゴリ（タスク名）に変更
+                            offset: true, // 上下の余白を調整
+                            labels: yLabels, // Y軸のラベルを明示的に設定
+                            grid: {
+                                display: false // Y軸のグリッド線を非表示にする
                             },
+                            ticks: {
+                                display: false // Y軸のラベルを非表示にする
+                            }
                         }
                     }
                 }
             });
         }
-
         // --- ここから追加 ---
         // グラフの特定のデータセットをハイライトする関数
         function highlightChartDataset(tagToHighlight) {
@@ -739,28 +782,11 @@
         }
 
         document.addEventListener('DOMContentLoaded', () => {
+            // ページ読み込み時に一度だけプラグインを登録
+            if (typeof ChartDataLabels !== 'undefined') Chart.register(ChartDataLabels);
             fetchSchedules();
             fetchGlobalConfig();
             fetchProfiles();
         });
     </script>
-{% endblock %}
-
-{% block styles %}
-    <style>
-        .time-list-container {
-            max-height: 200px;
-            overflow-y: auto;
-        }
-        .time-list-container .time-entry:last-child {
-            border-bottom: none !important;
-        }
-        .card.disabled {
-            opacity: 0.5;
-            pointer-events: none;
-        }
-        .time-display {
-            cursor: pointer;
-        }
-    </style>
 {% endblock %}
