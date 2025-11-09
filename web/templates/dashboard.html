@@ -233,8 +233,8 @@ document.addEventListener('DOMContentLoaded', function () {
             // 次の予定を1つのカードにまとめて追加
             activityContainer.innerHTML += createNextSchedulesSummaryCard(summaryData.next_schedules);
             for (const [action, data] of Object.entries(summaryData.actions)) {
-                // 「自分の投稿への返信コメント生成」は表示しない
-                if (action !== '自分の投稿への返信コメント生成') {
+                // 「返信コメント生成」は表示しない
+                if (action !== '返信コメント生成') {
                     activityContainer.innerHTML += createCard(action, data.count, data.errors);
                 }
             }
