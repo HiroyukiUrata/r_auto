@@ -99,7 +99,7 @@ class EngageUserTask(BaseTask):
                 
                 # 処理済みのカードは非表示にする（ドライランでも次のループのために非表示にする）
                 logger.info("処理済みのカードは非表示にする（ドライランでも次のループのために非表示にする）")
-                target_card.evaluate("node => { node.style.display = 'none'; }")
+                #target_card.evaluate("node => { node.style.display = 'none'; }")
                 logger.info("処理済みのカードは非表示にした")
 
         except Exception as e:
