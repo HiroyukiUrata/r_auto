@@ -75,7 +75,7 @@ class PostingTask(BaseTask):
                 if page and not page.is_closed():
                     page.close()
         
-        logging.info(f"自動投稿タスクを終了します。成功: {posted_count}件")
+        #logging.info(f"自動投稿タスクを終了します。成功: {posted_count}件")
         logging.info(f"[Action Summary] name=投稿, count={posted_count}")
 
 def run_posting(count: int = 10, product_id: int = None):

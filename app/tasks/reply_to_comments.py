@@ -32,7 +32,7 @@ class ReplyToCommentsTask(BaseTask):
     def _execute_main_logic(self):
         page = self.page
         total_replies = len(self.replies)
-        logger.info(f"コメント返信タスクを開始します。対象: {total_replies}件, Dry Run: {self.dry_run}")
+        logger.debug(f"コメント返信タスクを開始します。対象: {total_replies}件, Dry Run: {self.dry_run}")
 
         for i, reply_info in enumerate(self.replies):
             post_url = reply_info.get('postUrl')

@@ -141,8 +141,8 @@ class ProcureFromUserPageTask(BaseTask):
             logging.error("調達元のURLを取得できませんでした。タスクを中止します。")
             return False
 
-        logger.info(f"調達元URL: {source_url}")
-        logger.info(f"目標件数: {self.target_count}件")
+        logger.debug(f"調達元URL: {source_url}")
+        logger.debug(f"目標件数: {self.target_count}件")
 
         page = self.page
         globally_processed_srcs = set()
@@ -154,7 +154,7 @@ class ProcureFromUserPageTask(BaseTask):
         try:
             page.goto(source_url.strip(), wait_until="domcontentloaded", timeout=60000)
             page_title = page.title()
-            logger.info(f"ページタイトルを取得しました: {page_title}")
+            logger.debug(f"ページタイトルを取得しました: {page_title}")
 
             spinner_selector = 'div[aria-label="loading"]'
             card_selector = convert_to_robust_selector('div[class*="container--JAywt"]')
@@ -186,7 +186,7 @@ class ProcureFromUserPageTask(BaseTask):
                 if srcs_to_process_this_time:
                     for image_src in srcs_to_process_this_time:
                         if len(newly_procured_items) >= self.target_count:
-                            logger.info("目標件数に達したため、処理を中断します。")
+                            logger.debug("目標件数に達したため、処理を中断します。")
                             break
 
                         globally_processed_srcs.add(image_src)
@@ -216,7 +216,7 @@ class ProcureFromUserPageTask(BaseTask):
                         }
                         if add_product_if_not_exists(**item_data):
                             newly_procured_items.append(item_data)
-                            logger.info(f"  🎉 [{len(newly_procured_items)}/{self.target_count}] 新規商品獲得＆DB登録！ -> {str(item_data['name'])[:20]}... (URL: {item_data['url'][:40]}...)")
+                            logger.debug(f"  🎉 [{len(newly_procured_items)}/{self.target_count}] 新規商品獲得＆DB登録！ -> {str(item_data['name'])[:20]}... (URL: {item_data['url'][:40]}...)")
 
                 # スクロール処理
                 if len(newly_procured_items) < self.target_count:
@@ -246,8 +246,8 @@ class ProcureFromUserPageTask(BaseTask):
             added_count = len(newly_procured_items)
             if added_count > 0:
                 logger.info(f"[Action Summary] name=商品調達, count={added_count}")
-            logger.info(f"--- ユーザーページ巡回調達タスクを完了します ---")
-            logger.info(f"最終的な新規獲得商品数: {added_count}件")
+            logger.debug(f"--- ユーザーページ巡回調達タスクを完了します ---")
+            logger.debug(f"最終的な新規獲得商品数: {added_count}件")
 
         return True
 

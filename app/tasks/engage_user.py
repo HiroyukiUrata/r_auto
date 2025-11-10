@@ -44,7 +44,7 @@ class EngageUserTask(BaseTask):
             logger.debug(f"いいね返しの対象件数が0のため、スキップします。")
             return False
 
-        logger.info(f"ユーザー「{user_name}」に{target_like_count}件のいいね返しを開始します。")
+        logger.info(f"「{user_name}」に{target_like_count}件のいいね返しを開始します。")
 
         # 「いいね済み」のカードを特定して非表示にする
 
@@ -95,7 +95,7 @@ class EngageUserTask(BaseTask):
                 liked_count += 1
                 # ドライランでない場合のみ待機を行う
                 if not self.dry_run:
-                    time.sleep(20) # 連続クリックを避けるための待機
+                    time.sleep(11) # 連続クリックを避けるための待機
                 
                 # 処理済みのカードは非表示にする（ドライランでも次のループのために非表示にする）
                 target_card.evaluate("node => { node.style.display = 'none'; }")
@@ -119,7 +119,7 @@ class EngageUserTask(BaseTask):
             logger.debug("投稿するコメントがないため、スキップします。")
             return False
 
-        logger.info(f"ユーザー「{user_name}」にコメント返しを開始します。")
+        logger.info(f"「{user_name}」にコメント返しを開始します。")
         # ページを一番上までスクロール
         logger.debug(f"  -> 最新投稿にコメントします。")
         page.evaluate("window.scrollTo(0, 0)")

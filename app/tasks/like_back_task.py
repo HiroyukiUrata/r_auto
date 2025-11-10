@@ -25,7 +25,7 @@ class LikeBackTask(BaseTask):
 
     def _execute_like_action(self, page: Page, user_id: str, user_name: str):
         """1ユーザーに対するいいね返し処理"""
-        logger.info(f"ユーザー「{user_name}」に{self.like_count}件のいいね返しを開始します。")
+        logger.info(f"「{user_name}」に{self.like_count}件のいいね返しを開始します。")
 
         # 「いいね済み」のカードを特定して非表示にする
         all_cards_locator = page.locator(convert_to_robust_selector('div[class*="container--JAywt"]'))
@@ -71,7 +71,7 @@ class LikeBackTask(BaseTask):
                 self._execute_action(unliked_button_locator, "click", action_name=f"like_back_{safe_user_id}_{liked_count + 1}", screenshot_locator=target_card)
                 liked_count += 1
                 if not self.dry_run:
-                   time.sleep(20) # 連続クリックを避けるための待機
+                   time.sleep(11) # 連続クリックを避けるための待機
                  
                 target_card.evaluate("node => { node.style.display = 'none'; }")
 
