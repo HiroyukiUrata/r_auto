@@ -14,22 +14,6 @@
             opacity: 0.5;
             pointer-events: none;
         }
-        .time-display {
-            cursor: pointer;
-        }
-        /* デフォルト（モバイル）のスタイル */
-        .chart-container {
-            position: relative;
-            min-width: 540px; /* スマホ用の最小幅 (800px * 2/3) */
-            height: 170px;
-        }
-        /* PC表示時 (768px以上) のみ高さを上書き */
-        @media (min-width: 768px) {
-            .chart-container {
-                min-width: 800px; /* PC用の最小幅 */
-                height: 340px; /* PC用の高さを設定 (170px * 2) */
-            }
-        }
     </style>
 {% endblock %}
 {% block content %}
@@ -50,23 +34,6 @@
                                     <input type="number" class="form-control" id="max-delay-input" min="0">
                                 </div>
                                 <div class="col-md-4"><button class="btn btn-primary" onclick="saveGlobalConfig()">設定を保存</button></div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <!-- スケジュール概要 -->
-                <div class="accordion-item">
-                    <h2 class="accordion-header" id="headingScheduleOverview">
-                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseScheduleOverview" aria-expanded="false" aria-controls="collapseScheduleOverview">
-                            <i class="bi bi-bar-chart-line-fill me-2"></i>スケジュールチャート
-                        </button>
-                    </h2>
-                    <div id="collapseScheduleOverview" class="accordion-collapse collapse" aria-labelledby="headingScheduleOverview" data-bs-parent="#topSectionsAccordion">
-                        <div class="accordion-body">
-                            <div style="width: 100%; overflow-x: auto;">
-                                <div class="chart-container">
-                                    <canvas id="scheduleChart"></canvas>
-                                </div>
                             </div>
                         </div>
                     </div>
@@ -126,10 +93,6 @@
 {% endblock %}
 
 {% block scripts %}
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
     <script>
         async function saveSchedule(tag, isEnabled, times) {
             try {
@@ -160,9 +123,6 @@
 
             const container = document.getElementById('schedules-container');
             container.innerHTML = '';
-
-            // スケジュールグラフを描画
-            renderScheduleChart(schedules);
 
             schedules.forEach(job => {
                 // Python側の 'show_count_in_schedule' フラグを直接参照します。
@@ -219,189 +179,7 @@
                 `;
                 container.innerHTML += cardHtml;
             });
-
-            // --- ここから追加 ---
-            // スケジュールカードのホバーイベントでグラフをハイライト
-            container.addEventListener('mouseover', (event) => {
-                const card = event.target.closest('.card[id^="task-card-"]');
-                if (card && scheduleChartInstance) {
-                    const tag = card.id.replace('task-card-', '');
-                    highlightChartDataset(tag);
-                }
-            });
-
-            container.addEventListener('mouseout', (event) => {
-                unhighlightChartDataset();
-            });
-            // --- ここまで追加 ---
         }
-
-        let scheduleChartInstance = null;
-        function renderScheduleChart(schedules) {
-            const ctx = document.getElementById('scheduleChart').getContext('2d');
-
-            // 色の定義
-            const colors = {
-                'post-article': 'rgb(255, 99, 132)',
-                'run-like-action': 'rgb(54, 162, 235)',
-                'run-follow-action': 'rgb(75, 192, 192)',
-                'procure-products-flow': 'rgb(255, 206, 86)',
-                'notification-analyzer': 'rgb(201, 203, 207)',
-                'generate-my-room-replies': 'rgb(255, 159, 64)',
-                'backup-database': 'rgb(153, 102, 255)', // 紫
-                'default': 'rgb(153, 102, 255)'
-            };
-
-            // 現在時刻を示すためのアノテーションプラグイン設定
-            const annotation = {
-                type: 'line',
-                borderColor: 'rgba(255, 0, 0, 0.5)',
-                borderWidth: 2,
-                borderDash: [6, 6],
-                scaleID: 'x',
-                value: new Date(), // 現在時刻
-                label: {
-                    content: '現在時刻',
-                    enabled: true,
-                    position: 'start',
-                    font: { size: 10 },
-                    backgroundColor: 'rgba(255, 0, 0, 0.5)'
-                }
-            };
-
-            const datasets = [];
-            schedules.forEach(job => {
-                // スケジュールが無効な場合はグラフに表示しない
-                if (!job.enabled) {
-                    return;
-                }
-                // 散布図用のデータを作成
-                // x: 時刻, y: タスク名
-                const dataPoints = job.times.map(entry => {
-                    // 'HH:mm' 形式の文字列を今日のDateオブジェクトに変換
-                    const [hours, minutes] = entry.time.split(':');
-                    const date = new Date();
-                    date.setHours(hours, minutes, 0, 0);
-
-                    return { x: date.getTime(), y: job.name_ja };
-                });
-                datasets.push({
-                    label: job.name_ja,
-                    data: dataPoints,
-                    tag: job.tag, // ハイライト機能のためにタグを追加
-                    backgroundColor: (colors[job.tag] || colors.default),
-                    pointRadius: 8, // 点の半径
-                    pointHoverRadius: 10, // ホバー時の半径
-                });
-            });
-
-            // Y軸に表示するタスク名のリストを作成
-            const yLabels = [...new Set(schedules.map(job => job.name_ja))];
-
-            if (scheduleChartInstance) {
-                scheduleChartInstance.destroy();
-            }
-
-            scheduleChartInstance = new Chart(ctx, {
-                type: 'scatter', // グラフの種類を散布図に変更
-                data: {
-                    datasets: datasets
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        datalabels: {
-                            display: function(context) {
-                                // 画面幅が768px未満の場合のみラベルを表示
-                                return window.innerWidth < 768;
-                            },
-                            formatter: function(value, context) {
-                                // タスク名の最初の1文字を返す
-                                return context.dataset.label.substring(0, 1);
-                            },
-                            color: 'white',
-                            font: { weight: 'bold', size: 10 }
-                        },
-                        legend: {
-                            // 画面幅が768px以上の場合は凡例を表示、それ以外は非表示
-                            display: window.innerWidth >= 768,
-                            position: 'bottom'
-                        },
-                        title: { display: true, text: 'タスク実行時刻' },
-                        tooltip: {
-                            callbacks: {
-                                title: function(context) {
-                                    // ツールチップのタイトルにタスク名を表示
-                                    return context[0].dataset.label;
-                                },
-                                label: function(tooltipItem) {
-                                    // ツールチップのラベルに実行時刻を表示
-                                    return `実行時刻: ${tooltipItem.label}`;
-                                }
-                            }
-                        },
-                        // 現在時刻の線を表示するためのアノテーション設定
-                        annotation: {
-                            annotations: { annotation }
-                        }
-                    },
-                    scales: {
-                        x: {
-                            type: 'time',
-                            time: {
-                                unit: 'hour',
-                                displayFormats: {
-                                    hour: 'HH:mm'
-                                },
-                                tooltipFormat: 'HH:mm' // ツールチップの時刻フォーマット
-                            },
-                            grid: { display: true }, // X軸のグリッド線を表示する
-                            ticks: {
-                                font: {
-                                    // 画面幅が768px未満の場合、フォントサイズを小さくする
-                                    size: window.innerWidth < 768 ? 9 : 12
-                                }
-                            }
-                        },
-                        y: {
-                            type: 'category', // Y軸をカテゴリ（タスク名）に変更
-                            offset: true, // 上下の余白を調整
-                            labels: yLabels, // Y軸のラベルを明示的に設定
-                            grid: {
-                                display: false // Y軸のグリッド線を非表示にする
-                            },
-                            ticks: {
-                                display: false // Y軸のラベルを非表示にする
-                            }
-                        }
-                    }
-                }
-            });
-        }
-        // --- ここから追加 ---
-        // グラフの特定のデータセットをハイライトする関数
-        function highlightChartDataset(tagToHighlight) {
-            if (!scheduleChartInstance) return;
-
-            scheduleChartInstance.data.datasets.forEach((dataset, index) => {
-                const meta = scheduleChartInstance.getDatasetMeta(index);
-                if (dataset.tag === tagToHighlight) {
-                    meta.hidden = false;
-                } else {
-                    meta.hidden = true;
-                }
-            });
-            scheduleChartInstance.update();
-        }
-
-        // グラフのハイライトを解除する関数
-        function unhighlightChartDataset() {
-            if (!scheduleChartInstance) return;
-            scheduleChartInstance.data.datasets.forEach((dataset, index) => scheduleChartInstance.getDatasetMeta(index).hidden = false);
-            scheduleChartInstance.update();
-        }
-        // --- ここまで追加 ---
         
         function addTime(button, tag, hasCount) {
             const cardBody = button.closest('.card-body');
@@ -786,8 +564,6 @@
         }
 
         document.addEventListener('DOMContentLoaded', () => {
-            // ページ読み込み時に一度だけプラグインを登録
-            if (typeof ChartDataLabels !== 'undefined') Chart.register(ChartDataLabels);
             fetchSchedules();
             fetchGlobalConfig();
             fetchProfiles();

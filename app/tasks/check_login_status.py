@@ -9,7 +9,7 @@ class CheckLoginStatusTask(BaseTask): # Class name is already correct
     def __init__(self):
         # このタスクは件数を指定しない
         super().__init__(count=None)
-        self.action_name = "ログイン状態チェック" # Remove "【検証用】"
+        self.action_name = "ログイン状態" # Remove "【検証用】"
 
     def _execute_main_logic(self):
         page = self.page
