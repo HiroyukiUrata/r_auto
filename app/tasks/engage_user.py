@@ -88,6 +88,7 @@ class EngageUserTask(BaseTask):
                 unliked_button_locator = target_card.locator(f'button:has({unliked_icon_selector})')
                 unliked_button_locator.evaluate("node => { node.style.border = '3px solid limegreen'; }")
                 
+                time.sleep(11) # 連続クリックを避けるための待機
                 # 「未いいね」ボタンをクリックします。
                 self._execute_action(unliked_button_locator, "click", action_name=f"like_back_{user_id}_{liked_count + 1}", screenshot_locator=target_card)
 
@@ -98,8 +99,7 @@ class EngageUserTask(BaseTask):
                     time.sleep(11) # 連続クリックを避けるための待機
                 
                 # 処理済みのカードは非表示にする（ドライランでも次のループのために非表示にする）
-                logger.info("処理済みのカードは非表示にする（ドライランでも次のループのために非表示にする）")
-                #target_card.evaluate("node => { node.style.display = 'none'; }")
+                target_card.evaluate("node => { node.style.display = 'none'; }")
                 logger.info("処理済みのカードは非表示にした")
 
         except Exception as e:
