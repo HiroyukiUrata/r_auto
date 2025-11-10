@@ -24,6 +24,11 @@
                     <label class="form-check-label" for="headless-switch">Playwright ヘッドレスモード</label>
                     <small class="form-text text-muted d-block">ONにするとブラウザを非表示で実行します（本番用）。OFFにするとブラウザが表示され、VNCで動作を確認できます（デバッグ用）。</small>
                 </div>
+                <div class="form-check form-switch mb-3">
+                    <input class="form-check-input" type="checkbox" role="switch" id="debug-screenshot-switch">
+                    <label class="form-check-label" for="debug-screenshot-switch">デバッグ用スクリーンショット撮影を有効にする</label>
+                    <small class="form-text text-muted d-block">ONにするとタスクの特定の箇所で動作確認用のスクリーンショットを撮影します。問題発生時の調査に役立ちますが、通常はOFFを推奨します。</small>
+                </div>
                 <div class="mb-3">
                     <label for="procurement-method" class="form-label">
                         <i class="bi bi-tools me-1"></i>商品調達方法
@@ -188,6 +193,7 @@
             const response = await fetch('/api/config');
             const config = await response.json();
             document.getElementById('headless-switch').checked = config.playwright_headless;
+            document.getElementById('debug-screenshot-switch').checked = config.debug_screenshot_enabled;
             document.getElementById('procurement-method').value = config.procurement_method || 'rakuten_search';
             document.getElementById('caption-creation-method').value = config.caption_creation_method || 'api';
         } catch (error) {
@@ -198,11 +204,13 @@
 
     async function saveGlobalConfig() {
         const isHeadless = document.getElementById('headless-switch').checked;
+        const isDebugScreenshotEnabled = document.getElementById('debug-screenshot-switch').checked;
 
         const payload = {
             playwright_headless: isHeadless,
             procurement_method: document.getElementById('procurement-method').value,
             caption_creation_method: document.getElementById('caption-creation-method').value,
+            debug_screenshot_enabled: isDebugScreenshotEnabled,
         };
 
         try {

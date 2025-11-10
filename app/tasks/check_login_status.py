@@ -2,6 +2,7 @@ import logging
 from playwright.sync_api import TimeoutError
 from app.core.base_task import BaseTask # Import from core
 
+from app.core.config_manager import get_config
 class CheckLoginStatusTask(BaseTask): # Class name is already correct
     """
     保存された認証プロファイルを使ってログイン状態を確認するタスク
@@ -14,6 +15,11 @@ class CheckLoginStatusTask(BaseTask): # Class name is already correct
     def _execute_main_logic(self):
         page = self.page
         page.goto("https://room.rakuten.co.jp/items", wait_until="domcontentloaded")
+
+        # 設定が有効な場合のみ、ログイン状態確認の初期ページを撮影
+        config = get_config()
+        if config.get("debug_screenshot_enabled", False):
+            self._take_screenshot_on_error(prefix="login_check_initial_page")
 
         try:
             logging.debug("「my ROOM」リンクをクリックします。")

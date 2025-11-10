@@ -79,6 +79,7 @@ class ConfigUpdateRequest(BaseModel):
     playwright_headless: bool | None = None
     procurement_method: str | None = None
     caption_creation_method: str | None = None
+    debug_screenshot_enabled: bool | None = None
 
 class JsonImportRequest(BaseModel):
     products: list[dict]

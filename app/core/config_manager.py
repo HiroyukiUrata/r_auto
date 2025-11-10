@@ -9,7 +9,8 @@ DEFAULT_CONFIG = {
     "max_delay_minutes": 5,
     "playwright_headless": True,  # デフォルトはヘッドレスON
     "procurement_method": "rakuten_search", # デフォルトは 'rakuten_search' (楽天市場検索)
-    "caption_creation_method": "api" # デフォルトは 'api' (Gemini API)
+    "caption_creation_method": "api", # デフォルトは 'api' (Gemini API)
+    "debug_screenshot_enabled": False # デバッグ目的のスクリーンショット撮影を有効にするか
 }
 
 _config_cache = None
