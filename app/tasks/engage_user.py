@@ -86,6 +86,7 @@ class EngageUserTask(BaseTask):
                 # ハイライトしたカードの中から「未いいね」ボタンを探してハイライトする
                 unliked_icon_selector = convert_to_robust_selector("div.rex-favorite-outline--n4SWN")
                 unliked_button_locator = target_card.locator(f'button:has({unliked_icon_selector})')
+                logger.debug(f"  -> 未いいねボタンの数: {unliked_button_locator.count()}件")
                 unliked_button_locator.evaluate("node => { node.style.border = '3px solid limegreen'; }")
                 
                 # 「未いいね」ボタンをクリックします。
