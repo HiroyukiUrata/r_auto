@@ -61,7 +61,6 @@ class EngageUserTask(BaseTask):
             #print(f"{count} 件の「いいね済み」カードが見つかりました。")
 
             if count > 0:
-                logger.info(f"初回カード非表示")
                 #  絞り込んだカードを一括で非表示にします。
                 liked_cards_locator.evaluate_all("nodes => nodes.forEach(n => n.style.display = 'none')")
                 #print(f"合計 {count} 件のカードを非表示にしました。")
@@ -81,18 +80,15 @@ class EngageUserTask(BaseTask):
                 
                 time.sleep(1)
                 card_selector_str = convert_to_robust_selector('div[class*="container--JAywt"]')
-                logger.info(f"表示カード探す")
                 target_card = page.locator(f"{card_selector_str}:visible").first
                 target_card.evaluate("node => { node.style.border = '5px solid orange'; }")
                 
                 # ハイライトしたカードの中から「未いいね」ボタンを探してハイライトする
                 unliked_icon_selector = convert_to_robust_selector("div.rex-favorite-outline--n4SWN")
-                logger.info(f"ハイライト")
                 unliked_button_locator = target_card.locator(f'button:has({unliked_icon_selector})')
                 unliked_button_locator.evaluate("node => { node.style.border = '3px solid limegreen'; }")
                 
                 # 「未いいね」ボタンをクリックします。
-                logger.info(f"「未いいね」ボタンをクリックします。")
                 self._execute_action(unliked_button_locator, "click", action_name=f"like_back_{user_id}_{liked_count + 1}", screenshot_locator=target_card)
 
                 # ドライラン時もカウントは進める
@@ -102,8 +98,9 @@ class EngageUserTask(BaseTask):
                     time.sleep(11) # 連続クリックを避けるための待機
                 
                 # 処理済みのカードは非表示にする（ドライランでも次のループのために非表示にする）
-                logger.info(f"処理済みのカードは非表示にする（ドライランでも次のループのために非表示にする）")
+                logger.info("処理済みのカードは非表示にする（ドライランでも次のループのために非表示にする）")
                 target_card.evaluate("node => { node.style.display = 'none'; }")
+                logger.info("処理済みのカードは非表示にした")
 
         except Exception as e:
             # Call Logを除いたエラーメッセージを生成
