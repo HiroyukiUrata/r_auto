@@ -61,6 +61,7 @@ class EngageUserTask(BaseTask):
             #print(f"{count} 件の「いいね済み」カードが見つかりました。")
 
             if count > 0:
+                time.sleep(11) # 視覚的な確認のための待機     
                 #  絞り込んだカードを一括で非表示にします。
                 liked_cards_locator.evaluate_all("nodes => nodes.forEach(n => n.style.display = 'none')")
                 #print(f"合計 {count} 件のカードを非表示にしました。")
