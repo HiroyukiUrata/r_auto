@@ -1,7 +1,8 @@
 import logging
 import time
 import random
-from playwright.sync_api import Page, Error
+from playwright.sync_api import Page, Error,expect
+
 from app.utils.selector_utils import convert_to_robust_selector
 from app.core.base_task import BaseTask
 
@@ -88,6 +89,8 @@ class UserPageLiker:
 
                         logger.info(f"  -> [{liked_count + 1}/{self.target_count}] いいねボタンをクリックします。")
                         
+                        # ボタンがクリック可能になるまで最大n秒待つ
+                        expect(unliked_button_locator).to_be_enabled(timeout=11000)
                         # BaseTaskの共通アクション実行メソッドを呼び出す
                         self.task_instance._execute_action(
                             unliked_button_locator, "click",
@@ -100,7 +103,8 @@ class UserPageLiker:
 
                         # dry_runモードでない場合のみ待機
                         if not self.dry_run:
-                            time.sleep(random.uniform(3, 5))
+                            time.sleep(random.uniform(3, 5)) #ここはちゃんと待たねばならない expect(unliked_button_locator).to_be_enabled(timeout=11000)で代用できるかもしれない
+                            break
                     except Exception as e:
                         error_message = str(e).split("Call log:")[0].strip()
                         logger.warning(f"  -> いいねクリック中にエラーが発生しました: {error_message}")
