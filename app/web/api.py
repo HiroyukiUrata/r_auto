@@ -1536,10 +1536,20 @@ async def get_logs(
 
         for line in lines:
             try:
-                # YYYY-MM-DD HH:MM:SS または MM-DD HH:MM:SS の形式に対応
-                # ミリ秒まで考慮してパース
-                ts_str = line[:23]
-                log_dt = datetime.strptime(ts_str, '%Y-%m-%d %H:%M:%S,%f')
+                # ログフォーマット(detailed/simple)の両方に対応
+                if re.match(r'^\d{4}-\d{2}-\d{2}', line):
+                    # detailed形式: 'YYYY-MM-DD HH:MM:SS,ms'
+                    ts_str = line[:23]
+                    log_dt = datetime.strptime(ts_str, '%Y-%m-%d %H:%M:%S,%f')
+                elif re.match(r'^\d{2}-\d{2}', line):
+                    # simple形式: 'MM-DD HH:MM:SS' (年をまたぐ場合も考慮)
+                    ts_str = line[:14].strip()
+                    now = datetime.now()
+                    log_dt = datetime.strptime(ts_str, '%m-%d %H:%M:%S').replace(year=now.year)
+                    if log_dt > now: # ログの日時が未来になった場合、去年のログと判断
+                        log_dt = log_dt.replace(year=now.year - 1)
+                else:
+                    continue # タイムスタンプがない行はスキップ
 
                 if start_dt and log_dt < start_dt: continue
                 if end_dt and log_dt > end_dt: continue

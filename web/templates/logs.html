@@ -139,7 +139,7 @@
 
         function startAutoRefresh() {
             if (refreshIntervalId === null) {
-                refreshIntervalId = setInterval(fetchLogs, 5000); // 5秒ごとに更新
+                refreshIntervalId = setInterval(() => fetchLogs(false), 5000); // 5秒ごとにフィルターなしで更新
                 console.log("自動更新を開始しました。");
             }
         }
@@ -153,7 +153,10 @@
         }
 
         // 更新ボタンのクリックイベント
-        refreshBtn.addEventListener('click', fetchLogs);
+        refreshBtn.addEventListener('click', () => {
+            // 手動更新時はフィルターを適用しない
+            fetchLogs(false);
+        });
 
         // フィルターボタンのクリックイベント
         filterBtn.addEventListener('click', () => {
@@ -174,8 +177,16 @@
         autoScrollSwitch.addEventListener('change', function() {
             if (this.checked) {
                 logContainer.scrollTop = logContainer.scrollHeight; // ONにしたらまず一番下へ
+                // フィルター関連のUIを無効化
+                startDatetimeInput.disabled = true;
+                endDatetimeInput.disabled = true;
+                filterBtn.disabled = true;
                 startAutoRefresh(); // 自動更新を開始
             } else {
+                // フィルター関連のUIを有効化
+                startDatetimeInput.disabled = false;
+                endDatetimeInput.disabled = false;
+                filterBtn.disabled = false;
                 stopAutoRefresh(); // 自動更新を停止
             }
         });
