@@ -3,7 +3,7 @@ import time
 import random
 from playwright.sync_api import Page, Error as PlaywrightError
 import re
-from app.utils.selector_utils import convert_to_robust_selector
+from app.tasks.scraping_commons.user_page_like import UserPageLiker
 from app.core.base_task import BaseTask
 from app.core.database import get_user_details_for_like_back, update_engagement_error, commit_user_actions, update_like_back_status
 
@@ -25,65 +25,17 @@ class LikeBackTask(BaseTask):
 
     def _execute_like_action(self, page: Page, user_id: str, user_name: str):
         """1ユーザーに対するいいね返し処理"""
-        logger.info(f"「{user_name}」に{self.like_count}件のいいね返しを開始します。")
-
-        # 「いいね済み」のカードを特定して非表示にする
-        all_cards_locator = page.locator(convert_to_robust_selector('div[class*="container--JAywt"]'))
-        liked_button_selector = convert_to_robust_selector('button:has(div[class*="rex-favorite-filled--2MJip"])') # いいね済みボタンのセレクタ
-        liked_button_locator = page.locator(liked_button_selector)
-        try:
-            # ページ上のカードが読み込まれるのを待ちます。
-            all_cards_locator.first.wait_for(state="visible", timeout=15000)
-            
-            # 全カードの中から、「いいね済み」ボタンを持つカードだけを絞り込みます。
-            liked_cards_locator = all_cards_locator.filter(has=liked_button_locator)
-            count = liked_cards_locator.count()
-            logger.debug(f"{count} 件の「いいね済み」カードが見つかりました。")
-
-            if count > 0:
-                #  絞り込んだカードを一括で非表示にします。
-                liked_cards_locator.evaluate_all("nodes => nodes.forEach(n => n.style.display = 'none')")
-                logger.debug(f"合計 {count} 件のカードを非表示にしました。")
-
-            time.sleep(3) # 視覚的な確認のための待機
-        except Exception as e:
-            logger.error(f"エラー: 「いいね済み」の処理中に問題が発生しました。タイムアウトしたか、セレクタが古い可能性があります。")
-            logger.error(f"詳細: {e}") # 詳細なエラーメッセージを出力
-
-        liked_count = 0
-        try:
-            for _ in range(10): # 最大10回試行
-                if liked_count >= self.like_count:
-                    break
-                
-                time.sleep(1)
-                card_selector_str = convert_to_robust_selector('div[class*="container--JAywt"]')
-                target_card = page.locator(f"{card_selector_str}:visible").first
-                target_card.evaluate("node => { node.style.border = '5px solid orange'; }")
-                
-                unliked_icon_selector = convert_to_robust_selector("div.rex-favorite-outline--n4SWN")
-                unliked_button_locator = target_card.locator(f'button:has({unliked_icon_selector})')
-                unliked_button_locator.evaluate("node => { node.style.border = '3px solid limegreen'; }")
-                
-                # ファイル名として使えない文字を置換
-                safe_user_id = re.sub(r'[\\/:*?"<>|]', '_', user_id)
-
-                self._execute_action(unliked_button_locator, "click", action_name=f"like_back_{safe_user_id}_{liked_count + 1}", screenshot_locator=target_card)
-                liked_count += 1
-                if not self.dry_run:
-                   time.sleep(11) # 連続クリックを避けるための待機
-                 
-                target_card.evaluate("node => { node.style.display = 'none'; }")
-
-        except Exception as e:
-            error_message = str(e).split("Call log:")[0].strip()
-            log_message = f"「いいね返し」中にエラーが発生しました: {error_message}"
-            logger.error(log_message)
-            update_engagement_error(user_id, log_message)
-            return False
-
-        logger.info(f"  -> いいね返し完了。合計{liked_count}件実行しました。")
-        return True
+        # UserPageLikerはURLを必要とするため、pageオブジェクトから現在のURLを取得
+        target_url = page.url
+        liker = UserPageLiker(
+            task_instance=self,
+            page=page,
+            target_url=target_url,
+            target_count=self.like_count
+        )
+        liked_count, error_count = liker.execute()
+        # 1件でも成功していればTrueを返す（ドライラン時も同様）
+        return liked_count > 0 or self.dry_run
 
     def _execute_main_logic(self):
         users_details = get_user_details_for_like_back(self.user_ids)

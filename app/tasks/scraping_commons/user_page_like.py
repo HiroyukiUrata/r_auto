@@ -103,8 +103,8 @@ class UserPageLiker:
 
                         # dry_runモードでない場合のみ待機
                         if not self.dry_run:
-                            time.sleep(random.uniform(3, 5)) #ここはちゃんと待たねばならない expect(unliked_button_locator).to_be_enabled(timeout=11000)で代用できるかもしれない
-                            break
+                            time.sleep(11) #ここはちゃんと待たねばならない expect(unliked_button_locator).to_be_enabled(timeout=11000)で代用できるかもしれない
+                            
                     except Exception as e:
                         error_message = str(e).split("Call log:")[0].strip()
                         logger.warning(f"  -> いいねクリック中にエラーが発生しました: {error_message}")

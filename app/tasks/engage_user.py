@@ -2,7 +2,7 @@ import logging
 import random
 import time
 from datetime import datetime, timedelta
-from playwright.sync_api import Page, Error as PlaywrightError, expect
+from playwright.sync_api import Page, Error as PlaywrightError
 from app.utils.selector_utils import convert_to_robust_selector 
 from app.core.database import commit_user_actions, update_engagement_error
 from app.core.base_task import BaseTask
@@ -25,7 +25,7 @@ class EngageUserTask(BaseTask):
         self.like_count = like_count # 画面から指定されたいいね数
         logger.debug(f"EngageUserTaskが初期化されました。Mode: {self.engage_mode}, DryRun: {self.dry_run}, LikeCount: {self.like_count}")
 
-    def _like_back(self, page: Page, user_id: str, user_name: str, like_back_count: int):
+    def _like_back(self, page: Page, user_id: str, user_name: str, like_back_count: int, profile_page_url: str):
         """いいね返し処理"""
         # APIからlike_countが指定されている場合（画面入力がある場合）は、その値を最優先する
         if self.like_count is not None and self.like_count > 0:
@@ -42,76 +42,18 @@ class EngageUserTask(BaseTask):
 
         if target_like_count <= 0:
             logger.debug(f"いいね返しの対象件数が0のため、スキップします。")
-            return False
+            return True # 処理不要なので成功扱い
 
-        logger.info(f"「{user_name}」に{target_like_count}件のいいね返しを開始します。")
-
-        # 「いいね済み」のカードを特定して非表示にする
-
-        all_cards_locator = page.locator(convert_to_robust_selector('div[class*="container--JAywt"]'))
-        liked_button_selector = convert_to_robust_selector('button:has(div[class*="rex-favorite-filled--2MJip"])')
-        liked_button_locator = page.locator(liked_button_selector)
-        try:
-            # ページ上のカードが読み込まれるのを待ちます。
-            all_cards_locator.first.wait_for(state="visible", timeout=30000)
-            
-            # 全カードの中から、「いいね済み」ボタンを持つカードだけを絞り込みます。
-            liked_cards_locator = all_cards_locator.filter(has=liked_button_locator)
-            count = liked_cards_locator.count()
-            #print(f"{count} 件の「いいね済み」カードが見つかりました。")
-
-            if count > 0:
-                #  絞り込んだカードを一括で非表示にします。
-                liked_cards_locator.evaluate_all("nodes => nodes.forEach(n => n.style.display = 'none')")
-                #print(f"合計 {count} 件のカードを非表示にしました。")
-
-            time.sleep(3) # 視覚的な確認のための待機
+        from app.tasks.scraping_commons.user_page_like import UserPageLiker
+        liker = UserPageLiker(
+            task_instance=self,
+            page=page,
+            target_url=profile_page_url,
+            target_count=target_like_count
+        )
+        liked_count, error_count = liker.execute()
         
-        except Exception as e:
-            logger.error(f"エラー: 「いいね済み」の処理中に問題が発生しました。タイムアウトしたか、セレクタが古い可能性があります。")
-            logger.error(f"詳細: {e}") # 詳細なエラーメッセージを出力
-
-        liked_count = 0
-
-        try:
-            for _ in range(10):
-                if liked_count >= target_like_count:
-                    break
-                
-                time.sleep(1)
-                card_selector_str = convert_to_robust_selector('div[class*="container--JAywt"]')
-                target_card = page.locator(f"{card_selector_str}:visible").first
-                target_card.evaluate("node => { node.style.border = '5px solid orange'; }")
-                
-                # ハイライトしたカードの中から「未いいね」ボタンを探してハイライトする
-                unliked_icon_selector = convert_to_robust_selector("div.rex-favorite-outline--n4SWN")
-                unliked_button_locator = target_card.locator(f'button:has({unliked_icon_selector})')
-                unliked_button_locator.evaluate("node => { node.style.border = '3px solid limegreen'; }")
-                
-                # 「未いいね」ボタンをクリックします。
-                self._execute_action(unliked_button_locator, "click", action_name=f"like_back_{user_id}_{liked_count + 1}", screenshot_locator=target_card)
-
-                # ドライラン時もカウントは進める
-                liked_count += 1
-                # ドライランでない場合のみ待機を行う
-                if not self.dry_run:
-                    time.sleep(11) # 連続クリックを避けるための待機
-                
-                # 処理済みのカードは非表示にする（ドライランでも次のループのために非表示にする）
-                target_card.evaluate("node => { node.style.display = 'none'; }")
-
-        except Exception as e:
-            # Call Logを除いたエラーメッセージを生成
-            error_message = str(e).split("Call log:")[0].strip()
-            log_message = f"「いいね返し」中にエラーが発生しました: {error_message}"
-            logger.error(log_message)
-            update_engagement_error(user_id, log_message)
-            return False # _like_backメソッド自体を終了させる
-
-        logger.info(f"  -> いいね返し完了。合計{liked_count}件実行しました。")
-        # 1件でもいいねできていれば成功とみなす
-        # ドライラン時は常に成功とする
-        return True if self.dry_run else liked_count > 0
+        return liked_count > 0 or self.dry_run
 
     def _post_comment(self, page: Page, user_id: str, user_name: str, comment_text: str):
         """コメント返し処理"""
@@ -245,7 +187,11 @@ class EngageUserTask(BaseTask):
                 # 1. いいね返し
                 if self.engage_mode in ['all', 'like_only']:
                     logger.debug(f"  -> Mode '{self.engage_mode}' のため、いいね返しを実行します。")
-                    like_back_success = self._like_back(page, user_id, user_name, user.get("recent_like_count", 0))
+                    like_back_success = self._like_back(
+                        page, user_id, user_name, 
+                        user.get("recent_like_count", 0),
+                        profile_page_url
+                    )
                     if like_back_success:
                         like_back_processed_count += 1
                     elif user.get("recent_like_count", 0) > 0: # いいね対象があったのに失敗した場合
