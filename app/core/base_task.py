@@ -119,14 +119,29 @@ class BaseTask(ABC):
     def _teardown_browser(self):
         """ブラウザコンテキストを閉じる"""
         if self.context:
-            logging.debug("ブラウザコンテキストを閉じています...")
             try:
+                logging.debug("ブラウザコンテキストを閉じています...")
                 self.context.close()
-                # close()が完了し、プロファイルがディスクに書き込まれるのを少し待つ
-                time.sleep(2)
-                logging.debug("ブラウザコンテキストを正常に閉じました。")
             except Exception as e:
                 logging.error(f"ブラウザコンテキストのクローズ中にエラーが発生しました: {e}")
+            finally:
+                # プロファイルを使用している場合のみ、ロックファイルの解放を待つ
+                if self.use_auth_profile:
+                    lockfile_path = os.path.join(PROFILE_DIR, "SingletonLock")
+                    # 最大10秒間、ロックファイルが消えるのを待つ
+                    for i in range(10):
+                        if not os.path.exists(lockfile_path):
+                            logging.debug(f"プロファイルのロックが正常に解放されました。({i+1}秒)")
+                            break
+                        time.sleep(1)
+                    else:
+                        # タイムアウト後もロックファイルが残っている場合
+                        logging.warning(f"ブラウザ終了後もロックファイルが残っています: {lockfile_path}")
+                        try:
+                            os.remove(lockfile_path)
+                            logging.warning("  -> 残存していたロックファイルを強制的に削除しました。")
+                        except OSError as e:
+                            logging.error(f"  -> ロックファイルの強制削除に失敗しました: {e}")
 
     def run(self):
         """タスクの実行フローを管理する"""
@@ -201,8 +216,10 @@ class BaseTask(ABC):
             try:
                 import os
                 terminal_width = os.get_terminal_size().columns
-                # プレフィックス、サフィックス、パーセンテージ表示などの長さを考慮
-                bar_length = terminal_width - len(prefix) - len(suffix) - 20
+                # プレフィックス、サフィックス、パーセンテージ表示などの固定部分の長さを計算
+                # | | % (/)  の分
+                fixed_chars_len = len(prefix) + len(suffix) + 25
+                bar_length = terminal_width - fixed_chars_len
                 length = max(10, bar_length) # 最低10は確保
             except (ImportError, OSError):
                 pass # ターミナルサイズが取得できない環境でも動作
@@ -210,11 +227,11 @@ class BaseTask(ABC):
             percent = ("{0:.1f}").format(100 * (iteration / float(total)))
             filled_length = int(length * iteration // total)
             bar = fill * filled_length + '-' * (length - filled_length)
-            # Uvicornなどのバッファリング環境でもリアルタイムに表示させるため、
-            # \nで改行して一度フラッシュさせ、次の行でカーソルを上に戻す
-            # \033[F はカーソルを前の行の先頭に移動するANSIエスケープシーケンス
-            line_to_print = f'{prefix} |{bar}| {percent}% ({iteration}/{total}) {suffix}'
-            # ターミナルの幅に合わせて余分なスペースで上書きし、前の行の残骸を消す
-            sys.stdout.write(f"\033[F{line_to_print.ljust(length + 30)}\n")
+            # \rでカーソルを行頭に戻し、sys.stdout.flush()で即時表示を強制する
+            line_to_print = f'\r{prefix} |{bar}| {percent}% ({iteration}/{total}) {suffix}'
+            sys.stdout.write(line_to_print)
+            if iteration == total:
+                sys.stdout.write('\n') # 完了したら改行
+            sys.stdout.flush()
         except Exception:
             pass # プログレスバー表示でエラーが起きても本体処理には影響させない

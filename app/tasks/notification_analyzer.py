@@ -331,13 +331,16 @@ class NotificationAnalyzerTask(BaseTask):
         logger.debug(f"--- フェーズ4: DBからURL未取得のユーザーを対象にURLを取得します。 ---")
         users_for_url_fetch = get_users_for_url_acquisition()
         logger.debug(f"URL取得対象: {len(users_for_url_fetch)}人")
-        url_acquired_count = 0 # URL取得成功件数をカウントする変数を初期化
+        url_acquired_count = 0
         last_scroll_position = 0  # スクロール位置を記憶する変数を初期化
 
         total_users = len(users_for_url_fetch)
         for i, user_data in enumerate(users_for_url_fetch):
-            # プログレスバーを表示
-            self._print_progress_bar(i, total_users, prefix=f'URL取得中:', suffix=f"{user_data['name'][:15]:<15}")
+            # ユーザー名が15文字より長い場合は省略
+            display_name = user_data['name']
+            if len(display_name) > 15:
+                display_name = display_name[:14] + "…"
+            self._print_progress_bar(i, total_users, prefix=f'URL取得中:', suffix=f"{display_name:<15}")
 
             try:
                 # 前回のスクロール位置に戻す
@@ -376,11 +379,13 @@ class NotificationAnalyzerTask(BaseTask):
                 logger.debug(f"  -> 取得したURL: {page.url}")
                 
                 page.go_back(wait_until="domcontentloaded")
-                # networkidleは不安定なため、固定時間待機に変更
-                url_acquired_count += 1 # 成功件数をインクリメント
-                page.wait_for_timeout(1000) # 軽く待つ
+                url_acquired_count += 1
                 # ページが戻った後、リストが再描画されるのを待つ
-                page.locator("li[ng-repeat='notification in notifications.activityNotifications']").first.wait_for(state='visible', timeout=10000)
+                try:
+                    page.locator("li[ng-repeat='notification in notifications.activityNotifications']").first.wait_for(state='visible', timeout=15000)
+                except PlaywrightError:
+                    logger.warning("通知一覧への復帰後、リストの表示待機がタイムアウトしました。処理を続行します。")
+
             except PlaywrightError as url_error:
                 logger.warning(f"  ユーザー「{user_data['name']}」のURL取得中にPlaywrightエラー: {url_error}")
                 self._take_screenshot_on_error(prefix=f"url_error_{user_data['id']}")
@@ -391,13 +396,11 @@ class NotificationAnalyzerTask(BaseTask):
                 continue
             
             bulk_update_user_profiles([user_data]) # 1件ずつDBに保存
-            page.wait_for_timeout(random.uniform(0.5, 1.5))
 
         # プログレスバーの行をクリア
         if total_users > 0:
-            # 最終状態を表示して完了させる
-            self._print_progress_bar(total_users, total_users, prefix='URL取得完了', suffix=' ' * 20)
-
+            # 最終状態を表示
+            self._print_progress_bar(total_users, total_users, prefix='URL取得完了', suffix=' ' * 15)
 
         # --- フェーズ5: AIプロンプトメッセージの生成 ---
         logger.debug(f"--- フェーズ5: DBから対象ユーザーを取得し、AIプロンプトメッセージを生成します。 ---")
