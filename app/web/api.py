@@ -1161,20 +1161,6 @@ async def run_task_now(tag: str, request: Request):
     except json.JSONDecodeError:
         extra_kwargs = {} # JSONデコードに失敗した場合も空の辞書
     return _run_task_internal(tag, is_part_of_flow=False, **extra_kwargs)
- 
-@router.get("/api/logs", response_class=PlainTextResponse)
-async def get_logs():
-    """ログファイルの内容をテキスト形式で返します。"""
-    try:
-        if not os.path.exists(LOG_FILE):
-            return "ログファイルはまだ作成されていません。"
-        
-        with open(LOG_FILE, "r", encoding="utf-8") as f:
-            # ファイルの末尾から最大1000行を読み込む
-            lines = f.readlines()
-            return "".join(lines[-1000:])
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"ログの読み込みに失敗しました: {str(e)}")
 
 def _run_task_internal(tag: str, is_part_of_flow: bool, **kwargs):
     """
@@ -1524,3 +1510,44 @@ async def update_prompt(prompt_name: str, request: Request):
         return JSONResponse(content={"message": f"プロンプト「{prompt_name}」を更新しました。"})
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": f"プロンプトの更新中にエラーが発生しました: {str(e)}"})
+
+@router.get("/api/logs", response_class=PlainTextResponse)
+async def get_logs(
+    start: str | None = None,
+    end: str | None = None,
+):
+    """
+    ログファイルの内容を取得する。
+    startとendクエリパラメータで期間を指定してフィルタリング可能。
+    """
+    try:
+        if not os.path.exists(LOG_FILE): # LOG_FILEはモジュール上部でインポート済み
+            return "ログファイルが見つかりません。"
+
+        with open(LOG_FILE, "r", encoding="utf-8", errors="ignore") as f:
+            lines = f.readlines()
+
+        if not start and not end:
+            return "".join(lines[-1000:]) # フィルターなしの場合は末尾1000行に制限
+
+        filtered_lines = []
+        start_dt = datetime.strptime(start, "%Y-%m-%dT%H:%M") if start else None
+        end_dt = datetime.strptime(end, "%Y-%m-%dT%H:%M") if end else None
+
+        for line in lines:
+            try:
+                # YYYY-MM-DD HH:MM:SS または MM-DD HH:MM:SS の形式に対応
+                # ミリ秒まで考慮してパース
+                ts_str = line[:23]
+                log_dt = datetime.strptime(ts_str, '%Y-%m-%d %H:%M:%S,%f')
+
+                if start_dt and log_dt < start_dt: continue
+                if end_dt and log_dt > end_dt: continue
+                filtered_lines.append(line)
+            except (ValueError, IndexError):
+                # タイムスタンプが期待する形式でない行はスキップ
+                continue
+
+        return "".join(filtered_lines)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"ログの読み込み中にサーバーエラーが発生しました: {e}")

@@ -7,6 +7,26 @@
     <h1 class="h2">ログ確認</h1>
 </div>
 
+<!-- 期間指定フィルター -->
+<div class="row g-2 align-items-center mb-3">
+    <div class="col-auto">
+        <label for="start-datetime" class="col-form-label">開始日時</label>
+    </div>
+    <div class="col-auto">
+        <input type="datetime-local" id="start-datetime" class="form-control form-control-sm">
+    </div>
+    <div class="col-auto">
+        <label for="end-datetime" class="col-form-label">終了日時</label>
+    </div>
+    <div class="col-auto">
+        <input type="datetime-local" id="end-datetime" class="form-control form-control-sm">
+    </div>
+    <div class="col-auto">
+        <button class="btn btn-sm btn-primary" id="filter-btn">表示</button>
+        <button class="btn btn-sm btn-outline-secondary" id="reset-btn">リセット</button>
+    </div>
+</div>
+
 <div id="log-container" class="bg-dark text-light p-3 rounded" style="height: 70vh; overflow-y: auto; font-family: monospace; white-space: pre-wrap; word-wrap: break-word; font-size: 0.8rem;">
     <p>ログを読み込んでいます...</p>
 </div>
@@ -58,11 +78,42 @@
         const refreshBtn = document.getElementById('refresh-btn');
         const scrollToTopBtn = document.getElementById('scroll-to-top-btn');
         const autoScrollSwitch = document.getElementById('auto-scroll-switch');
+        const startDatetimeInput = document.getElementById('start-datetime');
+        const endDatetimeInput = document.getElementById('end-datetime');
+        const filterBtn = document.getElementById('filter-btn');
+        const resetBtn = document.getElementById('reset-btn');
         let refreshIntervalId = null;
 
-        async function fetchLogs() {
+        function setDefaultDateTimes() {
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = (now.getMonth() + 1).toString().padStart(2, '0');
+            const day = now.getDate().toString().padStart(2, '0');
+
+            const todayStart = `${year}-${month}-${day}T00:00`;
+            const todayEnd = `${year}-${month}-${day}T23:59`;
+
+            startDatetimeInput.value = todayStart;
+            endDatetimeInput.value = todayEnd;
+        }
+
+        async function fetchLogs(applyFilter = true) {
             try {
-                const response = await fetch('/api/logs');
+                const start = startDatetimeInput.value;
+                const end = endDatetimeInput.value;
+                let url = '/api/logs';
+                const params = new URLSearchParams();
+                if (start) {
+                    params.append('start', start);
+                }
+                if (end) {
+                    params.append('end', end);
+                }
+                if (applyFilter && params.toString()) {
+                    url += `?${params.toString()}`;
+                }
+
+                const response = await fetch(url);
                 if (!response.ok) {
                     throw new Error(`サーバーエラー: ${response.status}`);
                 }
@@ -104,6 +155,21 @@
         // 更新ボタンのクリックイベント
         refreshBtn.addEventListener('click', fetchLogs);
 
+        // フィルターボタンのクリックイベント
+        filterBtn.addEventListener('click', () => {
+            // 期間指定した場合は自動スクロールと自動更新をオフにする
+            if (autoScrollSwitch.checked) {
+                autoScrollSwitch.click();
+            }
+            fetchLogs(true); // フィルターを適用してログを取得
+        });
+
+        // リセットボタンのクリックイベント
+        resetBtn.addEventListener('click', () => {
+            // 日時入力欄を当日の範囲にリセットする
+            setDefaultDateTimes();
+            fetchLogs(false); // リセット時はフィルターを適用しない
+        });
         // 自動スクロールスイッチのイベント
         autoScrollSwitch.addEventListener('change', function() {
             if (this.checked) {
@@ -139,7 +205,9 @@
 
         // ページ読み込み時に一度だけログを取得し、一番下にスクロールする
         (async () => {
-            await fetchLogs();
+            setDefaultDateTimes(); // デフォルトの日時を設定
+            // 初回はフィルターを適用せずに全ログを取得
+            await fetchLogs(false);
             // 初回読み込み時のみ、一番下までスクロール
             logContainer.scrollTop = logContainer.scrollHeight;
         })();
