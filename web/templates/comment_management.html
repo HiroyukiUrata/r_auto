@@ -549,8 +549,8 @@
 
         filterContainer.style.display = showAll ? 'block' : 'none';
 
-        // 「全員表示」がONで、かつソートが「いいね返し可」の時だけ、いいね返し用のアクションバーを表示
-        if (showAll && sortBy === 'like_back_ready') {
+        // 「全員表示」がONの時だけ、いいね返し用のアクションバーを表示
+        if (showAll) {
             likeBackActionsContainer.style.display = 'flex';
         } else {
             likeBackActionsContainer.style.display = 'none';
