@@ -25,7 +25,7 @@ class ReplyToCommentsTask(BaseTask):
     def __init__(self, replies: list[dict], dry_run: bool = False):
         super().__init__(dry_run=dry_run)
         self.replies = replies
-        self.action_name = f"コメントへの返信投稿 ({len(replies)}件)"
+        self.action_name = f"マイコメへの返信投稿 ({len(replies)}件)"
         self.needs_browser = True
         self.use_auth_profile = True
 
@@ -33,6 +33,9 @@ class ReplyToCommentsTask(BaseTask):
         page = self.page
         total_replies = len(self.replies)
         logger.debug(f"コメント返信タスクを開始します。対象: {total_replies}件, Dry Run: {self.dry_run}")
+
+        success_count = 0
+        error_count = 0
 
         for i, reply_info in enumerate(self.replies):
             post_url = reply_info.get('postUrl')
@@ -82,17 +85,26 @@ class ReplyToCommentsTask(BaseTask):
                             mark_replies_as_posted,
                             comment_ids=comment_ids
                         )
+                
+                success_count += 1
 
             except PlaywrightTimeoutError as e:
                 logger.error(f"コメント投稿処理中にタイムアウトエラーが発生しました: {post_url}", exc_info=True)
                 self._take_screenshot_on_error(prefix=f"error_timeout_for_{'_'.join(target_users)}")
+                error_count += 1
                 continue # 次の返信へ
             except Exception as e:
                 logger.error(f"コメント投稿処理中に予期せぬエラーが発生しました: {post_url}", exc_info=True)
                 self._take_screenshot_on_error(prefix=f"error_unexpected_for_{'_'.join(target_users)}")
+                error_count += 1
                 continue # 次の返信へ
 
         logger.debug("すべてのコメント返信タスクが完了しました。")
+
+        # 処理結果のサマリーをログに出力
+        if success_count > 0 or error_count > 0:
+            logger.info(f"[Action Summary] name=マイコメ返信, count={success_count}, errors={error_count}")
+
         return True
 
 if __name__ == '__main__':

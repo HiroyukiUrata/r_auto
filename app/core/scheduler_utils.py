@@ -62,6 +62,7 @@ def get_recent_activities_from_log(limit=5, max_lines=1000):
             "いいね": "いいね活動",
             "フォロー": "フォロー活動",
             "商品調達": "商品調達",
+            "マイコメ返信": "マイコメ返信",
         }
 
         # 正規表現パターン
@@ -139,6 +140,7 @@ def get_log_summary(period='24h', max_lines_to_scan=20000):
         '返信コメント生成': {'count': 0, 'errors': 0},
         'いいね返し': {'count': 0, 'errors': 0},
         'コメント返し': {'count': 0, 'errors': 0},
+        'マイコメ返信': {'count': 0, 'errors': 0},
     }
     
     # ログ名とUI表示名をマッピング
@@ -147,6 +149,7 @@ def get_log_summary(period='24h', max_lines_to_scan=20000):
         "いいね": "いいね活動",
         "フォロー": "フォロー活動",
         "商品調達": "商品調達",
+        "マイコメ返信": "マイコメ返信",
     }
 
     # ログから情報を抽出する正規表現パターン
