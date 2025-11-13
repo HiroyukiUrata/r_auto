@@ -24,14 +24,28 @@ class EndpointFilter(logging.Filter):
 
 class PlaywrightLogFilter(logging.Filter):
     """Playwrightの冗長な 'Call log:' をログメッセージから削除するフィルタ"""
+    _call_log_pattern = re.compile(r"\n?Call log:.*", re.DOTALL)
+
     def filter(self, record: logging.LogRecord) -> bool:
         # record.getMessage() はフォーマット前の生のログメッセージを返す
         original_message = record.getMessage()
-        # メッセージに "Call log:" が含まれているか確認
-        call_log_pos = original_message.find("Call log:")
-        if call_log_pos != -1:
-            # "Call log:" より前の部分だけをメッセージとして採用し、末尾の空白を削除
-            record.msg = original_message[:call_log_pos].strip()
+        # メインメッセージから "Call log:" を削除
+        record.msg = self._call_log_pattern.sub("", original_message).strip()
+
+        # 例外情報（トレースバック）がレコードに含まれているか確認
+        if record.exc_info and record.exc_text:
+            # トレースバックのテキストから "Call log:" を削除
+            record.exc_text = self._call_log_pattern.sub("", record.exc_text).strip()
+
+        # exc_info にタプル(type, value, traceback)が設定されている場合も対応
+        if record.exc_info:
+            exc_type, exc_value, exc_traceback = record.exc_info
+            if exc_value:
+                # 例外オブジェクトの文字列表現から "Call log:" を削除
+                cleaned_str = self._call_log_pattern.sub("", str(exc_value)).strip()
+                # 新しい例外オブジェクトで上書き（型は維持）
+                record.exc_info = (exc_type, exc_type(cleaned_str), exc_traceback)
+
         return True # 常にログを通過させる
 
 # ログファイルのパスをモジュールレベルで定義
