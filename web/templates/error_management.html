@@ -377,28 +377,32 @@
             return;
         }
 
-        // Promise.allSettled を使って、すべての削除リクエストを並行して実行
-        const results = await Promise.allSettled(filesToDelete.map(filename => 
-            fetch(`/api/screenshots/${filename}`, { method: 'DELETE' })
-        ));
-
-        let successCount = 0;
-        let failedCount = 0;
-
-        results.forEach((result, index) => {
-            const filename = filesToDelete[index];
-            if (result.status === 'fulfilled' && result.value.ok) {
-                // 成功したらUIから要素を削除
-                document.querySelector(`.screenshot-checkbox[value="${filename}"]`).closest('.list-group-item').remove();
-                successCount++;
-            } else {
-                console.error(`Failed to delete ${filename}:`, result.reason || result.value.statusText);
-                failedCount++;
+        try {
+            const response = await fetch('/api/screenshots/bulk-delete', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ filenames: filesToDelete })
+            });
+            const result = await response.json();
+            if (!response.ok) {
+                throw new Error(result.detail || '一括削除に失敗しました。');
             }
-        });
 
-        alert(`${successCount}件の削除に成功しました。\n${failedCount > 0 ? `${failedCount}件の削除に失敗しました。詳細はコンソールを確認してください。` : ''}`);
-        updateScreenshotBulkActionButtons();
+            // 成功したらUIから要素を削除
+            filesToDelete.forEach(filename => {
+                const element = document.querySelector(`.screenshot-checkbox[value="${filename}"]`);
+                if (element) {
+                    element.closest('.list-group-item').remove();
+                }
+            });
+            alert(result.message);
+            updateScreenshotBulkActionButtons();
+            // プレビュー機能もリロードして整合性を保つ
+            location.reload();
+        } catch (error) {
+            alert(`エラー: ${error.message}`);
+            console.error('Error bulk deleting screenshots:', error);
+        }
     }
 
     async function deleteScreenshot(buttonElement, filename) {

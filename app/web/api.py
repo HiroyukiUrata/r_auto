@@ -1344,6 +1344,51 @@ def _run_task_internal(tag: str, is_part_of_flow: bool, **kwargs):
     logging.debug(f"APIレスポンス (タスク: {tag}): {message}")
     return {"status": "success", "message": message}
 
+class BulkDeleteRequest(BaseModel):
+    """一括削除リクエストのモデル"""
+    filenames: list[str]
+
+@router.post("/api/screenshots/bulk-delete", summary="スクリーンショットの一括削除")
+async def bulk_delete_screenshots(request: BulkDeleteRequest):
+    """
+    指定されたスクリーンショットのファイル名リストを受け取り、一括で削除します。
+    処理後、削除した件数をまとめてログに出力します。
+    """
+    deleted_count = 0
+    failed_files = []
+    not_found_files = []
+
+    for filename in request.filenames:
+        # ディレクトリトラバーサル攻撃を防ぐための基本的なセキュリティチェック
+        if ".." in filename or filename.startswith("/") or filename.startswith("\\"):
+            logging.warning(f"不正なファイル名のためスキップしました: {filename}")
+            failed_files.append(filename)
+            continue
+
+        file_path = os.path.join(SCREENSHOT_DIR, filename)
+        
+        if os.path.exists(file_path) and os.path.isfile(file_path):
+            try:
+                os.remove(file_path)
+                deleted_count += 1
+            except OSError as e:
+                logging.error(f"スクリーンショットの削除に失敗しました: {file_path}, エラー: {e}")
+                failed_files.append(filename)
+        else:
+            logging.warning(f"削除対象のスクリーンショットが見つかりません: {file_path}")
+            not_found_files.append(filename)
+
+    if deleted_count > 0:
+        logging.info(f"{deleted_count}件のスクリーンショットを削除しました。")
+
+    if failed_files:
+        raise HTTPException(status_code=500, detail=f"{len(failed_files)}件のファイルの削除に失敗しました: {', '.join(failed_files)}")
+
+    message = f"{deleted_count}件のスクリーンショットを削除しました。"
+    if not_found_files:
+        message += f" ({len(not_found_files)}件は見つかりませんでした)"
+
+    return {"message": message}
 # --- Prompt Profile API ---
 
 @router.get("/api/prompt-profiles/{prompt_key}")
