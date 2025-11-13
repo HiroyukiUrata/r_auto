@@ -77,10 +77,13 @@ def load_schedules_from_file():
                             schedule.every().day.at(entry['time']).do(run_threaded, run_task_with_random_delay, **job_kwargs).tag(tag)
                     elif "flow" in definition:
                         # フロータスクの場合
-                        # _run_task_internal を直接呼び出す
-                        # is_part_of_flow=False を明示的に渡す
-                        schedule.every().day.at(entry['time']).do(run_threaded, _run_task_internal, tag=tag, is_part_of_flow=False, **job_kwargs).tag(tag)
-                        logging.debug(f"    -> Registered flow task '{tag}' with kwargs: {job_kwargs}")
+                        # フロータスクの場合も run_task_with_random_delay を経由させる
+                        # 実行する関数と引数をjob_kwargsにまとめる
+                        job_kwargs['task_to_run'] = _run_task_internal
+                        job_kwargs['tag'] = tag
+                        job_kwargs['is_part_of_flow'] = False
+                        schedule.every().day.at(entry['time']).do(run_threaded, run_task_with_random_delay, **job_kwargs).tag(tag)
+                        logging.debug(f"    -> Registered delayed flow task '{tag}' with kwargs: {job_kwargs}")
                     else:
                         logging.warning(f"タスク '{tag}' には実行可能な関数またはフローが定義されていません。")
 
