@@ -32,9 +32,9 @@ class UserPageLiker:
         いいね処理を実行し、実際にいいねした成功数とエラー数をタプルで返す。
         :return: (成功数, エラー数)
         """
-        logger.info(f"--- ページ巡回いいね処理を開始します ---")
-        logger.info(f"対象URL: {self.target_url}")
-        logger.info(f"目標いいね数: {self.target_count}件")
+        logger.debug(f"--- ページ巡回いいね処理を開始します ---")
+        logger.debug(f"対象URL: {self.target_url}")
+        logger.debug(f"目標いいね数: {self.target_count}件")
         if self.dry_run:
             logger.info("DRY RUNモードで実行します。実際のアクションは行われません。")
 
@@ -46,7 +46,7 @@ class UserPageLiker:
         try:
             self.page.goto(self.target_url.strip(), wait_until="domcontentloaded", timeout=60000)
             page_title = self.page.title()
-            logger.info(f"ページにアクセスしました: {page_title}")
+            logger.debug(f"ページにアクセスしました: {page_title}")
 
             # --- いいね済みカードを非表示にする ---
             all_cards_locator = self.page.locator(convert_to_robust_selector('div[class*="container--JAywt"]'))
@@ -82,12 +82,12 @@ class UserPageLiker:
                         if description_element.count() > 0:
                             description_text = description_element.text_content().replace('\n', ' ').strip()
                             display_text = (description_text[:30] + '...') if len(description_text) > 30 else description_text
-                            logger.info(f"  -> 商品紹介文: {display_text}")
+                            logger.debug(f"  -> 商品紹介文: {display_text}")
 
                         unliked_button_locator = target_card.locator(f'button:has({unliked_icon_selector})')
                         unliked_button_locator.evaluate("node => { node.style.border = '3px solid limegreen'; }")
 
-                        logger.info(f"  -> [{liked_count + 1}/{self.target_count}] いいねボタンをクリックします。")
+                        logger.debug(f"  -> [{liked_count + 1}/{self.target_count}] いいねボタンをクリックします。")
                         
                         # ボタンがクリック可能になるまで最大n秒待つ
                         expect(unliked_button_locator).to_be_enabled(timeout=11000)
@@ -129,6 +129,6 @@ class UserPageLiker:
         except Exception as e:
             logger.error(f"ページ巡回いいね処理中に予期せぬエラーが発生しました: {e}", exc_info=True)
         finally:
-            logger.info(f"--- ページ巡回いいね処理を完了します ---")
-            logger.info(f"結果: 成功 {liked_count}件, 失敗 {error_count}件")
+            logger.debug(f"--- ページ巡回いいね処理を完了します ---")
+            logger.debug(f"結果: 成功 {liked_count}件, 失敗 {error_count}件")
             return liked_count, error_count

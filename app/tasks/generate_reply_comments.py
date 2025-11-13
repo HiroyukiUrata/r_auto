@@ -118,7 +118,7 @@ class GenerateReplyCommentsTask(BaseTask):
                 logger.debug(f"       Reply: {text}")
             logger.debug("  --------------------------")
         
-        logger.info(f"[Action Summary] name=返信コメント生成, count={total_updated_count}")
+        #logger.info(f"[Action Summary] name=返信コメント生成, count={total_updated_count}")
         return True
 
 def run_generate_reply_comments():
