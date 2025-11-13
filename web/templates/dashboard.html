@@ -390,7 +390,12 @@ document.addEventListener('DOMContentLoaded', function () {
                 const date = new Date();
                 date.setHours(hours, minutes, 0, 0);
 
-                return { x: date.getTime(), y: job.name_ja };
+                return { 
+                    x: date.getTime(), 
+                    y: job.name_ja,
+                    count: entry.count, // ツールチップ表示用に件数を追加
+                    show_count: job.show_count_in_schedule !== false // 件数表示フラグも追加
+                };
             });
             datasets.push({
                 label: job.name_ja,
@@ -436,8 +441,16 @@ document.addEventListener('DOMContentLoaded', function () {
                     },
                     tooltip: {
                         callbacks: {
-                            title: (context) => context[0].dataset.label,
-                            label: (tooltipItem) => `実行時刻: ${tooltipItem.label}`
+                            title: (context) => context[0].dataset.label, // タスク名
+                            label: (tooltipItem) => {
+                                const date = new Date(tooltipItem.parsed.x);
+                                const timeString = date.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', hour12: false });
+                                const count = tooltipItem.raw.count;
+                                const showCount = tooltipItem.raw.show_count;
+                                // 件数表示が有効で、かつ件数が1以上の場合のみ表示
+                                const countString = (showCount && count > 0) ? ` (${count})` : '';
+                                return `${timeString}${countString}`;
+                            }
                         }
                     },
                     annotation: { annotations: { annotation } }
