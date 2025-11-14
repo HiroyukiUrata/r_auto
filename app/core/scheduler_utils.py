@@ -41,7 +41,7 @@ def run_task_with_random_delay(task_to_run, **kwargs):
     
     if max_delay_minutes > 0:
         delay_seconds = random.randint(0, max_delay_minutes * 60)
-        logger.debug(f"スケジュールされたタスクの実行を {delay_seconds // 60}分{delay_seconds % 60}秒 遅延させます。")
+        logger.info(f"スケジュールされたタスクの実行を {delay_seconds // 60}分{delay_seconds % 60}秒 遅延させます。")
         time.sleep(delay_seconds)
     
     task_to_run(**kwargs)

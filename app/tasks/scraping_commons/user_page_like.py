@@ -127,7 +127,7 @@ class UserPageLiker:
                         time.sleep(2)
 
         except Exception as e:
-            logger.error(f"ページ巡回いいね処理中に予期せぬエラーが発生しました: {e}", exc_info=True)
+            logger.error(f"ページ巡回いいね処理中に予期せぬエラーが発生しました: {e}")
         finally:
             logger.debug(f"--- ページ巡回いいね処理を完了します ---")
             logger.debug(f"結果: 成功 {liked_count}件, 失敗 {error_count}件")

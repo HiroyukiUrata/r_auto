@@ -37,7 +37,7 @@ class CheckLoginStatusTask(BaseTask): # Class name is already correct
                 return True
             elif "https://login.account.rakuten.com/" in current_url:
                 # 失敗パターン1: ログインページへのリダイレクト
-                logging.error(f"失敗: ログインページにリダイレクトされました。 (URL: {current_url})")
+                logging.error(f"失敗: ログインページにリダイレクトされました。")
                 logging.error("[Action Summary] name=ログイン失敗, message='ログインページにリダイレクトされました'")
                 self._take_screenshot_on_error(prefix="login_check_redirect")
                 return False
