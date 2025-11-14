@@ -26,27 +26,44 @@ class PlaywrightLogFilter(logging.Filter):
     """Playwrightの冗長な 'Call log:' をログメッセージから削除するフィルタ"""
     _call_log_pattern = re.compile(r"\n?Call log:.*", re.DOTALL)
 
+    def __init__(self, log_format_type: str):
+        super().__init__()
+        self.is_simple_format = log_format_type == 'simple'
+
     def filter(self, record: logging.LogRecord) -> bool:
-        # record.getMessage() はフォーマット前の生のログメッセージを返す
-        original_message = record.getMessage()
-        # メインメッセージから "Call log:" を削除
-        record.msg = self._call_log_pattern.sub("", original_message).strip()
+        # simpleモードでなければ、Call Logを除去せずにログを通過させる
+        if not self.is_simple_format:
+            return True
 
-        # 例外情報（トレースバック）がレコードに含まれているか確認
-        if record.exc_info and record.exc_text:
-            # トレースバックのテキストから "Call log:" を削除
-            record.exc_text = self._call_log_pattern.sub("", record.exc_text).strip()
+        # メインのログメッセージから "Call log:" を削除
+        if not isinstance(record.msg, str):
+            record.msg = str(record.msg)
+        record.msg = self._call_log_pattern.sub("", record.msg).strip()
 
-        # exc_info にタプル(type, value, traceback)が設定されている場合も対応
+        # 例外情報からも "Call log:" を削除
         if record.exc_info:
             exc_type, exc_value, exc_traceback = record.exc_info
             if exc_value:
-                # 例外オブジェクトの文字列表現から "Call log:" を削除
                 cleaned_str = self._call_log_pattern.sub("", str(exc_value)).strip()
-                # 新しい例外オブジェクトで上書き（型は維持）
+                # 新しい例外オブジェクトで上書き
                 record.exc_info = (exc_type, exc_type(cleaned_str), exc_traceback)
+        
+        return True
 
-        return True # 常にログを通過させる
+class CustomFormatter(logging.Formatter):
+    """
+    トレースバックの表示を動的に制御するカスタムフォーマッタ。
+    """
+    def __init__(self, fmt=None, datefmt=None, style='%', log_format_type='detailed'):
+        super().__init__(fmt, datefmt, style)
+        self.log_format_type = log_format_type
+
+    def formatException(self, exc_info):
+        # 'simple' モード、かつ 'FORCE_TRACEBACK' が無効な場合、トレースバックを空文字列にする
+        if self.log_format_type == 'simple':
+            return ""
+        # それ以外の場合は、デフォルトのトレースバックフォーマットを使用
+        return super().formatException(exc_info)
 
 # ログファイルのパスをモジュールレベルで定義
 LOG_DIR = "db/logs"
@@ -84,14 +101,16 @@ def setup_logging():
     # 環境変数に応じてログのフォーマットを切り替える
     if log_format_type == 'simple':
         # 本番環境向けのシンプルなフォーマット
-        log_formatter = logging.Formatter(
+        log_formatter = CustomFormatter(
             '%(asctime)s [%(levelname).1s] %(message)s',
-            datefmt='%m-%d %H:%M:%S'
+            datefmt='%m-%d %H:%M:%S',
+            log_format_type='simple'
         )
     else: # 'detailed' またはその他の場合
         # 開発環境向けの詳細なフォーマット
-        log_formatter = logging.Formatter(
-            '%(asctime)s - %(levelname)s - [%(name)s:%(lineno)d] - %(message)s'
+        log_formatter = CustomFormatter(
+            '%(asctime)s - %(levelname)s - [%(name)s:%(lineno)d] - %(message)s',
+            log_format_type='detailed'
         )
 
     # 1. 標準出力へのハンドラ
@@ -112,11 +131,12 @@ def setup_logging():
     uvicorn_access_logger = logging.getLogger("uvicorn.access")
     uvicorn_access_logger.addFilter(EndpointFilter(path="/api/logs"))
 
-    # 本番環境(simple)の場合、Playwrightの冗長なログを抑制する
-    if log_format_type == 'simple':
-        playwright_logger = logging.getLogger("playwright")
-        playwright_logger.setLevel(logging.WARNING)
-        # ルートロガーにフィルタを追加して、すべてのログに適用
-        logging.getLogger().addFilter(PlaywrightLogFilter())
+    # Playwrightの冗長なログを抑制する
+    playwright_logger = logging.getLogger("playwright")
+    playwright_logger.setLevel(logging.WARNING)
+
+    # Call logを除去するフィルタを常に追加
+    stream_handler.addFilter(PlaywrightLogFilter(log_format_type))
+    file_handler.addFilter(PlaywrightLogFilter(log_format_type))
 
     logging.debug(f"ロギング設定が完了しました。ログレベル: {log_level_str}, フォーマット: {log_format_type}")
