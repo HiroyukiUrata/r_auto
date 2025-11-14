@@ -105,9 +105,8 @@ class UserPageLiker:
                         if not self.dry_run:
                             time.sleep(11) #ここはちゃんと待たねばならない expect(unliked_button_locator).to_be_enabled(timeout=11000)で代用できるかもしれない
                             
-                    except Exception as e:
-                        error_message = str(e).split("Call log:")[0].strip()
-                        logger.warning(f"  -> いいねクリック中にエラーが発生しました: {error_message}")
+                    except Exception:
+                        logger.warning("  -> いいねクリック中にエラーが発生しました。", exc_info=True)
                         error_count += 1
                     finally:
                         # 成功・失敗にかかわらず、処理したカードは非表示にする
@@ -123,11 +122,11 @@ class UserPageLiker:
                         self.page.locator(spinner_selector).wait_for(state="hidden", timeout=30000)
                         time.sleep(2)
                     except Error:
-                        logger.warning("  -> スピナーが表示されませんでした。ページの終端かもしれません。")
+                        logger.warning("  -> スピナーが表示されませんでした。ページの終端かもしれません。", exc_info=True)
                         time.sleep(2)
 
-        except Exception as e:
-            logger.error(f"ページ巡回いいね処理中に予期せぬエラーが発生しました: {e}")
+        except Exception:
+            logger.error("ページ巡回いいね処理中に予期せぬエラーが発生しました。", exc_info=True)
         finally:
             logger.debug(f"--- ページ巡回いいね処理を完了します ---")
             logger.debug(f"結果: 成功 {liked_count}件, 失敗 {error_count}件")

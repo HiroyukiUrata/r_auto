@@ -144,12 +144,10 @@ class EngageUserTask(BaseTask):
                 #logger.info(f"  -> コメント返しが完了しました。投稿URL: {page.url}")
                 logger.info(f"  -> コメント返しが完了しました。")
             return True
-
-        except PlaywrightError as e:
-            # Call Logを除いたエラーメッセージを生成
-            error_message = str(e).split("Call log:")[0].strip()
-            log_message = f"「コメント返し」中にエラーが発生しました: {error_message}"
-            logger.error(log_message)
+        except PlaywrightError:
+            # Call Logはフィルタで除去されるため、exc_info=Trueで例外情報を渡す
+            log_message = "「コメント返し」中にエラーが発生しました。"
+            logger.error(log_message, exc_info=True)
             update_engagement_error(user_id, log_message)
             self._take_screenshot_on_error(prefix=f"comment_error_{user_id}")
             return False

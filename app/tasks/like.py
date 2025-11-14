@@ -109,8 +109,8 @@ class LikeTask(BaseTask):
                     page.evaluate("window.scrollBy(0, 300)") # 300ピクセル下にスクロール
                     time.sleep(random.uniform(1, 2)) # スクロール後の読み込みを待つ
                     continue 
-                except Exception as e:
-                    logger.error(f"「いいね」クリック中にエラーが発生しました: {e}")
+                except Exception:
+                    logger.error("「いいね」クリック中にエラーが発生しました。", exc_info=True)
                     # エラーが発生しても処理を継続するため、ループを抜ける
                     break
 
