@@ -1560,6 +1560,7 @@ async def update_prompt(prompt_name: str, request: Request):
 async def get_logs(
     start: str | None = None,
     end: str | None = None,
+    level: str | None = None,
 ):
     """
     ログファイルの内容を取得する。
@@ -1572,7 +1573,7 @@ async def get_logs(
         with open(LOG_FILE, "r", encoding="utf-8", errors="ignore") as f:
             lines = f.readlines()
 
-        if not start and not end:
+        if not start and not end and not level:
             return "".join(lines[-1000:]) # フィルターなしの場合は末尾1000行に制限
 
         filtered_lines = []
@@ -1598,6 +1599,15 @@ async def get_logs(
 
                 if start_dt and log_dt < start_dt: continue
                 if end_dt and log_dt > end_dt: continue
+
+                # ログレベルでのフィルタリング
+                if level:
+                    level_upper = level.upper()
+                    line_upper = line.upper()
+                    # 'INFO' のようなフルネームか、'[I]' のような短縮形の両方に対応
+                    short_form = f"[{level_upper[0]}]"
+                    if level_upper not in line_upper and short_form not in line_upper:
+                        continue
                 filtered_lines.append(line)
             except (ValueError, IndexError):
                 # タイムスタンプが期待する形式でない行はスキップ

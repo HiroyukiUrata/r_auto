@@ -62,15 +62,15 @@ def init_db():
         if not is_url_unique:
             logging.warning("productsテーブルのurlカラムにUNIQUE制約がありません。テーブルを再構築します。")
             cursor.execute("ALTER TABLE products RENAME TO products_old")
-            logging.info("既存のテーブルを 'products_old' にリネームしました。")
+            logging.debug("既存のテーブルを 'products_old' にリネームしました。")
             # 新しいテーブルを作成（init_dbの後半で再度実行されるが、ここで定義が必要）
             cursor.execute('''CREATE TABLE products (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, url TEXT NOT NULL UNIQUE, image_url TEXT, post_url TEXT, ai_caption TEXT, procurement_keyword TEXT, status TEXT NOT NULL DEFAULT '生情報取得', error_message TEXT, created_at TIMESTAMP, post_url_updated_at TIMESTAMP, ai_caption_created_at TIMESTAMP, posted_at TIMESTAMP)''')
-            logging.info("新しい 'products' テーブルを作成しました。")
+            logging.debug("新しい 'products' テーブルを作成しました。")
             # 古いテーブルから新しいテーブルへデータをコピー（重複URLは無視される）
             cursor.execute("INSERT OR IGNORE INTO products(id, name, url, image_url, post_url, ai_caption, procurement_keyword, status, created_at, post_url_updated_at, ai_caption_created_at, posted_at) SELECT id, name, url, image_url, post_url, ai_caption, NULL, status, created_at, post_url_updated_at, ai_caption_created_at, posted_at FROM products_old")
-            logging.info("データを新しいテーブルにコピーしました。")
+            logging.debug("データを新しいテーブルにコピーしました。")
             cursor.execute("DROP TABLE products_old")
-            logging.info("'products_old' テーブルを削除しました。")
+            logging.debug("'products_old' テーブルを削除しました。")
 
         # --- カラム存在チェックと追加（マイグレーション処理） ---
         # 他の処理よりも先に実行することで、古いDBスキーマでもエラーなく動作するようにする
@@ -82,7 +82,7 @@ def init_db():
                     cursor.execute(f"ALTER TABLE products ADD COLUMN {column_name} {column_type}")
                     if update_query:
                         cursor.execute(update_query)
-                    logging.info(f"productsテーブルに '{column_name}' カラムを追加しました。")
+                    logging.debug(f"productsテーブルに '{column_name}' カラムを追加しました。")
                 except sqlite3.Error as e:
                     logging.error(f"'{column_name}' カラムの追加に失敗しました: {e}")
 
@@ -93,7 +93,7 @@ def init_db():
             if column_name not in columns:
                 try:
                     cursor.execute(f"ALTER TABLE user_engagement ADD COLUMN {column_name} {column_type}")
-                    logging.info(f"user_engagementテーブルに '{column_name}' カラムを追加しました。")
+                    logging.debug(f"user_engagementテーブルに '{column_name}' カラムを追加しました。")
                 except sqlite3.Error as e:
                     logging.error(f"'{column_name}' カラムの追加に失敗しました: {e}")
 
@@ -143,7 +143,7 @@ def init_db():
             )
         ''')
         add_column_to_engagement_if_not_exists(cursor, 'last_engagement_error', 'TEXT')
-        logging.info("user_engagementテーブルが正常に初期化されました。")
+        logging.debug("user_engagementテーブルが正常に初期化されました。")
 
         add_column_to_engagement_if_not_exists(cursor, 'ai_prompt_updated_at', 'TEXT')
         add_column_to_engagement_if_not_exists(cursor, 'comment_generated_at', 'TEXT')
@@ -156,7 +156,7 @@ def init_db():
             if column_name not in columns:
                 try:
                     cursor.execute(f"ALTER TABLE my_post_comments ADD COLUMN {column_name} {column_type}")
-                    logging.info(f"my_post_commentsテーブルに '{column_name}' カラムを追加しました。")
+                    logging.debug(f"my_post_commentsテーブルに '{column_name}' カラムを追加しました。")
                 except sqlite3.Error as e:
                     logging.error(f"'{column_name}' カラムの追加に失敗しました: {e}")
 
@@ -179,7 +179,7 @@ def init_db():
                 UNIQUE (user_image_url, post_timestamp)
             )
         ''')
-        logging.info("my_post_commentsテーブルが正常に初期化されました。")
+        logging.debug("my_post_commentsテーブルが正常に初期化されました。")
 
         # --- my_post_comments テーブルのマイグレーション ---
         # 過去のバージョンでDBが作成された場合でも、カラムがなければ追加する
@@ -198,7 +198,7 @@ def init_db():
             cursor.execute(f"SELECT id, {col} FROM products WHERE {col} LIKE '____-__-__ __:__:__'")
             records_to_update = cursor.fetchall()
             if records_to_update:
-                logging.info(f"'{col}' カラムの古いタイムスタンプ形式をISO 8601に変換します... (対象: {len(records_to_update)}件)")
+                logging.debug(f"'{col}' カラムの古いタイムスタンプ形式をISO 8601に変換します... (対象: {len(records_to_update)}件)")
                 updates = []
                 for row in records_to_update:
                     try:
@@ -213,7 +213,7 @@ def init_db():
 
         conn.commit()
         conn.close()
-        logging.info("データベースが正常に初期化されました。")
+        logging.debug("データベースが正常に初期化されました。")
     except sqlite3.Error as e:
         logging.error(f"データベース初期化エラー: {e}")
 def get_error_products_in_last_24h():
@@ -786,7 +786,7 @@ def update_reply_text(comment_id: int, new_text: str):
         cursor = conn.cursor()
         cursor.execute("UPDATE my_post_comments SET reply_text = ? WHERE id = ?", (new_text, comment_id))
         conn.commit()
-        logging.info(f"コメント(ID: {comment_id})の返信テキストを更新しました。")
+        logging.debug(f"コメント(ID: {comment_id})の返信テキストを更新しました。")
     finally:
         conn.close()
 
@@ -801,7 +801,7 @@ def ignore_reply(comment_id: int):
         now_jst_iso = datetime.now(timezone(timedelta(hours=9))).isoformat()
         cursor.execute("UPDATE my_post_comments SET reply_text = '[SKIPPED]', reply_generated_at = ? WHERE id = ?", (now_jst_iso, comment_id,))
         conn.commit()
-        logging.info(f"コメント(ID: {comment_id})を返信対象から除外しました。")
+        logging.debug(f"コメント(ID: {comment_id})を返信対象から除外しました。")
     finally:
         conn.close()
 
@@ -821,7 +821,7 @@ def mark_replies_as_posted(comment_ids: list[int]):
         query = f"UPDATE my_post_comments SET reply_posted_at = ? WHERE id IN ({placeholders})"
         cursor.execute(query, [now_jst_iso] + comment_ids)
         conn.commit()
-        logging.info(f"{cursor.rowcount}件のコメントを「投稿済み」として日時を更新しました。")
+        logging.debug(f"{cursor.rowcount}件のコメントを「投稿済み」として日時を更新しました。")
         return cursor.rowcount
     finally:
         conn.close()

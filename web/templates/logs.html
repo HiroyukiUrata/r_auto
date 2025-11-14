@@ -1,55 +1,25 @@
 {% extends "base.html" %}
 
 {% block title %}ログ確認 - R-Auto Control Panel{% endblock %}
-
-{% block content %}
-<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-    <h1 class="h2">ログ確認</h1>
-</div>
-
-<!-- 期間指定フィルター -->
-<div class="row g-2 align-items-center mb-3">
-    <div class="col-auto">
-        <label for="start-datetime" class="col-form-label">開始日時</label>
-    </div>
-    <div class="col-auto">
-        <input type="datetime-local" id="start-datetime" class="form-control form-control-sm">
-    </div>
-    <div class="col-auto">
-        <label for="end-datetime" class="col-form-label">終了日時</label>
-    </div>
-    <div class="col-auto">
-        <input type="datetime-local" id="end-datetime" class="form-control form-control-sm">
-    </div>
-    <div class="col-auto">
-        <button class="btn btn-sm btn-primary" id="filter-btn">表示</button>
-        <button class="btn btn-sm btn-outline-secondary" id="reset-btn">リセット</button>
-    </div>
-</div>
-
-<div id="log-container" class="bg-dark text-light p-3 rounded" style="height: 70vh; overflow-y: auto; font-family: monospace; white-space: pre-wrap; word-wrap: break-word; font-size: 0.8rem;">
-    <p>ログを読み込んでいます...</p>
-</div>
-
-<!-- フローティングコントロール -->
-<div id="floating-controls" class="p-2 bg-light border rounded-pill shadow-sm">
-    <div class="form-check form-switch d-inline-block me-2 align-middle">
-        <input class="form-check-input" type="checkbox" role="switch" id="auto-scroll-switch">
-        <label class="form-check-label" for="auto-scroll-switch">自動スクロール</label>
-    </div>
-    <button type="button" class="btn btn-sm btn-outline-secondary rounded-circle" id="refresh-btn" title="手動で更新" style="width: 32px; height: 32px; line-height: 1;">
-        <i class="bi bi-arrow-clockwise"></i>
-    </button>
-</div>
-
-<!-- 画面右下に表示する「一番上に戻る」ボタン -->
-<button type="button" class="btn btn-primary rounded-circle" id="scroll-to-top-btn" title="一番上に戻る">
-    <i class="bi bi-arrow-up"></i>
-</button>
-{% endblock %}
-
 {% block styles %}
 <style>
+    #log-header {
+        position: sticky;
+        top: 56px; /* navbarの高さに合わせる */
+        z-index: 1020; /* navbar(1030)より低い値 */
+        background-color: #f8f9fa; /* 背景色 */
+        padding-top: 0.75rem;
+        padding-bottom: 0.75rem;
+        border-bottom: 1px solid #dee2e6;
+    }
+    #log-container {
+        height: calc(100vh - 200px); /* ヘッダーとフッターの高さを考慮して調整 */
+        overflow-y: auto;
+        font-family: monospace;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+        font-size: 0.8rem;
+    }
     #scroll-to-top-btn {
         position: fixed;
         bottom: 20px;
@@ -62,26 +32,78 @@
     }
     #floating-controls {
         position: fixed;
-        top: 80px; /* ヘッダーの高さに応じて調整 */
-        right: 20px;
-        z-index: 1000; /* navbar(1030)より低い値に設定 */
+        bottom: 20px;
+        left: 20px;
+        z-index: 1050;
         display: flex;
         align-items: center;
     }
 </style>
 {% endblock %}
+{% block content %}
+<div id="log-header">
+    <div class="container-fluid">
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 gap-md-3">
+            <div class="d-flex align-items-center gap-3">
+                <h1 class="h4 mb-0">ログ確認</h1>
+                <div class="form-check form-switch d-inline-block align-middle">
+                    <input class="form-check-input" type="checkbox" role="switch" id="auto-scroll-switch">
+                    <label class="form-check-label" for="auto-scroll-switch">自動スクロール</label>
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-secondary rounded-circle" id="manual-refresh-btn" title="手動で更新" style="width: 32px; height: 32px; line-height: 1;"><i class="bi bi-arrow-clockwise"></i></button>
+            </div>
+            <div class="d-flex flex-wrap align-items-center gap-2 gap-md-3">
+                <div class="d-flex align-items-center gap-2">
+                    <input type="datetime-local" id="start-datetime" class="form-control form-control-sm" style="width: auto;">
+                    <span class="text-muted d-none d-md-inline">～</span>
+                    <input type="datetime-local" id="end-datetime" class="form-control form-control-sm" style="width: auto;">
+                </div>
+                <div class="btn-group btn-group-sm" role="group" aria-label="Time shift buttons">
+                    <button type="button" class="btn btn-outline-secondary" id="prev-day-btn" title="1日前に移動">«</button>
+                    <button type="button" class="btn btn-outline-secondary" id="prev-hour-btn" title="1時間前に移動">-1h</button>
+                    <button type="button" class="btn btn-outline-secondary" id="next-hour-btn" title="1時間後に移動">+1h</button>
+                    <button type="button" class="btn btn-outline-secondary" id="next-day-btn" title="1日後に移動">»</button>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <select id="level-select" class="form-select form-select-sm" style="width: auto;">
+                        <option value="all" selected>すべて</option>
+                        <option value="INFO">INFO</option>
+                        <option value="WARN">WARN</option>
+                        <option value="ERROR">ERROR</option>
+                    </select>
+                    <button class="btn btn-sm btn-primary" id="filter-btn" title="表示"><i class="bi bi-funnel"></i></button>
+                    <button class="btn btn-sm btn-outline-secondary" id="reset-btn" title="リセット"><i class="bi bi-arrow-counterclockwise"></i></button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 
+<div id="log-container" class="bg-dark text-light p-3 rounded mt-3">
+    <p>ログを読み込んでいます...</p>
+</div>
+
+<!-- 画面右下に表示する「一番上に戻る」ボタン -->
+<button type="button" class="btn btn-primary rounded-circle" id="scroll-to-top-btn" title="一番上に戻る">
+    <i class="bi bi-arrow-up"></i>
+</button>
+{% endblock %}
 {% block scripts %}
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         const logContainer = document.getElementById('log-container');
-        const refreshBtn = document.getElementById('refresh-btn');
+        const manualRefreshBtn = document.getElementById('manual-refresh-btn');
         const scrollToTopBtn = document.getElementById('scroll-to-top-btn');
         const autoScrollSwitch = document.getElementById('auto-scroll-switch');
         const startDatetimeInput = document.getElementById('start-datetime');
         const endDatetimeInput = document.getElementById('end-datetime');
         const filterBtn = document.getElementById('filter-btn');
         const resetBtn = document.getElementById('reset-btn');
+        const prevDayBtn = document.getElementById('prev-day-btn');
+        const nextDayBtn = document.getElementById('next-day-btn');
+        const prevHourBtn = document.getElementById('prev-hour-btn');
+        const nextHourBtn = document.getElementById('next-hour-btn');
+        const levelSelect = document.getElementById('level-select');
         let refreshIntervalId = null;
 
         function setDefaultDateTimes() {
@@ -102,12 +124,18 @@
                 const start = startDatetimeInput.value;
                 const end = endDatetimeInput.value;
                 let url = '/api/logs';
+
+                const selectedLevel = levelSelect.value;
+
                 const params = new URLSearchParams();
                 if (start) {
                     params.append('start', start);
                 }
                 if (end) {
                     params.append('end', end);
+                }
+                if (selectedLevel && selectedLevel !== 'all') {
+                    params.append('level', selectedLevel);
                 }
                 if (applyFilter && params.toString()) {
                     url += `?${params.toString()}`;
@@ -153,7 +181,7 @@
         }
 
         // 更新ボタンのクリックイベント
-        refreshBtn.addEventListener('click', () => {
+        manualRefreshBtn.addEventListener('click', () => {
             // 手動更新時はフィルターを適用しない
             fetchLogs(false);
         });
@@ -171,8 +199,65 @@
         resetBtn.addEventListener('click', () => {
             // 日時入力欄を当日の範囲にリセットする
             setDefaultDateTimes();
-            fetchLogs(false); // リセット時はフィルターを適用しない
+            // ログレベルを「すべて」に戻す
+            levelSelect.value = 'all';
+            // リセット時はフィルターを適用せず、全ログを表示
+            fetchLogs(false);
         });
+
+        // 日時操作ボタンのイベントリスナー
+        function shiftDateTime(hours) {
+            // タイムゾーンの問題を避けるため、入力値をローカルタイムとして明示的に解釈
+            const currentStart = new Date(startDatetimeInput.value.replace('T', ' '));
+
+            // 時間をずらす
+            currentStart.setHours(currentStart.getHours() + hours);
+
+            // 分を00に設定
+            currentStart.setMinutes(0);
+            // toISOString() はUTCに変換してしまうため、手動でフォーマットする
+            const newStartStr = `${currentStart.getFullYear()}-${(currentStart.getMonth() + 1).toString().padStart(2, '0')}-${currentStart.getDate().toString().padStart(2, '0')}T${currentStart.getHours().toString().padStart(2, '0')}:00`;
+
+            // 終了時刻は開始時刻の59分後に設定
+            currentStart.setMinutes(59);
+            const newEndStr = `${currentStart.getFullYear()}-${(currentStart.getMonth() + 1).toString().padStart(2, '0')}-${currentStart.getDate().toString().padStart(2, '0')}T${currentStart.getHours().toString().padStart(2, '0')}:59`;
+
+            startDatetimeInput.value = newStartStr;
+            endDatetimeInput.value = newEndStr;
+            fetchLogs(true);
+        }
+
+        // 日付を1日単位で操作する関数
+        function shiftDate(days) {
+            const currentStart = new Date(startDatetimeInput.value);
+
+            // 日付をずらす
+            currentStart.setDate(currentStart.getDate() + days);
+
+            // 時間を 00:00 に設定
+            const newStartStr = `${currentStart.getFullYear()}-${(currentStart.getMonth() + 1).toString().padStart(2, '0')}-${currentStart.getDate().toString().padStart(2, '0')}T00:00`;
+
+            // 終了日時は開始日時と同じ日の 23:59 に設定
+            const newEndStr = `${currentStart.getFullYear()}-${(currentStart.getMonth() + 1).toString().padStart(2, '0')}-${currentStart.getDate().toString().padStart(2, '0')}T23:59`;
+
+            startDatetimeInput.value = newStartStr;
+            endDatetimeInput.value = newEndStr;
+
+            fetchLogs(true);
+        }
+
+        prevDayBtn.addEventListener('click', () => shiftDate(-1));
+        nextDayBtn.addEventListener('click', () => shiftDate(1));
+        prevHourBtn.addEventListener('click', () => shiftDateTime(-1));
+        nextHourBtn.addEventListener('click', () => shiftDateTime(1));
+
+        // ログレベル選択の変更イベント
+        levelSelect.addEventListener('change', () => {
+            // フィルターが変更されたら自動更新と自動スクロールをオフにする
+            if (autoScrollSwitch.checked) autoScrollSwitch.click();
+            fetchLogs(true);
+        });
+
         // 自動スクロールスイッチのイベント
         autoScrollSwitch.addEventListener('change', function() {
             if (this.checked) {
@@ -181,12 +266,16 @@
                 startDatetimeInput.disabled = true;
                 endDatetimeInput.disabled = true;
                 filterBtn.disabled = true;
+                document.querySelectorAll('.btn-group .btn').forEach(b => b.disabled = true);
+                levelSelect.disabled = true;
                 startAutoRefresh(); // 自動更新を開始
             } else {
                 // フィルター関連のUIを有効化
                 startDatetimeInput.disabled = false;
                 endDatetimeInput.disabled = false;
                 filterBtn.disabled = false;
+                document.querySelectorAll('.btn-group .btn').forEach(b => b.disabled = false);
+                levelSelect.disabled = false;
                 stopAutoRefresh(); // 自動更新を停止
             }
         });
