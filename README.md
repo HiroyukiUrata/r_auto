@@ -8,9 +8,22 @@
 
 `run_task.py` を使用することで、コンテナやVNCを起動することなく、使い慣れたローカル環境でブラウザを操作し、タスクの動作を確認できます。
 
-### 初期セットアップ
+### 1. 初期セットアップ
 
-ローカルでPlaywrightタスクを実行するには、操作対象のブラウザが必要です。以下のコマンドを一度だけ実行してください。
+#### 1.1. プロンプトファイルの準備
+
+まず、プロンプトのテンプレートファイルから、実際に使用する設定ファイルをコピーします。
+（これらの `.txt` ファイルは `.gitignore` によってGitの管理対象から除外されているため、各環境で安全にカスタマイズできます。）
+
+```bash
+cp app/prompts/user_comment_prompt.txt.template app/prompts/user_comment_prompt.txt
+cp app/prompts/caption_prompt.txt.template app/prompts/caption_prompt.txt
+cp app/prompts/reply_to_comment_prompt.txt.template app/prompts/reply_to_comment_prompt.txt
+```
+
+#### 1.2. ブラウザのインストール
+
+次に、Playwrightが操作するブラウザをインストールします。このコマンドは初回のみでOKです。
 
 ```bash
 playwright install
@@ -18,7 +31,7 @@ playwright install
 
 ### 基本的な使い方
 
-プロジェクトのルートディレクトリで、以下の形式でコマンドを実行します。
+プロジェクトのルートディレクトリで、以下の形式でコマンドを実行してください。
 
 ```bash
 python run_task.py [タスク名] --[引数名1] [値1] --[引数名2] [値2] ...

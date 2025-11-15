@@ -24,3 +24,7 @@ docker-compose.override.yml
 test/ # testディレクトリ全体を無視
 test_scripts/screenshots/ # test_scripts内のscreenshotsディレクトリを無視
 test_scripts/output/
+
+# app/prompts/ 内の .txt ファイルは各環境でカスタマイズするため、Gitの管理対象から外す
+# .template ファイルは雛形としてGitで管理する
+app/prompts/*.txt
