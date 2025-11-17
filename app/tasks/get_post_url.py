@@ -13,7 +13,7 @@ class GetPostUrlTask(BaseTask):
         # このタスクはDBから全件取得するため、countは不要
         super().__init__(count=None)
         self.action_name = "投稿URL取得"
-        self.use_auth_profile = False # 認証プロファイルは不要
+        self.use_auth_profile = True # 認証プロファイルは不要
 
     def _execute_main_logic(self):
         products = get_products_for_post_url_acquisition()

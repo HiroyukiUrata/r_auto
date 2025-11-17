@@ -133,7 +133,7 @@ class ProcureFromUserPageTask(BaseTask):
     def __init__(self, count: int = 50):
         super().__init__(count=count)
         self.action_name = "ユーザーページから商品を調達"
-        self.use_auth_profile = False # 認証プロファイルは不要
+        self.use_auth_profile = True # 認証プロファイルは不要
 
     def _execute_main_logic(self):
         source_url = get_next_source_url()
