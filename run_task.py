@@ -28,7 +28,8 @@ def main():
     kwargs = {}
     i = 0
     while i < len(unknown):
-        key = unknown[i].lstrip('-')
+        # --use-auth のような引数を use_auth のようにアンダースコアに変換する
+        key = unknown[i].lstrip('-').replace('-', '_')
         # 値が続く場合（--key value）と、フラグのみの場合（--flag）を考慮
         if i + 1 < len(unknown) and not unknown[i+1].startswith('--'):
             value = unknown[i+1]
