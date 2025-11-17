@@ -32,6 +32,7 @@ def init_db():
                 url TEXT NOT NULL, -- UNIQUE制約は後で確認・適用する
                 image_url TEXT,
                 post_url TEXT,
+                shop_name TEXT,
                 procurement_keyword TEXT,
                 ai_caption TEXT,
                 status TEXT NOT NULL DEFAULT '生情報取得', -- 生情報取得, URL取得済, 投稿文作成済, 投稿準備完了, 投稿済, エラー
@@ -64,10 +65,10 @@ def init_db():
             cursor.execute("ALTER TABLE products RENAME TO products_old")
             logging.debug("既存のテーブルを 'products_old' にリネームしました。")
             # 新しいテーブルを作成（init_dbの後半で再度実行されるが、ここで定義が必要）
-            cursor.execute('''CREATE TABLE products (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, url TEXT NOT NULL UNIQUE, image_url TEXT, post_url TEXT, ai_caption TEXT, procurement_keyword TEXT, status TEXT NOT NULL DEFAULT '生情報取得', error_message TEXT, created_at TIMESTAMP, post_url_updated_at TIMESTAMP, ai_caption_created_at TIMESTAMP, posted_at TIMESTAMP)''')
+            cursor.execute('''CREATE TABLE products (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, url TEXT NOT NULL UNIQUE, image_url TEXT, post_url TEXT, shop_name TEXT, ai_caption TEXT, procurement_keyword TEXT, status TEXT NOT NULL DEFAULT '生情報取得', error_message TEXT, created_at TIMESTAMP, post_url_updated_at TIMESTAMP, ai_caption_created_at TIMESTAMP, posted_at TIMESTAMP)''')
             logging.debug("新しい 'products' テーブルを作成しました。")
             # 古いテーブルから新しいテーブルへデータをコピー（重複URLは無視される）
-            cursor.execute("INSERT OR IGNORE INTO products(id, name, url, image_url, post_url, ai_caption, procurement_keyword, status, created_at, post_url_updated_at, ai_caption_created_at, posted_at) SELECT id, name, url, image_url, post_url, ai_caption, NULL, status, created_at, post_url_updated_at, ai_caption_created_at, posted_at FROM products_old")
+            cursor.execute("INSERT OR IGNORE INTO products(id, name, url, image_url, post_url, ai_caption, procurement_keyword, status, error_message, created_at, post_url_updated_at, ai_caption_created_at, posted_at) SELECT id, name, url, image_url, post_url, ai_caption, procurement_keyword, status, error_message, created_at, post_url_updated_at, ai_caption_created_at, posted_at FROM products_old")
             logging.debug("データを新しいテーブルにコピーしました。")
             cursor.execute("DROP TABLE products_old")
             logging.debug("'products_old' テーブルを削除しました。")
@@ -114,6 +115,7 @@ def init_db():
 
         # 優先度カラムを追加
         add_column_if_not_exists(cursor, 'priority', 'INTEGER', "UPDATE products SET priority = 0")
+        add_column_if_not_exists(cursor, 'shop_name', 'TEXT')
         # `proNOWucts` のタイプミスがあった行は削除
 
         # --- user_engagement テーブルの作成 ---
@@ -385,14 +387,14 @@ def get_all_keywords() -> list[dict]:
         logging.error(f"キーワードファイルの読み込みまたは解析に失敗しました: {e}")
         return []
 
-def update_post_url(product_id, post_url):
+def update_post_url(product_id, post_url, shop_name=None):
     """指定された商品の投稿URLと更新日時を更新し、ステータスを「URL取得済」に変更する"""
     conn = get_db_connection()
     try:
         # JSTのタイムゾーンを定義
         jst = timezone(timedelta(hours=9))
         now_jst_iso = datetime.now(jst).isoformat()
-        conn.execute("UPDATE products SET post_url = ?, post_url_updated_at = ?, status = 'URL取得済' WHERE id = ?", (post_url, now_jst_iso, product_id))
+        conn.execute("UPDATE products SET post_url = ?, shop_name = ?, post_url_updated_at = ?, status = 'URL取得済' WHERE id = ?", (post_url, shop_name, now_jst_iso, product_id))
         conn.commit()
         logging.debug(f"商品ID: {product_id} の投稿URLを更新し、ステータスを「URL取得済」に変更しました。")
     finally:

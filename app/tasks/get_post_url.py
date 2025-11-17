@@ -39,6 +39,15 @@ class GetPostUrlTask(BaseTask):
                 post_url = post_link_locator.get_attribute('href')
 
                 if post_url:
+                    # <title>からショップ名を取得
+                    shop_name = ""
+                    try:
+                        title = page.title()
+                        if '：' in title:
+                            shop_name = title.split('：')[-1].strip()
+                    except Exception as title_ex:
+                        logging.warning(f"  -> 商品ID: {product['id']} のショップ名取得中にエラー: {title_ex}")
+
                     # DB内でpost_urlが重複していないかチェック
                     if product_exists_by_post_url(post_url):
                         error_msg = f"取得した投稿URLがDB内で重複しています: {post_url}"
@@ -46,8 +55,9 @@ class GetPostUrlTask(BaseTask):
                         update_product_status(product['id'], 'エラー', error_message=error_msg)
                         error_count += 1
                     else:
-                        logging.debug(f"  -> 投稿URL取得成功: {post_url}")
-                        update_post_url(product['id'], post_url)
+                        log_msg = f"投稿URL取得成功: {post_url}" + (f" (ショップ: {shop_name})" if shop_name else "")
+                        logging.debug(f"  -> {log_msg}")
+                        update_post_url(product['id'], post_url, shop_name=shop_name)
                         success_count += 1
                 else:
                     update_product_status(product['id'], 'エラー', error_message="投稿URLの取得に失敗しました。")
