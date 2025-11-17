@@ -3,16 +3,19 @@ import json
 import os
 import random
 import time
-from playwright.sync_api import Page
+from playwright.sync_api import Page, Error
 from app.core.database import product_exists_by_url, init_db
 from app.tasks.import_products import process_and_import_products
 from app.utils.selector_utils import convert_to_robust_selector
 
 # --- 設定 ---
 # テストで処理する目標件数
-TARGET_COUNT = 50
+TARGET_COUNT = 1
 # テスト対象のURL（固定）
 SOURCE_URL = "https://room.rakuten.co.jp/room_79a45994e0/items"
+
+# --- 新しいDB更新関数をインポート ---
+from app.core.database import update_room_url_by_rakuten_url
 
 logger = logging.getLogger(__name__)
 
@@ -23,10 +26,13 @@ def run_test(page: Page):
     logger.info("--- Masonryレイアウト ループ処理テストを開始します ---")
     
     # データベースを初期化（必要に応じて）
-    # init_db()
+    init_db()
 
     logger.info(f"対象URL: 「{SOURCE_URL}」")
     logger.info(f"処理目標件数: {TARGET_COUNT}件")
+
+    # 処理済みのカードの画像srcを記録するためのセット
+    globally_processed_srcs = set()
 
     processed_count = 0
     try:
@@ -53,14 +59,17 @@ def run_test(page: Page):
             
             visible_unprocessed_cards_with_bbox = []
             for card_loc in all_cards_on_page:
-                # is_visible() は要素がDOMにあり、表示されているかを確認
-                # evaluate() で data-processed 属性の有無を確認
-                if card_loc.is_visible() and not card_loc.evaluate("node => node.hasAttribute('data-processed')"):
+                # is_visible() は要素がDOMにあり、表示されているかを確認する
+                if card_loc.is_visible():
+                    # 画像のsrcを取得し、処理済みでないかチェック
+                    image_src = card_loc.locator('img').first.get_attribute('src')
+                    if not image_src or image_src in globally_processed_srcs:
+                        continue
+
                     # ピン留めされているかチェック
                     if card_loc.locator(pin_icon_selector).count() > 0:
                         logger.debug("  -> ピン留めされたカードを発見しました。処理対象外とします。")
-                        # 処理済みマークを付けて、次回以降のループで無視するようにする
-                        card_loc.evaluate("node => node.setAttribute('data-processed', 'true')")
+                        globally_processed_srcs.add(image_src) # 処理済みとして記録
                         continue # このカードはスキップ
 
                     bbox = card_loc.bounding_box()
@@ -108,48 +117,61 @@ def run_test(page: Page):
             # 3. 視覚的に最も左上にある未処理のカードを処理対象とする
             target_card = visible_unprocessed_cards_with_bbox[0][0] # Locatorオブジェクトを取得
 
-            # 処理済みのマークを付ける
-            target_card.evaluate("node => node.setAttribute('data-processed', 'true')")
+            # 処理済みとしてマークするために画像srcを取得してセットに追加
+            try:
+                image_src_to_process = target_card.locator('img').first.get_attribute('src')
+                globally_processed_srcs.add(image_src_to_process)
+            except Exception as e:
+                logger.warning(f"カードの画像src取得に失敗しました。このカードをスキップします。エラー: {e}")
+                continue
 
             # --- ここに、カードに対する具体的な処理を記述します ---
             # 例: ハイライト、情報取得、クリックなど
             
-            # カードにハイライトと番号を付与する
-            color = highlight_colors[processed_count % len(highlight_colors)]
-            number_to_display = processed_count + 1
-            target_card.evaluate("""
-                (node, args) => {
-                    const randomTop = Math.floor(Math.random() * 50) + 5; // 5%から55%の範囲
-                    const randomLeft = Math.floor(Math.random() * 70) + 5; // 5%から75%の範囲
-    
-                    // ハイライト用の枠線
-                    node.style.border = `5px solid ${args.color}`;
-                    node.style.position = 'relative'; // 番号を配置するための基準
-    
-                    // 番号表示用の要素を作成
-                    const numberDiv = document.createElement('div');
-                    numberDiv.textContent = args.number;
-                    Object.assign(numberDiv.style, {
-                        position: 'absolute',
-                        top: `${randomTop}%`,
-                        left: `${randomLeft}%`,
-                        backgroundColor: args.color, color: 'white',
-                        width: '30px', height: '30px', borderRadius: '50%',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontSize: '16px', fontWeight: 'bold', zIndex: '1000'
-                    });
-                    node.appendChild(numberDiv);
-                }
-            """, {"color": color, "number": number_to_display})
+            page_transitioned = False
+            try:
+                number_to_display = processed_count + 1
+                logger.info(f"  [{number_to_display}/{TARGET_COUNT}] カードをクリックして詳細ページに遷移します...")
+                
+                # カード内の画像リンクをクリックしてページ遷移
+                image_link_selector = convert_to_robust_selector("a[class*='link-image--']")
+                target_card.locator(image_link_selector).first.click()
+                page.wait_for_load_state("domcontentloaded", timeout=20000)
+                page_transitioned = True # ページ遷移が成功したことを記録
+                
+                # 1. 詳細ページのURLを取得
+                detail_page_url = page.url
+                logger.info(f"    -> 詳細ページURL取得: {detail_page_url}")
 
-            # カードのテキストラベルを取得してログに出力
-            card_label_full = target_card.inner_text().replace('\n', ' ').strip()
-            card_label_full = " ".join(card_label_full.split())
-            card_label_short = (card_label_full[:10] + '...') if len(card_label_full) > 10 else card_label_full
-            
-            logger.info(f"  [{number_to_display}/{TARGET_COUNT}] カードをハイライトし、番号 {number_to_display} を振りました。 -> {card_label_short}")
+                # 2. 「楽天市場で見る」ボタンのURLを取得
+                rakuten_link_selector = convert_to_robust_selector('div[class*="ichiba-in-page--"] a')
+                rakuten_link_element = page.locator(rakuten_link_selector).first
+                rakuten_link_element.wait_for(state="visible", timeout=15000)
+                rakuten_url = rakuten_link_element.get_attribute('href')
+                if rakuten_url:
+                    logger.info(f"    -> 楽天市場URL取得: {rakuten_url[:60]}...")
+                else:
+                    logger.warning("    -> 楽天市場URLの取得に失敗しました。")
+
+            except Error as detail_page_error:
+                logger.error(f"  -> 詳細ページの処理中にエラーが発生しました: {detail_page_error}", exc_info=True)
+            finally:
+                # ページ遷移が成功していた場合のみ、ブラウザバックを実行
+                if page_transitioned:
+                    logger.debug("  -> 一覧ページに戻ります...")
+                    page.go_back(wait_until="domcontentloaded")
+                    # Masonryレイアウトが再描画されるのを待つ
+                    page.wait_for_timeout(2000)
+                else:
+                    logger.warning("  -> ページ遷移が失敗したため、ブラウザバックは行いません。")
+
+            # --- ★★★ DB更新処理を追加 ★★★ ---
+            if rakuten_url and detail_page_url:
+                logger.debug(f"  -> DBのroom_urlを更新します (キー: {rakuten_url[:40]}...)")
+                update_room_url_by_rakuten_url(rakuten_url, detail_page_url)
+
             # ----------------------------------------------------
-    
+            
             processed_count += 1
 
     except Exception as e:

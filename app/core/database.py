@@ -1,6 +1,7 @@
 import sqlite3
 import logging
 import os
+import urllib.parse
 import json
 from datetime import datetime, timezone, timedelta
 
@@ -32,6 +33,7 @@ def init_db():
                 url TEXT NOT NULL, -- UNIQUE制約は後で確認・適用する
                 image_url TEXT,
                 post_url TEXT,
+                room_url TEXT,
                 shop_name TEXT,
                 procurement_keyword TEXT,
                 ai_caption TEXT,
@@ -65,10 +67,10 @@ def init_db():
             cursor.execute("ALTER TABLE products RENAME TO products_old")
             logging.debug("既存のテーブルを 'products_old' にリネームしました。")
             # 新しいテーブルを作成（init_dbの後半で再度実行されるが、ここで定義が必要）
-            cursor.execute('''CREATE TABLE products (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, url TEXT NOT NULL UNIQUE, image_url TEXT, post_url TEXT, shop_name TEXT, ai_caption TEXT, procurement_keyword TEXT, status TEXT NOT NULL DEFAULT '生情報取得', error_message TEXT, created_at TIMESTAMP, post_url_updated_at TIMESTAMP, ai_caption_created_at TIMESTAMP, posted_at TIMESTAMP)''')
+            cursor.execute('''CREATE TABLE products (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, url TEXT NOT NULL UNIQUE, image_url TEXT, post_url TEXT, room_url TEXT, shop_name TEXT, ai_caption TEXT, procurement_keyword TEXT, status TEXT NOT NULL DEFAULT '生情報取得', error_message TEXT, created_at TIMESTAMP, post_url_updated_at TIMESTAMP, ai_caption_created_at TIMESTAMP, posted_at TIMESTAMP)''')
             logging.debug("新しい 'products' テーブルを作成しました。")
             # 古いテーブルから新しいテーブルへデータをコピー（重複URLは無視される）
-            cursor.execute("INSERT OR IGNORE INTO products(id, name, url, image_url, post_url, ai_caption, procurement_keyword, status, error_message, created_at, post_url_updated_at, ai_caption_created_at, posted_at) SELECT id, name, url, image_url, post_url, ai_caption, procurement_keyword, status, error_message, created_at, post_url_updated_at, ai_caption_created_at, posted_at FROM products_old")
+            cursor.execute("INSERT OR IGNORE INTO products(id, name, url, image_url, post_url, room_url, ai_caption, procurement_keyword, status, error_message, created_at, post_url_updated_at, ai_caption_created_at, posted_at) SELECT id, name, url, image_url, post_url, NULL, ai_caption, procurement_keyword, status, error_message, created_at, post_url_updated_at, ai_caption_created_at, posted_at FROM products_old")
             logging.debug("データを新しいテーブルにコピーしました。")
             cursor.execute("DROP TABLE products_old")
             logging.debug("'products_old' テーブルを削除しました。")
@@ -116,6 +118,7 @@ def init_db():
         # 優先度カラムを追加
         add_column_if_not_exists(cursor, 'priority', 'INTEGER', "UPDATE products SET priority = 0")
         add_column_if_not_exists(cursor, 'shop_name', 'TEXT')
+        add_column_if_not_exists(cursor, 'room_url', 'TEXT')
         # `proNOWucts` のタイプミスがあった行は削除
 
         # --- user_engagement テーブルの作成 ---
@@ -397,6 +400,53 @@ def update_post_url(product_id, post_url, shop_name=None):
         conn.execute("UPDATE products SET post_url = ?, shop_name = ?, post_url_updated_at = ?, status = 'URL取得済' WHERE id = ?", (post_url, shop_name, now_jst_iso, product_id))
         conn.commit()
         logging.debug(f"商品ID: {product_id} の投稿URLを更新し、ステータスを「URL取得済」に変更しました。")
+    finally:
+        conn.close()
+
+def extract_pc_param(url: str) -> str | None:
+    """
+    URLから'?pc='以降の文字列を、デコードせずにそのまま抽出する。
+    """
+    try:
+        # '?pc='で分割し、その後ろの部分を返す
+        return url.split('?pc=')[1]
+    except IndexError:
+        return None
+
+def update_room_url_by_rakuten_url(rakuten_url: str, room_url: str):
+    """楽天市場のURLをキーに、ROOMの個別商品ページURLを更新する"""
+    if not rakuten_url or not room_url:
+        return
+    
+    # 楽天市場URLからpcパラメータを抽出
+    rakuten_pc_param = extract_pc_param(rakuten_url)
+    if not rakuten_pc_param:
+        logging.warning(f"楽天市場URL '{rakuten_url}' から 'pc' パラメータを抽出できませんでした。room_urlの更新をスキップします。")
+        return
+    
+    # LIKE検索用のパターンを作成。`?pc=`も含めることで、より確実な後方一致を狙う。
+    # 例: %?pc=http%3A%2F%2Fitem.rakuten.co.jp...
+    like_pattern = f"%?pc={rakuten_pc_param}"
+
+    # --- デバッグログ出力 ---
+    debug_select_query = f"SELECT id, name, url, room_url FROM products WHERE url LIKE '{like_pattern}';"
+    debug_update_query = f"UPDATE products SET room_url = '{room_url.replace("'", "''")}' WHERE url LIKE '{like_pattern}';"
+    debug_update_query = f"UPDATE products SET room_url = '{room_url.replace("'", "''")}' WHERE url LIKE '{like_pattern}';"
+    logging.debug(f"確認用のSELECTクエリ: {debug_select_query}")
+    logging.debug(f"実行予定のUPDATEクエリ: {debug_update_query}")
+
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        # DBのurlカラムが、抽出したpcパラメータで終わるレコードを更新する
+        cursor.execute("UPDATE products SET room_url = ? WHERE url LIKE ?", (room_url, like_pattern))
+        
+        if cursor.rowcount > 0:
+            logging.info(f"  -> {cursor.rowcount}件のレコードのroom_urlを更新しました。")
+        else:
+            logging.warning(f"  -> room_urlの更新対象レコードが見つかりませんでした。")
+        
+        conn.commit()
     finally:
         conn.close()
 
