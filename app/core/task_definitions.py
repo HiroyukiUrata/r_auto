@@ -10,6 +10,7 @@ from app.tasks import (
     run_restore_auth_state,
 )
 from app.tasks.procure_from_user_page import run_procure_from_user_page
+from app.tasks.bind_product_url_room_url import run_bind_product_url_room_url
 from app.tasks.manual_test import run_manual_test
 
 from app.tasks.commit_stale_actions import run_commit_stale_actions
@@ -121,9 +122,13 @@ TASK_DEFINITIONS = {
         "function": None, # フローなので直接の関数はなし
         "is_debug": False,
         "default_kwargs": {"count": 3}, # フロー全体に渡す引数
-        "description": "ログイン状態を確認後、DBから商品を取得して記事を投稿します。",
+        "description": "ログイン状態を確認後、DBから商品を取得して記事を投稿し、投稿した商品のURLを紐付けます。",
         "order": 50,
-        "flow": "check-login-status | _internal-post-article"
+        "flow": [
+            ("check-login-status", {}),
+            ("_internal-post-article", {"count": "flow_count"}),
+            ("bind-product-url-room-url", {"count": "flow_count"})
+        ]
     },
     "_internal-like-action": {
         "name_ja": "（内部処理）いいね実行",
@@ -370,6 +375,14 @@ TASK_DEFINITIONS = {
         "description": "「リピーター育成」画面から指定されたユーザーにいいね返しを行います。",
         "is_debug": False,
         "show_in_schedule": False, # APIからのみ呼び出す
+    },
+    "bind-product-url-room-url": {
+        "name_ja": "商品URLとROOM URLの紐付け",
+        "function": run_bind_product_url_room_url,
+        "is_debug": False,
+        "description": "投稿直後の商品を巡回し、商品URLとROOMの個別URLをDB上で関連付けます。",
+        "order": 95,
+        "default_kwargs": {"count": 2},
     },
         "manual-test": {
         "name_ja": "手動テスト",

@@ -1,5 +1,5 @@
-from fastapi import APIRouter, Request, HTTPException
-from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, FileResponse, RedirectResponse
+from fastapi import APIRouter, Request, HTTPException, Depends
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, FileResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates 
 import schedule
 import re
@@ -15,7 +15,7 @@ from fastapi import BackgroundTasks
 from app.core.task_manager import TaskManager
 from app.core.task_definitions import TASK_DEFINITIONS
 from app.core.database import (get_all_inventory_products, update_product_status, delete_all_products, init_db,
-                               delete_product, update_status_for_multiple_products, delete_multiple_products, get_product_count_by_status,
+                               delete_product, update_status_for_multiple_products, delete_multiple_products, get_product_count_by_status, get_reusable_products,
                                get_error_products_in_last_24h, update_product_priority, update_product_order, bulk_update_products_from_data, commit_user_actions, get_all_user_engagements, get_users_for_commenting,
                                update_user_comment, get_generated_replies, update_reply_text, ignore_reply, get_commenting_users_summary,
                                get_table_names, export_tables_as_sql, execute_sql_script)
@@ -983,6 +983,56 @@ async def api_import_db(request: DbImportRequest):
         logging.error(f"DBのインポート(SQL実行)中にエラー: {e}", exc_info=True)
         # エラーメッセージをフロントに返す
         raise HTTPException(status_code=500, detail=f"SQLの実行に失敗しました: {str(e)}")
+
+@router.post("/api/db/export-reusable-products", response_class=Response)
+async def export_reusable_products():
+    """
+    procurement_keywordが「再コレ再利用」の商品を抽出し、
+    SQLite用のINSERT OR REPLACEクエリを生成して返す。
+    """
+    try:
+        # 条件に合う商品をすべて取得
+        products = get_reusable_products()
+
+        if not products:
+            return Response(content="-- 対象となる「再コレ再利用」商品はありませんでした。", media_type="text/plain; charset=utf-8")
+
+        # INSERT OR REPLACE文を生成
+        sql_statements = []
+        sql_statements.append("-- 「再コレ再利用」商品データのエクスポート\n")
+        sql_statements.append(f"-- {len(products)}件の商品が見つかりました\n")
+
+        # 最初のレコードからカラム名を取得
+        columns = list(products[0].keys())
+        
+        # post_urlを主キーとして扱うため、idはエクスポート対象から外す
+        if 'id' in columns:
+            columns.remove('id')
+
+        column_str = ", ".join(f'"{col}"' for col in columns)
+
+        for product in products:
+            values = []
+            for col in columns:
+                value = product[col]
+                if value is None:
+                    values.append("NULL")
+                elif isinstance(value, (int, float)):
+                    values.append(str(value))
+                else:
+                    # 文字列内のシングルクォートをエスケープ
+                    escaped_value = str(value).replace("'", "''") if value else ''
+                    values.append(f"'{escaped_value}'")
+            
+            values_str = ", ".join(values)
+            sql_statements.append(f"INSERT OR REPLACE INTO products ({column_str}) VALUES ({values_str});")
+
+        full_sql_script = "\n".join(sql_statements)
+        return Response(content=full_sql_script, media_type="text/plain; charset=utf-8")
+
+    except Exception as e:
+        logging.error(f"再利用商品のエクスポート中にエラーが発生しました: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"再利用商品のエクスポート中にエラーが発生しました: {str(e)}")
 
 @router.post("/api/products/bulk-update-from-json")
 async def bulk_update_from_json(request: JsonImportRequest):

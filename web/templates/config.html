@@ -106,7 +106,10 @@
                                         DELETE文を含める (データを全削除)
                                     </label>
                                 </div>
-                                <button class="btn btn-info" onclick="exportDb()"><i class="bi bi-box-arrow-down me-1"></i>エクスポート実行</button>
+                                <div class="d-flex gap-2">
+                                    <button class="btn btn-info" onclick="exportDb()"><i class="bi bi-box-arrow-down me-1"></i>テーブル選択エクスポート</button>
+                                    <button class="btn btn-success" onclick="exportReusableProducts()"><i class="bi bi-recycle me-1"></i>再利用品エクスポート</button>
+                                </div>
                                 <hr>
                                 <textarea id="sql-export-output" class="form-control" rows="10" readonly placeholder="ここにSQLが出力されます"></textarea>
                                 <button class="btn btn-sm btn-outline-secondary mt-2" onclick="copySqlOutput()"><i class="bi bi-clipboard me-1"></i>クリップボードにコピー</button>
@@ -389,6 +392,30 @@
         }).catch(err => {
             showToast('エラー', 'コピーに失敗しました。', 'danger');
         });
+    }
+
+    async function exportReusableProducts() {
+        const outputTextarea = document.getElementById('sql-export-output');
+        outputTextarea.value = '「再コレ再利用」商品のエクスポート中...';
+
+        if (!confirm('procurement_keywordが「再コレ再利用」の商品を抽出し、INSERT OR REPLACE文を生成します。よろしいですか？')) {
+            outputTextarea.value = 'エクスポートがキャンセルされました。';
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/db/export-reusable-products', { method: 'POST' });
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.detail || '再利用可能商品のエクスポートに失敗しました。');
+            }
+            const sqlDump = await response.text();
+            outputTextarea.value = sqlDump;
+            showToast('成功', '再利用可能商品のSQLエクスポートが完了しました。');
+        } catch (error) {
+            outputTextarea.value = `エラー: ${error.message}`;
+            showToast('エラー', error.message, 'danger');
+        }
     }
 
     async function importDb() {

@@ -1,7 +1,7 @@
 import sqlite3
 import logging
 import os
-import urllib.parse
+from urllib.parse import urlparse, parse_qs
 import json
 from datetime import datetime, timezone, timedelta
 
@@ -35,7 +35,7 @@ def init_db():
                 post_url TEXT,
                 room_url TEXT,
                 shop_name TEXT,
-                procurement_keyword TEXT,
+                procurement_keyword TEXT, -- どこから調達したかを示すキーワード
                 ai_caption TEXT,
                 status TEXT NOT NULL DEFAULT '生情報取得', -- 生情報取得, URL取得済, 投稿文作成済, 投稿準備完了, 投稿済, エラー
                 error_message TEXT,
@@ -66,7 +66,6 @@ def init_db():
             logging.warning("productsテーブルのurlカラムにUNIQUE制約がありません。テーブルを再構築します。")
             cursor.execute("ALTER TABLE products RENAME TO products_old")
             logging.debug("既存のテーブルを 'products_old' にリネームしました。")
-            # 新しいテーブルを作成（init_dbの後半で再度実行されるが、ここで定義が必要）
             cursor.execute('''CREATE TABLE products (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, url TEXT NOT NULL UNIQUE, image_url TEXT, post_url TEXT, room_url TEXT, shop_name TEXT, ai_caption TEXT, procurement_keyword TEXT, status TEXT NOT NULL DEFAULT '生情報取得', error_message TEXT, created_at TIMESTAMP, post_url_updated_at TIMESTAMP, ai_caption_created_at TIMESTAMP, posted_at TIMESTAMP)''')
             logging.debug("新しい 'products' テーブルを作成しました。")
             # 古いテーブルから新しいテーブルへデータをコピー（重複URLは無視される）
@@ -271,6 +270,18 @@ def get_all_inventory_products():
     conn.close()
     return products
 
+def get_reusable_products():
+    """procurement_keywordが「再コレ再利用」の商品をすべて取得する"""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM products WHERE procurement_keyword = '再コレ再利用'")
+        # sqlite3.Rowオブジェクトのリストを返す
+        products = cursor.fetchall()
+        return products
+    finally:
+        conn.close()
+
 
 def get_products_for_post_url_acquisition(limit=None):
     """投稿URL取得対象（ステータスが「生情報取得」）の商品を取得する"""
@@ -403,48 +414,51 @@ def update_post_url(product_id, post_url, shop_name=None):
     finally:
         conn.close()
 
-def extract_pc_param(url: str) -> str | None:
-    """
-    URLから'?pc='以降の文字列を、デコードせずにそのまま抽出する。
-    """
-    try:
-        # '?pc='で分割し、その後ろの部分を返す
-        return url.split('?pc=')[1]
-    except IndexError:
-        return None
-
 def update_room_url_by_rakuten_url(rakuten_url: str, room_url: str):
     """楽天市場のURLをキーに、ROOMの個別商品ページURLを更新する"""
     if not rakuten_url or not room_url:
         return
     
-    # 楽天市場URLからpcパラメータを抽出
-    rakuten_pc_param = extract_pc_param(rakuten_url)
-    if not rakuten_pc_param:
-        logging.warning(f"楽天市場URL '{rakuten_url}' から 'pc' パラメータを抽出できませんでした。room_urlの更新をスキップします。")
-        return
-    
-    # LIKE検索用のパターンを作成。`?pc=`も含めることで、より確実な後方一致を狙う。
-    # 例: %?pc=http%3A%2F%2Fitem.rakuten.co.jp...
-    like_pattern = f"%?pc={rakuten_pc_param}"
+    # パターン1: URLを正規化して完全一致で検索
+    normalized_url = _normalize_rakuten_url(rakuten_url)
 
-    # --- デバッグログ出力 ---
-    debug_select_query = f"SELECT id, name, url, room_url FROM products WHERE url LIKE '{like_pattern}';"
-    debug_update_query = f"UPDATE products SET room_url = '{room_url.replace("'", "''")}' WHERE url LIKE '{like_pattern}';"
-    debug_update_query = f"UPDATE products SET room_url = '{room_url.replace("'", "''")}' WHERE url LIKE '{like_pattern}';"
-    logging.debug(f"確認用のSELECTクエリ: {debug_select_query}")
-    logging.debug(f"実行予定のUPDATEクエリ: {debug_update_query}")
+    # パターン2: エンコードされたままのpc=パラメータで部分一致検索
+    encoded_pc_param = None
+    if "hb.afl.rakuten.co.jp" in rakuten_url and "?pc=" in rakuten_url:
+        encoded_pc_param = rakuten_url.split('?pc=')[1]
 
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
-        # DBのurlカラムが、抽出したpcパラメータで終わるレコードを更新する
-        cursor.execute("UPDATE products SET room_url = ? WHERE url LIKE ?", (room_url, like_pattern))
+        
+        # まず正規化URLで検索・更新を試みる
+        cursor.execute("UPDATE products SET room_url = ? WHERE url = ?", (room_url, normalized_url))
         
         if cursor.rowcount > 0:
-            logging.info(f"  -> {cursor.rowcount}件のレコードのroom_urlを更新しました。")
+            logging.info(f"  -> {cursor.rowcount}件のレコードのroom_urlを更新しました。(正規化URL: {normalized_url})")
+            conn.commit()
+            return
+
+        # パターン1で更新されなかった場合、パターン2（部分一致）を試す
+        if encoded_pc_param:
+            like_pattern = f"%{encoded_pc_param}%"
+            logging.debug(f"正規化URLでの更新に失敗したため、部分一致検索を試みます。パターン: {like_pattern}")
+            
+            # 更新前に、対象が1件に絞れるか確認（意図しない複数更新を防ぐため）
+            cursor.execute("SELECT id FROM products WHERE url LIKE ?", (like_pattern,))
+            found_products = cursor.fetchall()
+
+            if len(found_products) == 1:
+                product_id_to_update = found_products[0]['id']
+                cursor.execute("UPDATE products SET room_url = ? WHERE id = ?", (room_url, product_id_to_update))
+                if cursor.rowcount > 0:
+                    logging.info(f"  -> 1件のレコードのroom_urlを更新しました。(部分一致パターン)")
+            elif len(found_products) > 1:
+                logging.warning(f"  -> 部分一致で複数の更新対象が見つかったため、更新をスキップします。({len(found_products)}件)")
+            else:
+                logging.warning(f"  -> room_urlの更新対象レコードが見つかりませんでした。(URL: {normalized_url})")
         else:
-            logging.warning(f"  -> room_urlの更新対象レコードが見つかりませんでした。")
+            logging.warning(f"  -> room_urlの更新対象レコードが見つかりませんでした。(URL: {normalized_url})")
         
         conn.commit()
     finally:
@@ -463,27 +477,89 @@ def update_ai_caption(product_id, caption):
     finally:
         conn.close()
 
-def add_product_if_not_exists(name=None, url=None, image_url=None, procurement_keyword=None):
-    """同じURLの商品が存在しない場合のみ、新しい商品をDBに追加する。調達キーワードも保存する。"""
-    if not name or not url:
+def _normalize_rakuten_url(url: str) -> str:
+    """
+    楽天ROOMのアフィリエイトURLから実際の楽天商品URLを抽出する。
+    それ以外のURLはそのまま返す。
+    """
+    if "hb.afl.rakuten.co.jp" in url:
+        try:
+            parsed_url = urlparse(url)
+            query_params = parse_qs(parsed_url.query)
+            pc_url = query_params.get('pc', [None])[0]
+            if pc_url:
+                # pc_url自体もクエリパラメータを持つ可能性があるので、それも除去
+                url = pc_url.split('?')[0]
+        except Exception:
+            pass # パースに失敗した場合は元のURLを返す
+
+    # アフィリエイトリンク以外、またはpcパラメータの抽出後、
+    # ? 以降のクエリパラメータを削除してURLを正規化する
+    base_url = url.split('?')[0]
+
+    # プロトコルを https に統一
+    if base_url.startswith("http://"):
+        base_url = base_url.replace("http://", "https://", 1)
+    
+    return base_url
+
+def add_product_if_not_exists(name=None, url=None, image_url=None, shop_name=None, procurement_keyword=None):
+    """
+    URLを正規化し、重複があれば更新、なければ新規追加する (UPSERT)。
+    重複判定は前方一致で行う。
+    """
+    if not name or not url: # shop_nameは必須ではないのでチェックに含めない
         logging.warning("商品名またはURLが不足しているため、DBに追加できません。")
         return False
 
-    # JSTのタイムゾーンを定義
-    jst = timezone(timedelta(hours=9))
-    # JSTの現在時刻をISO 8601形式の文字列で取得
-    created_at_jst = datetime.now(jst).isoformat()
+    # URLを正規化（アフィリエイトリンクから実際の楽天商品URLを抽出）
+    unique_url = _normalize_rakuten_url(url)
 
     conn = get_db_connection()
     try:
-        # created_atも明示的にJSTで指定する
-        conn.execute("INSERT INTO products (name, url, image_url, procurement_keyword, status, created_at) VALUES (?, ?, ?, ?, '生情報取得', ?)",
-                       (name, url, image_url, procurement_keyword, created_at_jst))
-        conn.commit()
-        return True # 新規追加成功
-    except sqlite3.IntegrityError:
-        logging.debug(f"URLが重複しているため、商品は追加されませんでした: {url}")
-        return False  # 既に存在する
+        cursor = conn.cursor()
+
+        # 1. 前方一致で既存レコードを検索 (http/httpsの違いを吸収)
+        # `https://` または `http://` を除いた部分で検索する
+        url_part = unique_url.split("://", 1)[-1]
+        
+        # DBに保存されているURLも `://` 以降の部分で比較する
+        # これにより、DBにhttpで保存されていても、httpsで検索した際に見つけられる
+        # 前方一致検索も同時に行う
+        like_pattern = f"{url_part}%"
+        cursor.execute("""
+            SELECT id FROM products WHERE SUBSTR(url, INSTR(url, '://') + 3) LIKE ? LIMIT 1
+        """, (like_pattern,))
+        existing_product = cursor.fetchone()
+
+        # 2. 既存レコードがあればUPDATE、なければINSERT
+        if existing_product:
+            # 既存レコードを更新
+            product_id = existing_product['id']
+            logging.info(f"URLが前方一致で重複したため、既存の商品(ID: {product_id})を更新します。")
+            cursor.execute("""
+                UPDATE products SET
+                    url = ?,
+                    name = ?,
+                    image_url = ?,
+                    shop_name = ?,
+                    procurement_keyword = ?,
+                    status = '投稿準備完了',
+                    posted_at = NULL,
+                    error_message = NULL
+                WHERE id = ?
+            """, (unique_url, name, image_url, shop_name, procurement_keyword, product_id))
+            conn.commit()
+            return False # 更新なので 'was_inserted' は False
+        else:
+            # 新規レコードを挿入
+            logging.debug(f"新規商品としてDBに登録します: {name[:30]}...")
+            cursor.execute("""
+                INSERT INTO products (name, url, image_url, shop_name, procurement_keyword, status, created_at)
+                VALUES (?, ?, ?, ?, ?, '生情報取得', ?)
+            """, (name, unique_url, image_url, shop_name, procurement_keyword, datetime.now(timezone(timedelta(hours=9))).isoformat()))
+            conn.commit()
+            return True # 新規挿入なので True
     finally:
         conn.close()
 
@@ -520,9 +596,7 @@ def import_products(products_data: list[dict]):
     if not products_data:
         return 0
 
-    # JSTのタイムゾーンを定義
     jst = timezone(timedelta(hours=9))
-    # JSTの現在時刻をISO 8601形式の文字列で取得
     created_at_jst = datetime.now(jst).isoformat()
 
     # executemany用に、辞書のリストをタプルのリストに変換

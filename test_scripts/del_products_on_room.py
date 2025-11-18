@@ -6,14 +6,15 @@ from datetime import datetime
 import re
 from playwright.sync_api import Page, Error
 from app.utils.selector_utils import convert_to_robust_selector
+### ROOM商品削除用のスクリプト ###
 
 # --- 設定 ---
 # テスト対象のユーザーページURL
 TARGET_URL = "https://room.rakuten.co.jp/room_79a45994e0/items"
 # 探したい日付の文字列（例: "10月29日", "3日前" など、ページに表示されるままの形式）
-TARGET_DATE_STR = "11月10日"
+TARGET_DATE_STR = "11月16日"
 # 取得する最大件数
-MAX_FETCH_COUNT = 100
+MAX_FETCH_COUNT = 5
 # 1日あたりの平均投稿数（スクロール計算用）
 POSTS_PER_DAY = 30
 # 1回のスクロールで読み込まれるおおよそのカード数（スクロール計算用）
@@ -161,76 +162,96 @@ def run_test(page: Page):
 
         # --- ★★★ 修正点: 新しいメインループ ★★★ ---
         while len(deleted_items) < MAX_FETCH_COUNT and loop_count < max_loops:
-            loop_count += 1
-            logger.info(f"--- ループ {loop_count}/{max_loops} (現在 {len(deleted_items)}/{MAX_FETCH_COUNT} 件) ---")
+            try:
+                loop_count += 1
+                logger.info(f"--- ループ {loop_count}/{max_loops} (現在 {len(deleted_items)}/{MAX_FETCH_COUNT} 件) ---")
 
-            # ★★★ ループ開始時にエラーページにいないか確認 ★★★
-            if "https://room.rakuten.co.jp/common/error" in page.url:
-                logger.warning("ループ開始時にエラーページを検出しました。ターゲットURLに再アクセスします。")
-                page.goto(TARGET_URL.strip(), wait_until="domcontentloaded", timeout=60000)
-                page.wait_for_timeout(2000) # ページ再描画を待つ
+                # ★★★ ループ開始時にエラーページにいないか確認 ★★★
+                if "https://room.rakuten.co.jp/common/error" in page.url:
+                    logger.warning("ループ開始時にエラーページを検出しました。ターゲットURLに再アクセスします。")
+                    page.goto(TARGET_URL.strip(), wait_until="domcontentloaded", timeout=60000)
+                    page.wait_for_timeout(2000) # ページ再描画を待つ
 
-            # 1. 目的の日付までのスクロール回数を推定計算
-            required_scrolls = 0
-            match = re.search(r"(\d+)月(\d+)日", TARGET_DATE_STR)
-            if match:
-                month, day = int(match.group(1)), int(match.group(2))
-                today = datetime.now()
-                year = today.year if (today.month, today.day) >= (month, day) else today.year - 1
-                target_date = datetime(year, month, day)
-                days_diff = (today - target_date).days
+                # 1. 目的の日付までのスクロール回数を推定計算
+                required_scrolls = 0
+                match = re.search(r"(\d+)月(\d+)日", TARGET_DATE_STR)
+                if match:
+                    month, day = int(match.group(1)), int(match.group(2))
+                    today = datetime.now()
+                    year = today.year if (today.month, today.day) >= (month, day) else today.year - 1
+                    target_date = datetime(year, month, day)
+                    days_diff = (today - target_date).days
+                    
+                    if days_diff > 0:
+                        total_posts_to_skip = days_diff * POSTS_PER_DAY
+                        required_scrolls = total_posts_to_skip // CARDS_PER_SCROLL
                 
-                if days_diff > 0:
-                    total_posts_to_skip = days_diff * POSTS_PER_DAY
-                    required_scrolls = total_posts_to_skip // CARDS_PER_SCROLL
-            
-            if required_scrolls <= 0:
-                logger.info("スクロール回数の計算結果が0以下です。スクロールせずに探索します。")
-            else:
-                # 2. 毎回、計算された回数の高速スクロールを実行
-                logger.info(f"目的の日付 ({TARGET_DATE_STR}) まで、推定 {required_scrolls} 回の高速スクロールを実行します...")
-                for i in range(required_scrolls):
-                    page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                if required_scrolls <= 0:
+                    logger.info("スクロール回数の計算結果が0以下です。スクロールせずに探索します。")
+                else:
+                    # 2. 毎回、計算された回数の高速スクロールを実行
+                    logger.info(f"目的の日付 ({TARGET_DATE_STR}) まで、推定 {required_scrolls} 回の高速スクロールを実行します...")
+                    for i in range(required_scrolls):
+                        page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                        try:
+                            page.locator(spinner_selector).wait_for(state="visible", timeout=3000)
+                            page.locator(spinner_selector).wait_for(state="hidden", timeout=20000)
+                            # logger.debug(f"  -> 高速スクロール {i + 1}/{required_scrolls} 回完了")
+                        except Error:
+                            logger.warning(f"  -> スピナーが表示されませんでした。ページの終端か、読み込みが遅い可能性があります。")
+                            break
+                    logger.info("高速スクロールが完了しました。")
+
+                # 3. 画面上の最初の「未処理」カードを探す
+                next_card_src = None
+                # ★★★ 修正点: 画面下部から探索するため、取得したカードリストを逆順にする ★★★
+                all_visible_cards_reversed = reversed(page.locator(f"{card_selector}:visible").all())
+                
+                for card in all_visible_cards_reversed:
                     try:
-                        page.locator(spinner_selector).wait_for(state="visible", timeout=3000)
-                        page.locator(spinner_selector).wait_for(state="hidden", timeout=20000)
-                        # logger.debug(f"  -> 高速スクロール {i + 1}/{required_scrolls} 回完了")
+                        image_src = card.locator('img').first.get_attribute('src')
+                        if image_src and image_src not in globally_processed_srcs:
+                            next_card_src = image_src
+                            break # 最初の未処理カードを見つけたらループを抜ける
                     except Error:
-                        logger.warning(f"  -> スピナーが表示されませんでした。ページの終端か、読み込みが遅い可能性があります。")
-                        break
-                logger.info("高速スクロールが完了しました。")
+                        continue
+                
+                # 4. 未処理カードが見つからなければ、ループを終了
+                if not next_card_src:
+                    logger.warning("スクロール後、画面上に未処理のカードが見つかりませんでした。処理を終了します。")
+                    break
 
-            # 3. 画面上の最初の「未処理」カードを探す
-            next_card_src = None
-            # ★★★ 修正点: 画面下部から探索するため、取得したカードリストを逆順にする ★★★
-            all_visible_cards_reversed = reversed(page.locator(f"{card_selector}:visible").all())
-            
-            for card in all_visible_cards_reversed:
-                try:
-                    image_src = card.locator('img').first.get_attribute('src')
-                    if image_src and image_src not in globally_processed_srcs:
-                        next_card_src = image_src
-                        break # 最初の未処理カードを見つけたらループを抜ける
-                except Error:
-                    continue
-            
-            # 4. 未処理カードが見つからなければ、ループを終了
-            if not next_card_src:
-                logger.warning("スクロール後、画面上に未処理のカードが見つかりませんでした。処理を終了します。")
-                break
+                # 5. 見つけたカードを処理
+                globally_processed_srcs.add(next_card_src)
+                logger.info(f"  -> 処理試行: ...{next_card_src[-30:]}")
 
-            # 5. 見つけたカードを処理
-            globally_processed_srcs.add(next_card_src)
-            logger.info(f"  -> 処理試行: ...{next_card_src[-30:]}")
+                deleted_item_data = process_and_delete_if_needed(page, next_card_src)
 
-            deleted_item_data = process_and_delete_if_needed(page, next_card_src)
+                if deleted_item_data:
+                    deleted_items.append(deleted_item_data)
+                    logger.info(f"  🗑️ [{len(deleted_items)}/{MAX_FETCH_COUNT}] 商品削除成功！")
 
-            if deleted_item_data:
-                deleted_items.append(deleted_item_data)
-                logger.info(f"  🗑️ [{len(deleted_items)}/{MAX_FETCH_COUNT}] 商品削除成功！")
-
-            # 削除処理後は一覧ページに戻っているはずなので、そのまま次のループへ
-            # スキップした場合もブラウザバックで一覧に戻っているので、そのまま次のループへ
+                # 削除処理後は一覧ページに戻っているはずなので、そのまま次のループへ
+                # スキップした場合もブラウザバックで一覧に戻っているので、そのまま次のループへ
+            except Error as loop_playwright_error:
+                logger.error(f"  -> メインループ内でPlaywrightエラーが発生しました: {str(loop_playwright_error).splitlines()[0]}", exc_info=False)
+                logger.info(f"  -> エラーから復旧を試みます...")
+                # ★★★ 復旧ロジックの強化 ★★★
+                # 既に目的のページにいるか、遷移中かもしれないので、gotoの前にURLをチェック
+                if TARGET_URL not in page.url:
+                    logger.info(f"    -> 現在のURLが異なるため、{TARGET_URL} に再アクセスします。")
+                    page.goto(TARGET_URL.strip(), wait_until="domcontentloaded", timeout=60000)
+                else:
+                    logger.info(f"    -> 既に目的のURLにいるため、ページの安定を待ちます。")
+                    page.wait_for_load_state("domcontentloaded", timeout=60000)
+                page.wait_for_timeout(3000) # ページ再描画を待つ
+                continue # 次のループイテレーションへ
+            except Exception as loop_general_error:
+                logger.error(f"  -> メインループ内で予期せぬエラーが発生しました: {loop_general_error}", exc_info=True)
+                logger.info(f"  -> {TARGET_URL} に戻り、処理を継続します。")
+                page.goto(TARGET_URL.strip(), wait_until="domcontentloaded", timeout=60000)
+                page.wait_for_timeout(3000) # ページ再描画を待つ
+                continue # 次のループイテレーションへ
 
     except Exception as e:
         logger.error(f"テスト実行中に予期せぬエラーが発生しました: {e}", exc_info=True)

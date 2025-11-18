@@ -7,10 +7,10 @@ from playwright.sync_api import Page, Error
 from app.core.database import product_exists_by_url, init_db
 from app.tasks.import_products import process_and_import_products
 from app.utils.selector_utils import convert_to_robust_selector
-
+### 投稿直後をスクレイピングして、urlとroom_urlを関連付けるタスクの元 ###
 # --- 設定 ---
 # テストで処理する目標件数
-TARGET_COUNT = 1
+TARGET_COUNT = 2
 # テスト対象のURL（固定）
 SOURCE_URL = "https://room.rakuten.co.jp/room_79a45994e0/items"
 
@@ -129,6 +129,8 @@ def run_test(page: Page):
             # 例: ハイライト、情報取得、クリックなど
             
             page_transitioned = False
+            rakuten_url = None
+            detail_page_url = None
             try:
                 number_to_display = processed_count + 1
                 logger.info(f"  [{number_to_display}/{TARGET_COUNT}] カードをクリックして詳細ページに遷移します...")
