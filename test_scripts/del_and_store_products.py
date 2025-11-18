@@ -6,7 +6,7 @@ from datetime import datetime
 import re
 from playwright.sync_api import Page, Error
 from app.utils.selector_utils import convert_to_robust_selector
-from app.core.database import init_db, add_product_if_not_exists
+from app.core.database import init_db, add_recollection_product
 ### ROOM商品削除しながら商品登録するスクリプト（後々の再コレタスク） ###
 
 # --- 設定 ---
@@ -104,7 +104,7 @@ def process_and_delete_if_needed(page: Page, image_src: str) -> dict | None:
                 logger.warning("    -> ショップ名の取得に失敗しましたが、処理を続行します。")
 
             # DBへの登録を試みる (add_product_if_not_existsが重複チェックを行う)
-            if add_product_if_not_exists(name=name_text, url=rakuten_url, image_url=image_url, shop_name=shop_name, procurement_keyword="再コレ再利用"):
+            if add_recollection_product(name=name_text, url=rakuten_url, image_url=image_url, shop_name=shop_name, procurement_keyword="再コレ再利用"):
                 logger.info(f"    -> [DB] 新規商品をDBに登録しました: {name_text[:30]}...")
 
         except Error as db_save_error:

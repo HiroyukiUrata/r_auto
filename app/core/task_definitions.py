@@ -380,6 +380,7 @@ TASK_DEFINITIONS = {
         "name_ja": "商品URLとROOM URLの紐付け",
         "function": run_bind_product_url_room_url,
         "is_debug": False,
+        "show_in_schedule": False,
         "description": "投稿直後の商品を巡回し、商品URLとROOMの個別URLをDB上で関連付けます。",
         "order": 95,
         "default_kwargs": {"count": 2},

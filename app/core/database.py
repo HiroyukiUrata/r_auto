@@ -401,14 +401,25 @@ def get_all_keywords() -> list[dict]:
         logging.error(f"キーワードファイルの読み込みまたは解析に失敗しました: {e}")
         return []
 
-def update_post_url(product_id, post_url, shop_name=None):
-    """指定された商品の投稿URLと更新日時を更新し、ステータスを「URL取得済」に変更する"""
+def update_post_url(product_id, post_url, shop_name=None, new_main_url=None):
+    """指定された商品の情報を更新し、ステータスを「URL取得済」に変更する"""
     conn = get_db_connection()
     try:
-        # JSTのタイムゾーンを定義
         jst = timezone(timedelta(hours=9))
         now_jst_iso = datetime.now(jst).isoformat()
-        conn.execute("UPDATE products SET post_url = ?, shop_name = ?, post_url_updated_at = ?, status = 'URL取得済' WHERE id = ?", (post_url, shop_name, now_jst_iso, product_id))
+
+        # 基本のUPDATE文
+        query = "UPDATE products SET post_url = ?, shop_name = ?, post_url_updated_at = ?, status = 'URL取得済'"
+        params = [post_url, shop_name, now_jst_iso]
+
+        if new_main_url:
+            query += ", url = ?"
+            params.append(new_main_url)
+        
+        query += " WHERE id = ?"
+        params.append(product_id)
+
+        conn.execute(query, tuple(params))
         conn.commit()
         logging.debug(f"商品ID: {product_id} の投稿URLを更新し、ステータスを「URL取得済」に変更しました。")
     finally:
@@ -500,12 +511,12 @@ def _normalize_rakuten_url(url: str) -> str:
     # プロトコルを https に統一
     if base_url.startswith("http://"):
         base_url = base_url.replace("http://", "https://", 1)
-    
+
     return base_url
 
-def add_product_if_not_exists(name=None, url=None, image_url=None, shop_name=None, procurement_keyword=None):
+def add_recollection_product(name=None, url=None, image_url=None, shop_name=None, procurement_keyword=None):
     """
-    URLを正規化し、重複があれば更新、なければ新規追加する (UPSERT)。
+    【再収集タスク専用】URLを正規化し、重複があれば更新、なければ新規追加する (UPSERT)。
     重複判定は前方一致で行う。
     """
     if not name or not url: # shop_nameは必須ではないのでチェックに含めない
@@ -560,6 +571,30 @@ def add_product_if_not_exists(name=None, url=None, image_url=None, shop_name=Non
             """, (name, unique_url, image_url, shop_name, procurement_keyword, datetime.now(timezone(timedelta(hours=9))).isoformat()))
             conn.commit()
             return True # 新規挿入なので True
+    finally:
+        conn.close()
+
+def add_product_if_not_exists(name=None, url=None, image_url=None, procurement_keyword=None):
+    """同じURLの商品が存在しない場合のみ、新しい商品をDBに追加する。調達キーワードも保存する。"""
+    if not name or not url:
+        logging.warning("商品名またはURLが不足しているため、DBに追加できません。")
+        return False
+
+    # JSTのタイムゾーンを定義
+    jst = timezone(timedelta(hours=9))
+    # JSTの現在時刻をISO 8601形式の文字列で取得
+    created_at_jst = datetime.now(jst).isoformat()
+
+    conn = get_db_connection()
+    try:
+        # created_atも明示的にJSTで指定する
+        conn.execute("INSERT INTO products (name, url, image_url, procurement_keyword, status, created_at) VALUES (?, ?, ?, ?, '生情報取得', ?)",
+                       (name, url, image_url, procurement_keyword, created_at_jst))
+        conn.commit()
+        return True # 新規追加成功
+    except sqlite3.IntegrityError:
+        logging.debug(f"URLが重複しているため、商品は追加されませんでした: {url}")
+        return False  # 既に存在する
     finally:
         conn.close()
 
