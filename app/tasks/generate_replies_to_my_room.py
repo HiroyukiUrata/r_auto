@@ -4,32 +4,17 @@ import os
 import re
 import random
 import time
-from google import genai
-from google.genai.errors import ServerError
 from app.core.base_task import BaseTask
 from app.core.database import get_post_urls_with_unreplied_comments, get_unreplied_comments_for_post, bulk_update_comment_replies
+from app.core.ai_utils import call_gemini_api_with_retry
+from app.utils.json_utils import parse_json_with_rescue
+from google import genai
 
 logger = logging.getLogger(__name__)
 
-PROMPT_FILE_PATH = "app/prompts/reply_to_comment_prompt.txt"
+PROMPT_FILE_PATH = "app/prompts/my_room_reply_prompt.txt"
 
-def _call_gemini_api_with_retry_sync(client: genai.Client, contents: str, log_context: str, max_retries: int = 5) -> str:
-    """Gemini APIをリトライロジック付きで同期的に呼び出す共通関数"""
-    for attempt in range(max_retries):
-        try:
-            response = client.models.generate_content(model="models/gemini-2.5-flash", contents=contents)
-            return response.text
-        except ServerError as e:
-            if "503" in str(e) and attempt < max_retries - 1:
-                wait_time = (2 ** attempt) + random.uniform(0, 1)
-                logging.warning(f"Gemini APIが過負荷です（{log_context}）。{wait_time:.1f}秒待機して再試行します... ({attempt + 1}/{max_retries})")
-                time.sleep(wait_time)
-            else:
-                logging.error(f"Gemini API呼び出し中に永続的なエラーが発生しました（{log_context}）: {e}")
-                raise
-    return ""
-
-class GenerateReplyCommentsTask(BaseTask):
+class GenerateMyRoomRepliesTask(BaseTask):
     """
     DBから未返信のコメントを取得し、AIに返信コメントを生成させてDBを更新するタスク。
     """
@@ -89,16 +74,15 @@ class GenerateReplyCommentsTask(BaseTask):
 
             # 5. AIにリクエスト
             logger.debug("  -> AIによる返信コメントの生成を開始します...")
-            response_text = _call_gemini_api_with_retry_sync(client, full_prompt, f"返信コメント生成 - 投稿 {i+1}")
+            response_text = call_gemini_api_with_retry(client, full_prompt, f"返信コメント生成 - 投稿 {i+1}")
 
             # 6. AIの応答をパース
-            json_match = re.search(r"```json\s*([\s\S]*?)\s*```", response_text)
-            if not json_match:
+            generated_data = parse_json_with_rescue(response_text)
+            if not generated_data:
                 logger.error(f"  -> AIの応答からJSONブロックを抽出できませんでした。この投稿の処理をスキップします。")
+                logger.debug(f"AIからの生応答: {response_text}")
                 continue
             
-            generated_data = json.loads(json_match.group(1))
-
             # 7. 結果をDBに保存
             updated_count = bulk_update_comment_replies(generated_data)
             logger.debug(f"  -> {updated_count}件のコメントに返信を生成し、DBを更新しました。")
@@ -121,7 +105,7 @@ class GenerateReplyCommentsTask(BaseTask):
         #logger.info(f"[Action Summary] name=返信コメント生成, count={total_updated_count}")
         return True
 
-def run_generate_reply_comments():
+def run_generate_my_room_replies():
     """ラッパー関数"""
-    task = GenerateReplyCommentsTask()
+    task = GenerateMyRoomRepliesTask()
     return task.run()

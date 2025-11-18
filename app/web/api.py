@@ -1459,8 +1459,8 @@ async def save_prompt_profile(prompt_key: str, request: ProfileNameRequest):
 
     # prompt_keyからファイル名を取得するマッピング
     prompt_filenames = {
-        "create-caption-flow": "caption_prompt.txt",
-        "create-comment": "user_comment_body_prompt.txt"
+        "create-caption-flow": "product_caption_prompt.txt",
+        "create-comment": "engagement_comment_body_prompt.txt"
     }
     source_filename = prompt_filenames.get(prompt_key)
     if not source_filename:
@@ -1490,9 +1490,9 @@ async def load_prompt_profile(prompt_key: str, profile_name: str):
         return JSONResponse(status_code=404, content={"status": "error", "message": "プロファイルが見つかりません。"})
 
     prompt_filenames = {
-        "create-caption-flow": "caption_prompt.txt",
-        "create-comment": "user_comment_body_prompt.txt",
-        "user_comment_body_prompt": "user_comment_body_prompt.txt" # 念のため古いキーも残す
+        "create-caption-flow": "product_caption_prompt.txt",
+        "create-comment": "engagement_comment_body_prompt.txt",
+        "user_comment_body_prompt": "engagement_comment_body_prompt.txt" # 念のため古いキーも残す
     }
     dest_filename = prompt_filenames.get(prompt_key)
     if not dest_filename:
@@ -1536,12 +1536,12 @@ async def get_prompts():
             "create-caption-flow": {
                 "name_ja": "<i class='bi bi-file-post me-1'></i>投稿文生成プロンプト",
                 "description": "商品情報から投稿文を生成する際の指示です。",
-                "filename": "caption_prompt.txt"
+                "filename": "product_caption_prompt.txt"
             },
             "create-comment": {
                 "name_ja": "<i class='bi bi-chat-dots me-1'></i>返信コメント生成プロンプト",
                 "description": "ユーザーへの返信コメント（掛け合い形式の本文）を生成する際の指示です。",
-                "filename": "user_comment_body_prompt.txt"
+                "filename": "engagement_comment_body_prompt.txt"
             }
         }
 
@@ -1592,8 +1592,8 @@ async def update_prompt(prompt_name: str, request: Request):
         
         # このマッピングは get_prompts と同じである必要があります
         filename_map = {
-            "create-caption-flow": "caption_prompt.txt",
-            "create-comment": "user_comment_body_prompt.txt"
+            "create-caption-flow": "product_caption_prompt.txt",
+            "create-comment": "engagement_comment_body_prompt.txt"
         }
         filename = filename_map.get(prompt_name)
         if not filename:

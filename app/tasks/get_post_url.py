@@ -57,7 +57,6 @@ class GetPostUrlTask(BaseTask):
                         logging.warning(f"  -> 商品ID: {product['id']} のショップ名取得中にエラー: {title_ex}")
 
                     # DB内でpost_urlが重複していないかチェック
-                    # ★★★ ユーザーの要望により、重複チェックを一時的に無効化 ★★★
                     if product_exists_by_post_url(post_url) :
                         error_msg = f"取得した投稿URLがDB内で重複しています: {post_url}"
                         logging.error(f"  -> {error_msg}")

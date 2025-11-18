@@ -7,109 +7,10 @@ import math
 import time
 from app.core.base_task import BaseTask
 from app.core.database import get_products_for_caption_creation, get_products_count_for_caption_creation, update_ai_caption, update_product_status
+from app.utils.json_utils import parse_json_with_rescue
 
-PROMPT_FILE = "app/prompts/caption_prompt.txt"
+PROMPT_FILE = "app/prompts/product_caption_prompt.txt"
 DEBUG_DIR = "db/debug"
-
-# --- Gemini応答のJSONを整形・修正するためのヘルパー関数 ---
-def fix_indentation(text):
-    """インデントの全角スペースを半角スペースに置換する"""
-    def replace_indent(match):
-        return match.group().replace("　", " ")
-    return re.sub(r"^(　+)", replace_indent, text, flags=re.MULTILINE)
-
-def clean_raw_json(text):
-    """BOMや制御文字など、JSONパースの妨げになる不要な文字を除去する"""
-    if text.startswith("\ufeff"):
-        text = text[1:]
-    text = text.replace("\u3000", " ").replace("\xa0", " ")
-    text = ''.join(c for c in text if c >= ' ' or c in '\n\t')
-    return text
-
-def fix_ai_caption(data):
-    """ai_caption内のMarkdown強調文字(**)を削除する"""
-    if isinstance(data, dict):
-        for k, v in data.items():
-            if k == "ai_caption" and isinstance(v, str):
-                data[k] = v.replace("**", "")
-            else:
-                fix_ai_caption(v)
-    elif isinstance(data, list):
-        for item in data:
-            fix_ai_caption(item)
-
-def extract_json_from_text(text):
-    """テキストの中から ```json ... ``` または [...] のブロックを抽出する"""
-    match = re.search(r"```json\s*([\s\S]*?)\s*```", text)
-    if match:
-        logging.debug("```json ... ``` ブロックを抽出しました。")
-        return match.group(1)
-    
-    match = re.search(r"\[[\s\S]*\]", text)
-    if match:
-        logging.debug("[...] ブロックを抽出しました。")
-        return match.group(0)
-    
-    logging.warning("テキストからJSONブロックを特定できませんでした。元のテキストをそのまま使用します。")
-    return text
-
-def close_json_array_if_needed(text: str) -> str:
-    """
-    文字列が `[` で始まり `]` で終わっていない場合に、末尾の不要なカンマを削除し、`]` を追加する。
-    """
-    text = text.strip()
-    if text.startswith('[') and not text.endswith(']'):
-        # 末尾の空白や改行を再度除去し、カンマで終わっているかチェック
-        text_stripped_right = text.rstrip()
-        if text_stripped_right.endswith(','):
-            text = text_stripped_right[:-1] # 末尾のカンマを削除
-            logging.debug("JSON配列の末尾にある不要なカンマを削除しました。")
-        
-        logging.debug("JSON配列が閉じていなかったため、末尾に ']' を追加します。")
-        return text + ']'
-    return text
-
-def extract_complete_json_objects(text: str) -> list[dict]:
-    """
-    不完全なJSON配列文字列から、正しく閉じられているオブジェクトだけを抽出する。
-    AIの応答が途中で途切れた際の救済措置として使用する。
-    """
-    # 文字列が `[` で始まっている場合、それを取り除く
-    text = text.strip()
-    if text.startswith('['):
-        text = text[1:]
-
-    # `{` で文字列を分割し、各断片をオブジェクト候補として処理する
-    # `filter(None, ...)` で空文字列を除外
-    parts = filter(None, text.split('{'))
-    
-    complete_objects = []
-    for part in parts:
-        # 分割された断片の先頭に `{` を付け直して、JSONオブジェクトの文字列を復元
-        potential_json_str = '{' + part
-        
-        # 対応する `{` と `}` の数を数えて、オブジェクトの終わりを探す
-        open_braces = 0
-        end_index = -1
-        for i, char in enumerate(potential_json_str):
-            if char == '{':
-                open_braces += 1
-            elif char == '}':
-                open_braces -= 1
-            
-            if open_braces == 0 and i > 0:
-                end_index = i + 1
-                break
-        
-        if end_index != -1:
-            obj_str = potential_json_str[:end_index]
-            try:
-                complete_objects.append(json.loads(obj_str))
-            except json.JSONDecodeError:
-                continue # パースに失敗した場合は無視
-    
-    logging.info(f"不完全なJSONから {len(complete_objects)} 件のオブジェクトを抽出しました。")
-    return complete_objects
 
 class CreateCaptionTask(BaseTask):
     """
@@ -195,27 +96,10 @@ class CreateCaptionTask(BaseTask):
                 copy_button_locator.click()
                 page.wait_for_timeout(10000)
 
-                generated_items = None
                 generated_json_str = page.evaluate("() => navigator.clipboard.readText()")
-                try:
-                    cleaned_str = close_json_array_if_needed(fix_indentation(clean_raw_json(generated_json_str)))
-                    generated_items = json.loads(cleaned_str)
-                except json.JSONDecodeError as e1:
-                    logging.warning(f"最初のJSONパースに失敗しました: {e1}。抽出と再パースを試みます。")
-                    try:
-                        json_part_str = extract_json_from_text(generated_json_str)
-                        cleaned_str_from_part = close_json_array_if_needed(fix_indentation(clean_raw_json(json_part_str)))
-                        generated_items = json.loads(cleaned_str_from_part)
-                    except json.JSONDecodeError as e2:
-                        logging.warning(f"再パースにも失敗しました: {e2}。不完全なJSONからのオブジェクト抽出を試みます。")
-                        # 最終手段: 不完全なJSONから抽出できるオブジェクトだけを救済する
-                        generated_items = extract_complete_json_objects(cleaned_str)
-                        # close_json_array_if_needed を適用する前の文字列を渡す
-                        original_cleaned_str = fix_indentation(clean_raw_json(extract_json_from_text(generated_json_str)))
-                        generated_items = extract_complete_json_objects(original_cleaned_str)
+                generated_items = parse_json_with_rescue(generated_json_str)
 
                 if generated_items:
-                    fix_ai_caption(generated_items)
                     url_to_caption = {item['page_url']: item.get('ai_caption') for item in generated_items}
                     updated_count = 0
                     for product in products:

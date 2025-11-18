@@ -5,26 +5,10 @@ from typing import List, Dict, Any
 import os
 import random
 import time
-from google import genai
-from google.genai.errors import ServerError
-
 from app.core.base_task import BaseTask
-
-def _call_gemini_api_with_retry_sync(client: genai.Client, contents: str, log_context: str, max_retries: int = 5) -> str:
-    """Gemini APIをリトライロジック付きで同期的に呼び出す共通関数"""
-    for attempt in range(max_retries):
-        try:
-            response = client.models.generate_content(model="gemini-2.5-flash", contents=contents)
-            return response.text
-        except ServerError as e:
-            if "503" in str(e) and attempt < max_retries - 1:
-                wait_time = (2 ** attempt) + random.uniform(0, 1)
-                logging.warning(f"Gemini APIが過負荷です（{log_context}）。{wait_time:.1f}秒待機して再試行します... ({attempt + 1}/{max_retries})")
-                time.sleep(wait_time) # 同期的に待機
-            else:
-                logging.error(f"Gemini API呼び出し中に永続的なエラーが発生しました（{log_context}）: {e}")
-                raise
-    return "" # リトライがすべて失敗した場合
+from app.core.ai_utils import call_gemini_api_with_retry
+from app.utils.json_utils import parse_json_with_rescue
+from google import genai
 
 class PromptTestTask(BaseTask):
     """
@@ -61,11 +45,11 @@ class PromptTestTask(BaseTask):
         logging.debug(f"【最終的なプロンプト全体】\n{full_prompt}")
         logging.debug("------------------------------------")
 
-        response_text = _call_gemini_api_with_retry_sync(client, full_prompt, f"プロンプトテスト - {self.prompt_key}")
+        response_text = call_gemini_api_with_retry(client, full_prompt, f"プロンプトテスト - {self.prompt_key}")
         logging.debug("AIからのレスポンスを受信しました。")
 
-        json_match = re.search(r"```json\s*([\s\S]*?)\s*```", response_text)
-        if not json_match:
+        result = parse_json_with_rescue(response_text)
+        if not result:
             raise ValueError(f"AIの応答からJSONブロックを抽出できませんでした。応答内容: {response_text}")
         
-        return json.loads(json_match.group(1))
+        return result

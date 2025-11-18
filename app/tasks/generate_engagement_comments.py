@@ -3,16 +3,16 @@ import os
 import json
 import re
 import random
-import time
-from google.genai.errors import ServerError
+import time 
 from google import genai
 from app.core.base_task import BaseTask
 from app.core.database import get_users_for_ai_comment_creation, update_user_comment
+from app.core.ai_utils import call_gemini_api_with_retry
+from app.utils.json_utils import parse_json_with_rescue
 
 logger = logging.getLogger(__name__)
 
-PROMPT_FILE = "app/prompts/user_comment_prompt.txt"
-COMMENT_BODY_PROMPT_FILE = "app/prompts/user_comment_body_prompt.txt"
+COMMENT_BODY_PROMPT_FILE = "app/prompts/engagement_comment_body_prompt.txt"
 DEFAULT_PROMPT_TEXT = """あなたは、ユーザー名から自然な呼び名を抽出するのが得意なアシスタントです。
 `name` フィールドから、コメントの冒頭で呼びかけるのに最も自然な名前やニックネームを抽出してください。
 
@@ -35,30 +35,14 @@ BATCH_SIZE = 10 # 一度に処理するユーザー数
 
 
 
-class CreateAiCommentTask(BaseTask):
+class GenerateEngagementCommentsTask(BaseTask):
     """
     AIを使用してユーザーへの返信コメントを生成するタスク。
     """
     def __init__(self):
         super().__init__(count=None) # 件数指定なし
-        self.action_name = "AIコメント作成"
+        self.action_name = "エンゲージメントコメント生成"
         self.needs_browser = False
-
-    def _call_gemini_api_with_retry(self, client, contents, log_context, max_retries=10):
-        """Gemini APIをリトライロジック付きで呼び出す共通関数"""
-        for attempt in range(max_retries):
-            try:
-                response = client.models.generate_content(model="gemini-2.5-flash", contents=contents)
-                return response
-            except ServerError as e:
-                if "503" in str(e) and attempt < max_retries - 1:
-                    wait_time = (2 ** attempt) + random.uniform(0, 1)
-                    logger.warning(f"Gemini APIが過負荷です（{log_context}）。{wait_time:.1f}秒待機して再試行します... ({attempt + 1}/{max_retries})")
-                    time.sleep(wait_time)
-                else:
-                    logger.error(f"Gemini API呼び出し中に永続的なエラーが発生しました（{log_context}）: {e}")
-                    raise
-        return None
 
     def _extract_names_for_batch(self, client, batch_users, batch_num):
         """バッチ単位でユーザー名を抽出する"""
@@ -66,16 +50,16 @@ class CreateAiCommentTask(BaseTask):
         users_for_extraction = [{"id": u["id"], "name": u["name"], "comment_name": ""} for u in batch_users]
         prompt += json.dumps(users_for_extraction, indent=2, ensure_ascii=False) + "\n```"
         
-        response = self._call_gemini_api_with_retry(client, prompt, f"名前抽出 - バッチ {batch_num}")
+        response_text = call_gemini_api_with_retry(client, prompt, f"名前抽出 - バッチ {batch_num}")
         
-        json_match = re.search(r"```json\s*([\s\S]*?)\s*```", response.text if response else "")
-        if not json_match:
+        extracted_names = parse_json_with_rescue(response_text)
+        if not extracted_names:
             error_message = f"名前抽出の応答からJSONブロックが見つかりませんでした（バッチ {batch_num}）。"
             logger.error(error_message)
-            logger.error(f"Gemini APIからの応答(生): {response.text if response else '応答なし'}")
+            logger.error(f"Gemini APIからの応答(生): {response_text if response_text else '応答なし'}")
             return {}
             
-        extracted_names = json.loads(json_match.group(1))
+        # The result is already a list of dicts
         return {item['id']: item.get('comment_name', '') for item in extracted_names}
 
     def _generate_bodies_for_batch(self, client, batch_users, batch_num, comment_body_prompt):
@@ -87,16 +71,16 @@ class CreateAiCommentTask(BaseTask):
         prompt = f"{comment_body_prompt}\n\n以下のJSON配列の各要素について、`comment_body`を生成し、JSON配列全体を完成させてください。\n\n```json\n"
         prompt += json.dumps(users_for_generation, indent=2, ensure_ascii=False) + "\n```"
         
-        response = self._call_gemini_api_with_retry(client, prompt, f"本文生成 - バッチ {batch_num}")
+        response_text = call_gemini_api_with_retry(client, prompt, f"本文生成 - バッチ {batch_num}")
 
-        json_match = re.search(r"```json\s*([\s\S]*?)\s*```", response.text if response else "")
-        if not json_match:
+        generated_bodies = parse_json_with_rescue(response_text)
+        if not generated_bodies:
             error_message = f"コメント本文生成の応答からJSONブロックが見つかりませんでした（バッチ {batch_num}）。"
             logger.error(error_message)
-            logger.error(f"Gemini APIからの応答(生): {response.text if response else '応答なし'}")
+            logger.error(f"Gemini APIからの応答(生): {response_text if response_text else '応答なし'}")
             return {}
 
-        generated_bodies = json.loads(json_match.group(1))
+        # The result is already a list of dicts
         return {item["id"]: item.get("comment_body", "") for item in generated_bodies}
 
     def _execute_main_logic(self):
@@ -185,7 +169,7 @@ class CreateAiCommentTask(BaseTask):
             logger.error(f"AIコメント作成タスクの実行中にエラーが発生しました: {e}", exc_info=True)
             return False
 
-def run_create_ai_comment():
+def run_generate_engagement_comments():
     """ラッパー関数"""
-    task = CreateAiCommentTask()
+    task = GenerateEngagementCommentsTask()
     return task.run()

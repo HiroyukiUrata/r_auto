@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 INPUT_JSON_PATH = "test_scripts/output/scraped_comments.json"
 OUTPUT_JSON_PATH = "test_scripts/output/replies_generated.json"
-PROMPT_FILE_PATH = "app/prompts/reply_to_comment_prompt.txt"
+PROMPT_FILE_PATH = "app/prompts/my_room_reply_prompt.txt"
 
 def _call_gemini_api_with_retry_sync(client: genai.Client, contents: str, log_context: str, max_retries: int = 5) -> str:
     """Gemini APIをリトライロジック付きで同期的に呼び出す共通関数"""

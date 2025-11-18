@@ -1,6 +1,5 @@
 from app.tasks import (
     run_check_login_status,
-    create_caption,
     run_get_post_url,
     run_posting,
     run_follow_action,
@@ -9,6 +8,7 @@ from app.tasks import (
     run_backup_database,
     run_restore_auth_state,
 )
+from app.tasks import create_caption_browser
 from app.tasks.procure_from_user_page import run_procure_from_user_page
 from app.tasks.bind_product_url_room_url import run_bind_product_url_room_url
 from app.tasks.manual_test import run_manual_test
@@ -17,10 +17,10 @@ from app.tasks.commit_stale_actions import run_commit_stale_actions
 from app.tasks.rakuten_search_procure import search_and_procure_from_rakuten
 from app.tasks.notification_analyzer import run_notification_analyzer
 from app.tasks.rakuten_api_procure import procure_from_rakuten_api
-from app.tasks.create_ai_comment import run_create_ai_comment
-from app.tasks.create_caption_api import run_create_caption_api
+from app.tasks.generate_engagement_comments import run_generate_engagement_comments
+from app.tasks.generate_product_caption import generate_product_caption
 from app.tasks.scrape_my_comments import run_scrape_my_comments
-from app.tasks.generate_reply_comments import run_generate_reply_comments
+from app.tasks.generate_replies_to_my_room import run_generate_my_room_replies
 from app.tasks.reply_to_comments import reply_to_comments
 from app.tasks.engage_user import run_engage_user
 from app.tasks.like_back_task import run_like_back
@@ -241,7 +241,7 @@ TASK_DEFINITIONS = {
     },
     "create-caption-browser": {
         "name_ja": "投稿文作成 (ブラウザ)",
-        "function": create_caption.create_caption_prompt,
+        "function": create_caption_browser.create_caption_prompt,
         "is_debug": False,
         "show_in_schedule": False,
         "description": "【旧方式】ブラウザを操作してGeminiで投稿文を作成します。",
@@ -249,7 +249,7 @@ TASK_DEFINITIONS = {
     },
     "create-caption-gemini": {
         "name_ja": "投稿文作成 (Gemini API)",
-        "function": run_create_caption_api,
+        "function": generate_product_caption,
         "is_debug": False,
         "show_in_schedule": False,
         "description": "【新方式】Gemini APIを直接呼び出して投稿文を作成します。",
@@ -281,11 +281,11 @@ TASK_DEFINITIONS = {
         "show_count_in_schedule": False, # 件数入力は不要
         "description": "通知を分析しコメントを生成します。スケジュール実行時は12時間、即時実行時は30分(hours_ago=0.5)が推奨です。",
         "order": 80,
-        "flow": [ ("check-login-status",{}), ("_internal-notification-analyzer", {"hours_ago": "flow_hours_ago"}), ("commit-stale-actions", {}), ("create-ai-comment", {})]
+        "flow": [ ("check-login-status",{}), ("_internal-notification-analyzer", {"hours_ago": "flow_hours_ago"}), ("commit-stale-actions", {}), ("generate-engagement-comments", {})]
     },
-    "create-ai-comment": {
-        "name_ja": "AIコメント作成",
-        "function": run_create_ai_comment,
+    "generate-engagement-comments": {
+        "name_ja": "エンゲージメントコメント生成",
+        "function": run_generate_engagement_comments,
         "is_debug": False,
         "show_in_schedule": False,
         "description": "分析結果を元に、ユーザーへの返信コメントをAIで生成します。",
@@ -325,9 +325,9 @@ TASK_DEFINITIONS = {
         "order": 88,
         "flow": "check-login-status | _internal-scrape-my-comments"
     },
-    "generate-reply-comments": {
+    "generate-my-room-replies-step": {
         "name_ja": "自分の投稿への返信コメント生成",
-        "function": run_generate_reply_comments,
+        "function": run_generate_my_room_replies,
         "is_debug": False,
         "show_in_schedule": False,
         "show_count_in_dashboard": False,
@@ -347,7 +347,7 @@ TASK_DEFINITIONS = {
         "flow": [
             ("check-login-status", {}),
             ("_internal-scrape-my-comments", {}),
-            ("generate-reply-comments", {})
+            ("generate-my-room-replies-step", {})
         ]
     },
     "dummy-flow-no-count": {
