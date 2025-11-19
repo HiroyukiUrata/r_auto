@@ -130,6 +130,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-dragdata@2.2.5/dist/chartjs-plugin-dragdata.min.js"></script>
     <script>
+        let globalConfig = {}; // ★★★ 追加: グローバル設定を保持する変数
         let originalSchedulesData = []; // ★★★ 追加: ページ読み込み時のデータを保持する変数
         let scheduleChartInstance = null;
         async function saveSchedule(tag, isEnabled, times) {
@@ -338,6 +339,7 @@
             try {
                 const response = await fetch('/api/config');
                 const config = await response.json();
+                globalConfig = config; // 取得した設定をグローバル変数に保存
                 document.getElementById('max-delay-input').value = config.max_delay_minutes;
             } catch (error) {
                 console.error('Failed to fetch global config:', error);
@@ -350,34 +352,20 @@
                 const response = await fetch('/api/config', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ max_delay_minutes: parseInt(maxDelay, 10) })
+                    body: JSON.stringify({ 
+                        max_delay_minutes: parseInt(maxDelay, 10)
+                    })
                 });
                 const result = await response.json();
                 if (!response.ok) {
                     throw new Error(result.message || '設定の保存に失敗しました。');
                 }
-                alert('設定を保存しました。');
+                showToast('設定を保存しました。', 'success');
+                globalConfig.max_delay_minutes = parseInt(maxDelay, 10); // グローバル変数を更新
             } catch (error) {
                 console.error('Error saving global config:', error);
-                alert(error.message);
+                showToast('エラー', error.message, 'danger');
             }
-        }
-
-        // トースト通知を表示するヘルパー関数
-        function showToast(title, message, isError = false) {
-            const toastEl = document.getElementById('appToast');
-            const toastTitle = document.getElementById('toast-title');
-            const toastBody = document.getElementById('toast-body');
-            
-            toastTitle.textContent = title;
-            toastBody.textContent = message;
-
-            // エラーの場合はヘッダーの色を変更
-            toastEl.querySelector('.toast-header').classList.toggle('bg-danger', isError);
-            toastEl.querySelector('.toast-header').classList.toggle('text-white', isError);
-
-            const toast = new bootstrap.Toast(toastEl);
-            toast.show();
         }
 
         async function runTaskNow(tag, name_ja) {
@@ -402,7 +390,7 @@
                 if (!response.ok) {
                     throw new Error(result.message || 'タスクの実行開始に失敗しました。');
                 }
-                showToast('タスク開始', result.message);
+                showToast('タスク開始', result.message, 'info'); // ★★★ 修正点: showToastを使用
             } catch (error) {
                 console.error('Error running task:', error);
                 showToast('エラー', error.message, true);
@@ -465,7 +453,7 @@
 
             const success = await saveSchedule(tag, isEnabled, newTimes);
             if (success) {
-                showToast('保存完了', 'スケジュールを保存しました。');
+                showToast('保存完了', 'スケジュールを保存しました。', 'success'); // ★★★ 修正点: showToastを使用
                 // ★★★ 修正点: ページ全体ではなく、カードの状態のみをリセット ★★★
                 resetCardState(card);
                 // ★★★ 修正点: チャートと「元のデータ」の両方を更新する ★★★
@@ -728,16 +716,41 @@
                         dragData: {
                             enabled: window.innerWidth >= 768, // PC表示でのみ有効化
                             dragX: true, // ★★★ 修正点: X軸方向のドラッグを有効にする ★★★
-                            round: 0, // 分単位で丸めるため、小数点以下の丸めは不要
+                            round: 0, // ★★★ 修正点: ドラッグ中はスムーズに動かすため、丸めを無効化 ★★★
                             showTooltip: true,
                             // ★★★ 修正点: ドラッグ中にY軸の値を本来のカテゴリ名で固定する ★★★
                             onDrag: function(e, datasetIndex, index, value) {
-                                const chart = scheduleChartInstance;
+                                const chart = scheduleChartInstance; // chartインスタンスを取得
+
                                 // Y軸がずれるのを防ぐため、ドラッグ中は常に元のY軸カテゴリ名（タスク名）をセットし続ける
                                 value.y = chart.data.datasets[datasetIndex].label;
+
+                                // ★★★ 修正点: ドラッグ中のツールチップ表示も5分刻みに丸める ★★★
+                                const fiveMinutes = 5 * 60 * 1000;
+                                const roundedTime = Math.round(value.x / fiveMinutes) * fiveMinutes;
+                                const date = new Date(roundedTime);
+                                const timeString = date.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', hour12: false });
+
+                                // Chart.jsのツールチップAPIを使って、カスタムテキストを表示
+                                const tooltip = chart.tooltip;
+                                if (tooltip) {
+                                    tooltip.setActiveElements([{
+                                        datasetIndex: datasetIndex,
+                                        index: index,
+                                    }], {
+                                        x: e.x, // マウスカーソルのX座標
+                                        y: e.y, // マウスカーソルのY座標
+                                    });
+                                    chart.update(); // ツールチップを再描画
+                                }
                             },
                             onDragEnd: function(e, datasetIndex, index, value) {
-                                const chart = scheduleChartInstance;
+                                const chart = scheduleChartInstance; // ★★★ 修正点: chartを最初に定義
+
+                                // ★★★ 修正点: ドラッグ終了時に、最も近い5分刻みに丸める ★★★
+                                const fiveMinutes = 5 * 60 * 1000;
+                                value.x = Math.round(value.x / fiveMinutes) * fiveMinutes;
+                                chart.data.datasets[datasetIndex].data[index].x = value.x; // チャートのデータも更新
                                 const tag = chart.data.datasets[datasetIndex].tag;
                                 const card = document.getElementById(`task-card-${tag}`);
                                 if (!card) return;
@@ -789,7 +802,12 @@
                                 title: (context) => context[0].dataset.label, // タスク名
                                 label: (tooltipItem) => {
                                     const date = new Date(tooltipItem.parsed.x);
-                                    const timeString = date.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', hour12: false });
+                                    // ★★★ 修正点: ツールチップ表示も5分刻みに丸める ★★★
+                                    const fiveMinutes = 5 * 60 * 1000;
+                                    const roundedTime = Math.round(date.getTime() / fiveMinutes) * fiveMinutes;
+                                    const roundedDate = new Date(roundedTime);
+                                    const timeString = roundedDate.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', hour12: false });
+
                                     const count = tooltipItem.raw.count;
                                     const showCount = tooltipItem.raw.show_count;
                                     // 件数表示が有効で、かつ件数が1以上の場合のみ表示
