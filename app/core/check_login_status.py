@@ -24,11 +24,11 @@ class CheckLoginStatusTask(BaseTask): # Class name is already correct
         try:
             logging.debug("「my ROOM」リンクをクリックします。")
             my_room_link_locator = page.locator('a:has-text("my ROOM")')
-            my_room_link_locator.wait_for(state='visible', timeout=10000)
+            my_room_link_locator.wait_for(state='visible', timeout=30000)
             my_room_link_locator.click()
 
             # ページの遷移を待つ
-            page.wait_for_load_state("domcontentloaded", timeout=15000)
+            page.wait_for_load_state("domcontentloaded", timeout=30000)
             current_url = page.url
 
             profile_indicator = "[1]" if self.current_profile_dir == PRIMARY_PROFILE_DIR else "[2]"

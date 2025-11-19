@@ -1361,7 +1361,7 @@ def _run_task_internal(tag: str, is_part_of_flow: bool, **kwargs):
         # 2. スケジュール実行などから渡された引数で上書き
         flow_kwargs.update(flow_run_kwargs)
 
-        logging.debug(f"--- 新フロー実行: 「{definition['name_ja']}」を開始します。 ---")
+        logging.info(f"--- フロー実行: 「{definition['name_ja']}」を開始します。 ---")
 
         def run_flow():
             flow_succeeded = True # フローが成功したかどうかを追跡するフラグ
