@@ -590,6 +590,15 @@
                 scheduleChartInstance.options.plugins.dragData.enabled = isEditMode && window.innerWidth >= 768;
                 scheduleChartInstance.update(); // チャートを更新して変更を反映
             }
+
+            // ★★★ 追加: 編集モードOFF時に未保存の変更をキャンセルする ★★★
+            if (!isEditMode) {
+                const dirtyCards = document.querySelectorAll('.card[data-is-dirty="true"]');
+                if (dirtyCards.length > 0) {
+                    dirtyCards.forEach(card => cancelChanges(card));
+                    showToast('情報', '編集モードを終了しました。未保存の変更はキャンセルされました。', 'info');
+                }
+            }
         }
 
         // ★★★ 追加: 一括保存処理 ★★★
@@ -614,7 +623,15 @@
 
         // ★★★ 追加: 一括キャンセル処理 ★★★
         function handleCancelAll() {
-            if (confirm('すべての変更を破棄してよろしいですか？')) location.reload();
+            // ★★★ 修正点: ページリロードではなく、変更があったカードのみを元に戻す ★★★
+            const dirtyCards = document.querySelectorAll('.card[data-is-dirty="true"]');
+            if (dirtyCards.length === 0) {
+                showToast('情報', 'キャンセルする変更がありません。', 'info');
+                return;
+            }
+            if (!confirm(`${dirtyCards.length}件のタスクへの変更をすべてキャンセルしますか？`)) return;
+
+            dirtyCards.forEach(card => cancelChanges(card));
         }
 
         function cancelChanges(cardElement) {
