@@ -130,6 +130,53 @@
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-dragdata@2.2.5/dist/chartjs-plugin-dragdata.min.js"></script>
     <script>
+        // ★★★ 追加: ヘルパー関数群 ★★★
+        // HH:mm 形式の文字列を今日のタイムスタンプに変換
+        function timeToTimestamp(timeString) {
+            const [hours, minutes] = timeString.split(':');
+            const date = new Date();
+            date.setHours(hours, minutes, 0, 0);
+            return date.getTime();
+        }
+
+        // タイムスタンプを HH:mm 形式の文字列に変換
+        function timestampToTime(timestamp) {
+            const date = new Date(timestamp);
+            return date.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', hour12: false });
+        }
+
+        // 提案された時刻が既存の時刻と重ならないように調整する
+        function adjustTimeForOverlap(proposedTimestamp, existingTimestamps, minSeparationMinutes = 10) {
+            const minSeparationMs = minSeparationMinutes * 60 * 1000;
+            let adjustedTimestamp = proposedTimestamp;
+            let hasOverlap = true;
+            const MAX_ITERATIONS = 150; // 24時間分のシフトを試行 (24 * 60 / 10)
+            let iterationCount = 0; // 無限ループ防止
+
+            // ★★★ 修正点: 既存のタイムスタンプをソートしてからチェックする ★★★
+            const sortedExistingTimestamps = [...existingTimestamps].sort((a, b) => a - b);
+            
+            while (hasOverlap && iterationCount < MAX_ITERATIONS) {
+                hasOverlap = false;
+                for (const existingTs of sortedExistingTimestamps) {
+                    if (Math.abs(adjustedTimestamp - existingTs) < minSeparationMs) {
+                        // 重複検出、前方にシフトを試みる
+                        adjustedTimestamp = existingTs + minSeparationMs;
+                        hasOverlap = true;
+                        // シフトした場合、すべての既存時刻に対して再チェックが必要
+                        break;
+                    }
+                }
+                iterationCount++;
+            }
+            // 24時間範囲内に収める (00:00から23:59)
+            const startOfDay = new Date().setHours(0, 0, 0, 0);
+            const endOfDay = new Date().setHours(23, 59, 0, 0);
+            adjustedTimestamp = Math.max(startOfDay, Math.min(endOfDay, adjustedTimestamp));
+
+            return adjustedTimestamp;
+        }
+        // ★★★ ヘルパー関数群 終わり ★★★
         let globalConfig = {}; // ★★★ 追加: グローバル設定を保持する変数
         let originalSchedulesData = []; // ★★★ 追加: ページ読み込み時のデータを保持する変数
         let scheduleChartInstance = null;
@@ -234,6 +281,7 @@
             // ★変更点: 先に値のチェックを行い、空なら何もせずに終了
             if (!newTime) return;
 
+            // ★★★ 修正点: 重複チェックと調整ロジックを追加 ★★★
             let newCount = 1;
             const countInput = cardBody.querySelector(`#count-input-${tag}`);
             if (hasCount && countInput) {
@@ -243,13 +291,24 @@
                 // 0件の場合は追加しない、という仕様も考えられるが、一旦は0件でも追加できるようにしておく
                 // newCount = Math.max(0, newCount); // 負の数を防ぐ
             }
-
             const timesContainer = cardBody.querySelector('.time-list-container');
-            const existingTimes = Array.from(timesContainer.querySelectorAll('.time-entry .time-display')).map(s => s.textContent.split('<')[0]);
-            if (existingTimes.includes(newTime)) {
+            const existingTimeElements = Array.from(timesContainer.querySelectorAll('.time-entry .time-display'));
+
+            // 既存の時刻をタイムスタンプに変換
+            const existingTimestamps = existingTimeElements.map(s => timeToTimestamp(s.childNodes[0].nodeValue.trim()));
+            let proposedTimestamp = timeToTimestamp(newTime);
+            const fiveMinutes = 5 * 60 * 1000;
+            proposedTimestamp = Math.round(proposedTimestamp / fiveMinutes) * fiveMinutes; // 5分刻みに丸める
+
+            // 厳密な重複チェック (5分刻みに丸めた後)
+            const snappedNewTime = timestampToTime(proposedTimestamp);
+            if (existingTimeElements.some(s => s.childNodes[0].nodeValue.trim() === snappedNewTime)) {
                 alert('この時刻は既に追加されています。');
                 return;
             }
+            // 重複を避けるように時刻を調整
+            const adjustedTimestamp = adjustTimeForOverlap(proposedTimestamp, existingTimestamps);
+            newTime = timestampToTime(adjustedTimestamp); // 調整後の時刻でnewTimeを更新
 
             const countBadge = hasCount ? `<span class="badge bg-secondary ms-2 count-display" data-count="${newCount}">${newCount > 0 ? `${newCount}件` : '0件'}</span>` : '';
             const timeEntry = document.createElement('div');
@@ -751,6 +810,16 @@
                                 const fiveMinutes = 5 * 60 * 1000;
                                 value.x = Math.round(value.x / fiveMinutes) * fiveMinutes;
                                 chart.data.datasets[datasetIndex].data[index].x = value.x; // チャートのデータも更新
+
+                                // ★★★ 修正点: 同一タスク内の他の時刻を取得し、重複を避けるように調整 ★★★
+                                const currentTaskDataPoints = chart.data.datasets[datasetIndex].data;
+                                const existingTimestamps = currentTaskDataPoints
+                                    .filter((dp, dpIndex) => dpIndex !== index) // 編集中の点自身は除外
+                                    .map(dp => dp.x);
+
+                                // 重複を避けるように時刻を調整
+                                value.x = adjustTimeForOverlap(value.x, existingTimestamps);
+                                chart.data.datasets[datasetIndex].data[index].x = value.x; // 調整後の時刻でチャートのデータも更新
                                 const tag = chart.data.datasets[datasetIndex].tag;
                                 const card = document.getElementById(`task-card-${tag}`);
                                 if (!card) return;
