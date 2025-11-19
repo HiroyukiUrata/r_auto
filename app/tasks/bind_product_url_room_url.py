@@ -172,7 +172,7 @@ class BindProductUrlRoomUrlTask(BaseTask):
             return False
         finally:
             logger.debug(f"合計 {processed_count} 件のカードを処理しました。")
-            logger.debug(f"--- {self.action_name}を終了します ---")
+            logger.info(f"--- {self.action_name}を終了します ---")
         
         return True
 

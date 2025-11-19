@@ -90,9 +90,27 @@
                     </h2>
                     <div id="collapseScheduleChart" class="accordion-collapse collapse" aria-labelledby="headingScheduleChart" data-bs-parent="#topSectionsAccordion">
                         <div class="accordion-body">
+                            <!-- ★★★ 追加: 編集モード切替と一括操作ボタン ★★★ -->
+                            <div class="d-flex justify-content-end align-items-center mb-2 gap-3">
+                                <div id="bulk-chart-actions" style="display: none;">
+                                    <button class="btn btn-sm btn-warning" id="save-all-btn" onclick="handleSaveAll()">
+                                        <i class="bi bi-check-all"></i> 一括確定
+                                    </button>
+                                    <button class="btn btn-sm btn-secondary" id="cancel-all-btn" onclick="handleCancelAll()">
+                                        <i class="bi bi-x-circle"></i> 一括キャンセル
+                                    </button>
+                                </div>
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" role="switch" id="chart-edit-mode-switch" onchange="toggleChartEditMode(this.checked)">
+                                    <label class="form-check-label" for="chart-edit-mode-switch">編集モード</label>
+                                </div>
+                            </div>
                             <div style="width: 100%; overflow-x: auto;">
-                                <div class="chart-container">
-                                    <canvas id="scheduleChart"></canvas>
+                                <!-- ★★★ 修正点: canvasをラッパーdivで囲む ★★★ -->
+                                <div id="chart-wrapper">
+                                    <div class="chart-container">
+                                        <canvas id="scheduleChart"></canvas>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -177,7 +195,41 @@
             return adjustedTimestamp;
         }
         // ★★★ ヘルパー関数群 終わり ★★★
+
+        // ★★★ 追加: DOMから現在のスケジュールデータを取得する関数 ★★★
+        function getCurrentSchedulesFromDOM() {
+            const schedules = [];
+            const cardElements = document.querySelectorAll('#schedules-container .card');
+            cardElements.forEach(cardElement => {
+                const tag = cardElement.id.replace('task-card-', '');
+                const name_ja = cardElement.querySelector('h5').textContent.trim();
+                const enabled = cardElement.querySelector(`#master-toggle-${tag}`).checked;
+
+                const times = [];
+                const timeEntries = cardElement.querySelectorAll('.time-entry');
+                timeEntries.forEach(entry => {
+                    const time = entry.querySelector('.time-display').childNodes[0].nodeValue.trim();
+                    const countBadge = entry.querySelector('.count-display');
+                    const count = countBadge ? parseInt(countBadge.dataset.count, 10) : 1;
+                    times.push({ time: time, count: count });
+                });
+
+                // show_count_in_schedule と next_run はDOMから直接取得できないため、
+                // originalSchedulesData (最後にAPIから取得したデータ) から補完します。
+                const originalJobData = originalSchedulesData.find(job => job.tag === tag);
+                schedules.push({
+                    tag: tag,
+                    name_ja: name_ja,
+                    enabled: enabled,
+                    times: times,
+                    show_count_in_schedule: originalJobData?.show_count_in_schedule ?? false,
+                    next_run: originalJobData?.next_run ?? 'N/A'
+                });
+            });
+            return schedules;
+        }
         let globalConfig = {}; // ★★★ 追加: グローバル設定を保持する変数
+        let isChartEditMode = false; // ★★★ 追加: チャートの編集モード状態を保持
         let originalSchedulesData = []; // ★★★ 追加: ページ読み込み時のデータを保持する変数
         let scheduleChartInstance = null;
         async function saveSchedule(tag, isEnabled, times) {
@@ -522,6 +574,49 @@
             }
         }
 
+        // ★★★ 追加: チャート編集モード切替 ★★★
+        function toggleChartEditMode(isEditMode) {
+            // ★★★ 修正点: CSSでイベントを制御する方式に変更 ★★★
+            isChartEditMode = isEditMode;
+            const bulkActions = document.getElementById('bulk-chart-actions');
+            bulkActions.style.display = isEditMode ? 'block' : 'none';
+
+            // ラッパーdivのpointer-eventsスタイルを切り替えてドラッグを制御
+            const chartWrapper = document.getElementById('chart-wrapper');
+            chartWrapper.style.pointerEvents = isEditMode ? 'auto' : 'none';
+
+            // ★★★ 修正点: チャートのdragDataプラグインの有効/無効も切り替える ★★★
+            if (scheduleChartInstance) {
+                scheduleChartInstance.options.plugins.dragData.enabled = isEditMode && window.innerWidth >= 768;
+                scheduleChartInstance.update(); // チャートを更新して変更を反映
+            }
+        }
+
+        // ★★★ 追加: 一括保存処理 ★★★
+        async function handleSaveAll() {
+            const dirtyCards = document.querySelectorAll('.card[data-is-dirty="true"]');
+            if (dirtyCards.length === 0) {
+                // base.htmlのshowToast関数はtype引数を受け取るので、'info'を渡す
+                showToast('情報', '保存する変更がありません。', 'info'); 
+                return;
+            }
+            if (!confirm(`${dirtyCards.length}件のタスクへの変更をすべて保存しますか？`)) return;
+
+            const savePromises = Array.from(dirtyCards).map(card => {
+                const tag = card.id.replace('task-card-', '');
+                return handleSave(tag);
+            });
+
+            await Promise.all(savePromises);
+            // すべて保存後、編集モードをオフにする
+            document.getElementById('chart-edit-mode-switch').click();
+        }
+
+        // ★★★ 追加: 一括キャンセル処理 ★★★
+        function handleCancelAll() {
+            if (confirm('すべての変更を破棄してよろしいですか？')) location.reload();
+        }
+
         function cancelChanges(cardElement) {
             // ★★★ 修正点: DOM操作での復元をやめ、元のJSONデータから再描画する方式に変更 ★★★
             const tag = cardElement.id.replace('task-card-', '');
@@ -677,12 +772,19 @@
         }
 
         document.addEventListener('DOMContentLoaded', () => {
+            // ★★★ 修正点: ページ読み込み時に必ずチャート編集モードをOFFにする ★★★
+            const chartEditModeSwitch = document.getElementById('chart-edit-mode-switch');
+            if (chartEditModeSwitch) {
+                chartEditModeSwitch.checked = false; // チェックボックスをOFFにする
+                isChartEditMode = false; // グローバル変数もOFFにする
+                toggleChartEditMode(false); // UIの状態を確実に閲覧モードに設定
+            }
+
             fetchSchedules();
             fetchGlobalConfig();
             fetchProfiles();
             if (typeof ChartDataLabels !== 'undefined') Chart.register(ChartDataLabels);
         });
-
         function renderScheduleChart(schedules) {
             // X軸の最小値と最大値を明示的に設定し、常に1日の全範囲をカバーするようにする
             const today = new Date();
@@ -692,6 +794,11 @@
             today.setHours(23, 59, 59, 999); // 今日の23:59:59.999
             const endOfDay = today.getTime();
 
+
+            // ★★★ 修正点: 新しいチャートを描画する前に、必ず既存のインスタンスを破棄する ★★★
+            if (scheduleChartInstance) {
+                scheduleChartInstance.destroy();
+            }
 
             const ctx = document.getElementById('scheduleChart').getContext('2d');
 
@@ -758,10 +865,6 @@
             // Y軸に表示するタスク名のリストを作成
             const yLabels = [...new Set(schedules.filter(j => j.enabled).map(job => job.name_ja))];
 
-            if (scheduleChartInstance) {
-                scheduleChartInstance.destroy();
-            }
-
             scheduleChartInstance = new Chart(ctx, {
                 type: 'scatter', // グラフの種類を散布図に変更
                 data: {
@@ -773,7 +876,7 @@
                     // ★★★ 変更点: ドラッグ＆ドロップによる時間変更機能を追加 ★★★
                     plugins: {
                         dragData: {
-                            enabled: window.innerWidth >= 768, // PC表示でのみ有効化
+                            enabled: isChartEditMode && window.innerWidth >= 768, // ★★★ 修正点: 編集モードでのみ有効化
                             dragX: true, // ★★★ 修正点: X軸方向のドラッグを有効にする ★★★
                             round: 0, // ★★★ 修正点: ドラッグ中はスムーズに動かすため、丸めを無効化 ★★★
                             showTooltip: true,
@@ -906,6 +1009,8 @@
                     }
                 }
             });
+
+            toggleChartEditMode(isChartEditMode); // 現在のモード状態をUIに反映
         }
     </script>
-{% endblock %}
+{% endblock %} 
