@@ -41,7 +41,7 @@ def run_task_with_random_delay(task_to_run, **kwargs):
     
     if max_delay_minutes > 0:
         delay_seconds = random.randint(0, max_delay_minutes * 60)
-        logger.info(f"スケジュールされたタスクの実行を {delay_seconds // 60}分{delay_seconds % 60}秒 遅延させます。")
+        logger.debug(f"スケジュールされたタスクの実行を {delay_seconds // 60}分{delay_seconds % 60}秒 遅延させます。")
         time.sleep(delay_seconds)
     
     task_to_run(**kwargs)
@@ -64,7 +64,7 @@ def get_recent_activities_from_log(limit=5, max_lines=1000):
             "商品調達": "商品調達",
             "マイコメ返信": "マイコメ返信",
         }
-        log_name_to_ui_name["再コレ"] = "再コレ"
+        log_name_to_ui_name["再コレ"] = "在庫化(再コレ)"
         log_name_to_ui_name["投稿削除"] = "投稿削除"
 
         # 正規表現パターン

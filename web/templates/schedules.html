@@ -14,6 +14,19 @@
             opacity: 0.5;
             pointer-events: none;
         }
+        /* デフォルト（モバイル）のスタイル */
+        .chart-container {
+            position: relative;
+            min-width: 540px; /* スマホ用の最小幅 (800px * 2/3) */
+            height: 170px;
+        }
+        /* PC表示時 (768px以上) のみ高さを上書き */
+        @media (min-width: 768px) {
+            .chart-container {
+                min-width: 800px; /* PC用の最小幅 */
+                height: 340px; /* PC用の高さを設定 (170px * 2) */
+            }
+        }
     </style>
 {% endblock %}
 {% block content %}
@@ -68,6 +81,24 @@
                     </div>
                 </div>
                 </div>
+                <!-- スケジュールチャート -->
+                <div class="accordion-item">
+                    <h2 class="accordion-header" id="headingScheduleChart">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseScheduleChart" aria-expanded="false" aria-controls="collapseScheduleChart">
+                            <i class="bi bi-bar-chart-line-fill me-2"></i>スケジュールチャート
+                        </button>
+                    </h2>
+                    <div id="collapseScheduleChart" class="accordion-collapse collapse" aria-labelledby="headingScheduleChart" data-bs-parent="#topSectionsAccordion">
+                        <div class="accordion-body">
+                            <div style="width: 100%; overflow-x: auto;">
+                                <div class="chart-container">
+                                    <canvas id="scheduleChart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
             </div>
         </div>
         <div class="row">
@@ -93,7 +124,12 @@
 {% endblock %}
 
 {% block scripts %}
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
     <script>
+        let scheduleChartInstance = null;
         async function saveSchedule(tag, isEnabled, times) {
             try {
                 const response = await fetch('/api/schedules/update', {
@@ -123,6 +159,8 @@
 
             const container = document.getElementById('schedules-container');
             container.innerHTML = '';
+
+            renderScheduleChart(schedules);
 
             schedules.forEach(job => {
                 // Python側の 'show_count_in_schedule' フラグを直接参照します。
@@ -567,6 +605,137 @@
             fetchSchedules();
             fetchGlobalConfig();
             fetchProfiles();
+            if (typeof ChartDataLabels !== 'undefined') Chart.register(ChartDataLabels);
         });
+
+        function renderScheduleChart(schedules) {
+            const ctx = document.getElementById('scheduleChart').getContext('2d');
+
+            // 色の定義
+            const colors = {
+                'post-article': 'rgb(255, 99, 132)',
+                'run-like-action': 'rgb(54, 162, 235)',
+                'run-follow-action': 'rgb(75, 192, 192)',
+                'procure-products-flow': 'rgb(255, 206, 86)',
+                'notification-analyzer': 'rgb(201, 203, 207)',
+                'generate-my-room-replies': 'rgb(255, 159, 64)',
+                'backup-database': 'rgb(153, 102, 255)', // 紫
+                'default': 'rgb(153, 102, 255)'
+            };
+
+            // 現在時刻を示すためのアノテーションプラグイン設定
+            const annotation = {
+                type: 'line',
+                borderColor: 'rgba(255, 0, 0, 0.5)',
+                borderWidth: 2,
+                borderDash: [6, 6],
+                scaleID: 'x',
+                value: new Date(), // 現在時刻
+                label: {
+                    content: '現在時刻',
+                    enabled: true,
+                    position: 'start',
+                    font: { size: 10 },
+                    backgroundColor: 'rgba(255, 0, 0, 0.5)'
+                }
+            };
+
+            const datasets = [];
+            schedules.forEach(job => {
+                // スケジュールが無効な場合はグラフに表示しない
+                if (!job.enabled) {
+                    return;
+                }
+                // 散布図用のデータを作成
+                // x: 時刻, y: タスク名
+                const dataPoints = job.times.map(entry => {
+                    // 'HH:mm' 形式の文字列を今日のDateオブジェクトに変換
+                    const [hours, minutes] = entry.time.split(':');
+                    const date = new Date();
+                    date.setHours(hours, minutes, 0, 0);
+
+                    return { 
+                        x: date.getTime(), 
+                        y: job.name_ja,
+                        count: entry.count, // ツールチップ表示用に件数を追加
+                        show_count: job.show_count_in_schedule !== false // 件数表示フラグも追加
+                    };
+                });
+                datasets.push({
+                    label: job.name_ja,
+                    data: dataPoints,
+                    tag: job.tag, // ハイライト機能のためにタグを追加
+                    backgroundColor: (colors[job.tag] || colors.default),
+                    pointRadius: 8, // 点の半径
+                    pointHoverRadius: 10, // ホバー時の半径
+                });
+            });
+
+            // Y軸に表示するタスク名のリストを作成
+            const yLabels = [...new Set(schedules.filter(j => j.enabled).map(job => job.name_ja))];
+
+            if (scheduleChartInstance) {
+                scheduleChartInstance.destroy();
+            }
+
+            scheduleChartInstance = new Chart(ctx, {
+                type: 'scatter', // グラフの種類を散布図に変更
+                data: {
+                    datasets: datasets
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        datalabels: {
+                            display: function(context) {
+                                // 画面幅が768px未満の場合のみラベルを表示
+                                return window.innerWidth < 768;
+                            },
+                            formatter: function(value, context) {
+                                // タスク名の最初の1文字を返す
+                                return context.dataset.label.substring(0, 1);
+                            },
+                            color: 'white',
+                            font: { weight: 'bold', size: 10 }
+                        },
+                        legend: {
+                            display: window.innerWidth >= 768,
+                            position: 'bottom'
+                        },
+                        tooltip: {
+                            callbacks: {
+                                title: (context) => context[0].dataset.label, // タスク名
+                                label: (tooltipItem) => {
+                                    const date = new Date(tooltipItem.parsed.x);
+                                    const timeString = date.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', hour12: false });
+                                    const count = tooltipItem.raw.count;
+                                    const showCount = tooltipItem.raw.show_count;
+                                    // 件数表示が有効で、かつ件数が1以上の場合のみ表示
+                                    const countString = (showCount && count > 0) ? ` (${count})` : '';
+                                    return `${timeString}${countString}`;
+                                }
+                            }
+                        },
+                        annotation: { annotations: { annotation } }
+                    },
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: { unit: 'hour', displayFormats: { hour: 'HH:mm' }, tooltipFormat: 'HH:mm' },
+                            grid: { display: true },
+                            ticks: { font: { size: window.innerWidth < 768 ? 9 : 12 } }
+                        },
+                        y: {
+                            type: 'category',
+                            offset: true,
+                            labels: yLabels,
+                            grid: { display: false },
+                            ticks: { display: false }
+                        }
+                    }
+                }
+            });
+        }
     </script>
 {% endblock %}

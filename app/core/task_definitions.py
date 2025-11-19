@@ -372,11 +372,11 @@ TASK_DEFINITIONS = {
         "order": 9999,
     },
     "recollect-product-flow": {
-        "name_ja": "（内部処理）商品再コレフロー",
+        "name_ja": "（内部処理）商品の再在庫化フロー",
         "function": None,
         "is_debug": False,
         "show_in_schedule": False,
-        "description": "ログイン状態を確認後、商品を再コレ状態にします。",
+        "description": "ログイン状態を確認後、商品を「再コレ」として再度在庫化します。",
         "flow": "check-login-status | delete-room-post",
         "order": 9999,
     },
