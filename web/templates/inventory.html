@@ -74,6 +74,12 @@
     </table>
 </div>
 
+<!-- 無限スクロール用のローディングインジケーター -->
+<div id="loading-indicator" class="text-center my-3" style="display: none;">
+    <div class="spinner-border spinner-border-sm" role="status"></div>
+    <span class="ms-2">読み込み中...</span>
+</div>
+
 <!-- 商品情報詳細モーダル -->
 <div class="modal fade" id="infoModal" tabindex="-1" aria-labelledby="infoModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
@@ -196,6 +202,11 @@
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
 <script>
     // グローバルスコープにモーダルインスタンスを保持
+    let allProductsData = []; // 全商品データを保持
+    let displayedCount = 0;   // 表示済みの件数
+    const ITEMS_PER_LOAD = 50; // 一度に読み込む件数
+    let isLoading = false;    // 読み込み中フラグ
+    let sortableInstance = null; // SortableJSのインスタンス
     let infoModalInstance = null;
 
     async function importFromJson() {
@@ -387,118 +398,113 @@
         [...tooltipTriggerList].map(tooltipTriggerEl => new bootstrap.Tooltip(tooltipTriggerEl));
     }
 
-    // ページ読み込み時に在庫リストを取得して表示する関数
+    function renderProducts(startIndex, count) {
+        const tableBody = document.getElementById('inventory-table-body');
+        const productsToRender = allProductsData.slice(startIndex, startIndex + count);
+
+        if (startIndex === 0 && productsToRender.length === 0) {
+            tableBody.innerHTML = '<tr><td colspan="6" class="text-center">在庫商品はありません。</td></tr>';
+            return;
+        }
+
+        let inconsistentCount = 0;
+        let rowsHtml = '';
+        productsToRender.forEach(product => {
+            let statusInfo = statusMap[product.status] || { emoji: '❓', color: 'light' };
+            let statusTitle = product.status;
+            const isDataInconsistent = product.status === '投稿準備完了' && (!product.post_url || !product.ai_caption);
+            let statusHtml = `<span title="${statusTitle}" class="fs-5">${statusInfo.emoji}</span>`;
+
+            if (isDataInconsistent) {
+                statusTitle = 'データ不整合: 投稿準備完了ですが、URLまたは投稿文がありません。';
+                statusHtml = `<span title="${statusTitle}" class="fs-5 text-warning">☔</span>`;
+                inconsistentCount++;
+            }
+
+            const createdAt = product.created_at ? new Date(product.created_at).toLocaleDateString('ja-JP') : 'N/A';
+            rowsHtml += `
+                <tr id="product-row-${product.id}">
+                    <td><input class="form-check-input product-checkbox" type="checkbox" value="${product.id}"></td>
+                    <td class="text-center drag-handle"><i class="bi bi-grip-vertical"></i></td>
+                    <td><a href="${product.url}" target="_blank" rel="noopener noreferrer"><img src="${product.image_url || 'https://via.placeholder.com/80'}" alt="${product.name}" class="img-thumbnail inventory-thumbnail"></a></td>
+                    <td class="text-start"><div class="fw-bold truncate-cell" title="${product.name || ''}">${product.name || ''}</div><div class="text-muted small truncate-cell" title="${product.ai_caption || ''}">${product.ai_caption || ''}</div></td>
+                    <td class="text-center" onclick="showInfoModal(this)" data-name="${product.name || ''}" data-caption="${product.ai_caption || ''}" data-post-url="${product.post_url || ''}" data-procurement-keyword="${product.procurement_keyword || ''}">${statusHtml}</td>
+                    <td>${createdAt}</td>
+                </tr>
+            `;
+        });
+
+        tableBody.innerHTML += rowsHtml;
+        displayedCount += productsToRender.length;
+
+        // データ不整合件数をサマリーに反映（初回のみ）
+        if (startIndex === 0 && inconsistentCount > 0) {
+            const summaryContainer = document.getElementById('status-summary');
+            const inconsistentCardHtml = `<div class="col" title="データ不整合" style="cursor: default;"><div class="card card-body text-center h-100 border-warning"><div class="d-flex justify-content-center align-items-center h-100 gap-2"><span class="fs-4">☔</span><span class="fs-4 fw-bold">${inconsistentCount}</span></div></div></div>`;
+            summaryContainer.innerHTML += inconsistentCardHtml;
+        }
+    }
+
+    function loadMoreProducts() {
+        if (isLoading || displayedCount >= allProductsData.length) {
+            return;
+        }
+        isLoading = true;
+        const loadingIndicator = document.getElementById('loading-indicator');
+        loadingIndicator.style.display = 'block';
+
+        // 擬似的な遅延を入れて、読み込み中であることを視覚的に示す
+        setTimeout(() => {
+            renderProducts(displayedCount, ITEMS_PER_LOAD);
+            isLoading = false;
+            loadingIndicator.style.display = 'none';
+        }, 300);
+    }
+
+    // スクロールイベントのリスナー
+    window.addEventListener('scroll', () => {
+        // 画面の高さ + スクロール量 が ドキュメント全体の高さ - 300px（余裕）を超えたら次のデータを読み込む
+        if ((window.innerHeight + window.scrollY) >= document.body.offsetHeight - 300) {
+            loadMoreProducts();
+        }
+    });
+
     document.addEventListener('DOMContentLoaded', function () {
-        // ツールチップを初期化
         const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]');
         [...tooltipTriggerList].map(tooltipTriggerEl => new bootstrap.Tooltip(tooltipTriggerEl));
+        infoModalInstance = new bootstrap.Modal(document.getElementById('infoModal'));
 
-        // モーダルを初期化
-        const infoModalEl = document.getElementById('infoModal');
-        infoModalInstance = new bootstrap.Modal(infoModalEl);
-        // ステータスサマリーを取得
-        fetch('/api/inventory/summary')
-            .then(response => response.json())
-            .then(summary => {
-                renderStatusSummary(summary);
-            })
-            .catch(error => console.error('Error fetching status summary:', error));
+        fetch('/api/inventory/summary').then(response => response.json()).then(renderStatusSummary);
 
-        // 在庫リストを取得
         fetch('/api/inventory')
             .then(response => response.json())
             .then(data => {
+                allProductsData = data;
                 const tableBody = document.getElementById('inventory-table-body');
-                let inconsistentCount = 0;
                 tableBody.innerHTML = ''; // 既存の内容をクリア
-                if (data.length === 0) {
-                    tableBody.innerHTML = '<tr><td colspan="5" class="text-center">在庫商品はありません。</td></tr>';
-                    return;
-                }
-                data.forEach(product => {
-                    let statusInfo = statusMap[product.status] || { emoji: '❓', color: 'light' };
-                    let statusTitle = product.status;
-                    
-                    // データ不整合チェック: 投稿準備完了なのにURLかキャプションがない
-                    const isDataInconsistent = product.status === '投稿準備完了' && (!product.post_url || !product.ai_caption);
+                renderProducts(0, ITEMS_PER_LOAD); // 最初のN件を描画
 
-                    let statusHtml = `<span title="${statusTitle}" class="fs-5">${statusInfo.emoji}</span>`;
-
-                    if (isDataInconsistent) {
-                        statusTitle = 'データ不整合: 投稿準備完了ですが、URLまたは投稿文がありません。';
-                        statusHtml = `<span title="${statusTitle}" class="fs-5 text-warning">☔</span>`;
-                        inconsistentCount++;
-                    } else {
-                        statusHtml = `<span title="${statusTitle}" class="fs-5">${statusInfo.emoji}</span>`;
-                    }
-
-                    const createdAt = product.created_at ? new Date(product.created_at).toLocaleDateString('ja-JP') : 'N/A';
-                    const row = `
-                        <tr id="product-row-${product.id}">
-                            <td>
-                                <input class="form-check-input product-checkbox" type="checkbox" value="${product.id}">
-                            </td>
-                            <td class="text-center drag-handle">
-                                <i class="bi bi-grip-vertical"></i>
-                            </td>
-                            <td>
-                                <a href="${product.url}" target="_blank" rel="noopener noreferrer">
-                                    <img src="${product.image_url || 'https://via.placeholder.com/80'}" alt="${product.name}" class="img-thumbnail inventory-thumbnail">
-                                </a>
-                            </td>
-                            <td class="text-start">
-                                <div class="fw-bold truncate-cell" title="${product.name || ''}">${product.name || ''}</div>
-                                <div class="text-muted small truncate-cell" title="${product.ai_caption || ''}">${product.ai_caption || ''}</div>
-                            </td>
-                            <td class="text-center" onclick="showInfoModal(this)" data-name="${product.name || ''}" data-caption="${product.ai_caption || ''}" data-post-url="${product.post_url || ''}" data-procurement-keyword="${product.procurement_keyword || ''}">${statusHtml}</td>
-                            <td>
-                                ${createdAt}
-                            </td>
-                        </tr>
-                    `;
-                    tableBody.innerHTML += row;
-                });
-
-                // データ不整合件数をサマリーに追加
-                if (inconsistentCount > 0) {
-                    const summaryContainer = document.getElementById('status-summary');
-                    const inconsistentCardHtml = `
-                        <div class="col" title="データ不整合" style="cursor: default;">
-                            <div class="card card-body text-center h-100 border-warning">
-                                <div class="d-flex justify-content-center align-items-center h-100 gap-2">
-                                    <span class="fs-4">☔</span><span class="fs-4 fw-bold">${inconsistentCount}</span>
-                                </div>
-                            </div>
-                        </div>
-                    `;
-                    summaryContainer.innerHTML += inconsistentCardHtml;
-                }
-
-                // SortableJSの初期化
-                new Sortable(tableBody, {
+                if (sortableInstance) sortableInstance.destroy();
+                sortableInstance = new Sortable(tableBody, {
                     animation: 150,
                     ghostClass: 'sortable-ghost',
-                    handle: '.drag-handle', // ドラッグハンドルを専用のクラスに限定
+                    handle: '.drag-handle',
                     onEnd: async function (evt) {
                         const productIds = Array.from(tableBody.querySelectorAll('tr')).map(tr => tr.id.replace('product-row-', ''));
                         try {
-                            const response = await fetch('/api/inventory/update-order', {
+                            await fetch('/api/inventory/update-order', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({ product_ids: productIds })
                             });
-                            if (!response.ok) {
-                                const result = await response.json();
-                                throw new Error(result.message || '順序の更新に失敗しました。');
-                            }
                         } catch (error) {
-                            alert(`エラー: ${error.message}`);
-                            location.reload(); // エラー時はUIを元に戻すためにリロード
+                            alert(`エラー: 順序の更新に失敗しました。`);
+                            location.reload();
                         }
                     }
                 });
             });
-
+        
         // 個別チェックボックスのイベントリスナー
         document.getElementById('inventory-table-body').addEventListener('change', function (e) {
             const checkbox = e.target;
@@ -593,6 +599,8 @@
             removeMoveButtons();
             saveOrder();
         }
+
+
 
         function removeMoveButtons() {
             document.querySelectorAll('.move-buttons').forEach(el => el.remove());
