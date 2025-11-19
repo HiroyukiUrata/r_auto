@@ -7,7 +7,7 @@ import logging
 import os
 import json
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 from pathlib import Path
 from fastapi import BackgroundTasks
 
@@ -488,14 +488,22 @@ async def get_inventory():
     return JSONResponse(content=products_list)
 
 @router.get("/api/posted-products")
-async def api_get_posted_products(request: Request):
+async def api_get_posted_products(
+    page: int = 1,
+    per_page: int = 30,
+    search_term: Optional[str] = None,
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None
+):
     """投稿済商品をページネーション付きで取得する"""
     try:
-        page = int(request.query_params.get("page", 1))
-        per_page = int(request.query_params.get("per_page", 20))
-        search_term = request.query_params.get("search_term", "")
-
-        products, total_pages = get_posted_products(page=page, per_page=per_page, search_term=search_term)
+        products, total_pages = get_posted_products(
+            page=page, 
+            per_page=per_page, 
+            search_term=search_term,
+            start_date=start_date,
+            end_date=end_date
+        )
         
         return JSONResponse(content={"products": products, "total_pages": total_pages, "current_page": page})
     except Exception as e:

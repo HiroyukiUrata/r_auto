@@ -4,7 +4,7 @@ import os
 import math
 from urllib.parse import urlparse, parse_qs
 import json
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone, timedelta, time
 
 DB_FILE = "db/products.db"
 KEYWORDS_FILE = "db/keywords.json"
@@ -271,29 +271,44 @@ def get_all_inventory_products():
     conn.close()
     return products
 
-def get_posted_products(page: int = 1, per_page: int = 20, search_term: str = ""):
+def get_posted_products(page: int = 1, per_page: int = 30, search_term: str = None, start_date: datetime.date = None, end_date: datetime.date = None):
     """
     投稿済の商品をページネーションと検索機能付きで取得する。
     """
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    base_query = "FROM products WHERE status = '投稿済'"
-    count_params = []
+    where_clauses = ["status = '投稿済'"]
+    params = []
     
     if search_term:
-        base_query += " AND (name LIKE ? OR ai_caption LIKE ?)"
-        count_params.extend([f"%{search_term}%", f"%{search_term}%"])
+        where_clauses.append("(name LIKE ? OR ai_caption LIKE ?)")
+        params.extend([f"%{search_term}%", f"%{search_term}%"])
+
+    if start_date:
+        where_clauses.append("posted_at >= ?")
+        params.append(start_date)
+
+    if end_date:
+        # 終了日はその日の終わりまで含めるため、翌日の0時より前でフィルタリング
+        end_datetime = datetime.combine(end_date, time(23, 59, 59, 999999))
+        where_clauses.append("posted_at <= ?")
+        params.append(end_datetime)
+
+    where_sql = ""
+    if where_clauses:
+        where_sql = "WHERE " + " AND ".join(where_clauses)
     
     # 総件数を取得
-    cursor.execute(f"SELECT COUNT(*) {base_query}", count_params)
+    count_query = f"SELECT COUNT(*) FROM products {where_sql}"
+    cursor.execute(count_query, params)
     total_items = cursor.fetchone()[0]
     total_pages = math.ceil(total_items / per_page) if total_items > 0 else 1
     
     # データを取得
     offset = (page - 1) * per_page
-    data_query = f"SELECT * {base_query} ORDER BY posted_at DESC LIMIT ? OFFSET ?"
-    data_params = count_params + [per_page, offset]
+    data_query = f"SELECT * FROM products {where_sql} ORDER BY posted_at DESC LIMIT ? OFFSET ?"
+    data_params = params + [per_page, offset]
     
     cursor.execute(data_query, data_params)
     products = [dict(row) for row in cursor.fetchall()]

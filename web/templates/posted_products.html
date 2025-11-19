@@ -104,14 +104,30 @@
     <h1 class="h2"><i class="bi bi-send-check-fill me-2"></i>投稿済商品</h1>
 </div>
 
-<!-- 一括操作ボタン -->
-<div class="d-flex justify-content-end align-items-center gap-2 mb-3">
-    <button type="button" class="btn btn-sm btn-outline-secondary" id="select-all-toggle-btn" onclick="toggleSelectAll()" title="すべて選択/解除">
-        <i class="bi bi-check-square"></i><span class="d-none d-md-inline ms-1">全選択</span>
-    </button>
-    <button type="button" class="btn btn-sm btn-outline-danger" id="bulk-delete-btn" onclick="bulkDelete()" disabled title="選択した商品を削除">
-        <i class="bi bi-trash-fill"></i><span class="d-none d-md-inline ms-1">選択項目を削除</span>
-    </button>
+<!-- 操作エリア -->
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <!-- 表示件数 -->
+    <div class="input-group input-group-sm" style="width: auto;">
+        <label class="input-group-text" for="items-per-page-select"><i class="bi bi-list-ol"></i></label>
+        <select class="form-select" id="items-per-page-select">
+            <option value="10">10件</option>
+            <option value="30" selected>30件</option>
+            <option value="50">50件</option>
+            <option value="100">100件</option>
+        </select>
+    </div>
+    <!-- 一括操作ボタン -->
+    <div class="d-flex gap-2">
+        <button type="button" class="btn btn-sm btn-outline-secondary" id="select-all-toggle-btn" onclick="toggleSelectAll()" title="すべて選択/解除">
+            <i class="bi bi-check-square"></i><span class="d-none d-md-inline ms-1">全選択</span>
+        </button>
+        <button type="button" class="btn btn-sm btn-outline-info" id="bulk-recollect-btn" onclick="bulkRecollect()" disabled title="選択した商品を再収集リストに戻します">
+            <i class="bi bi-recycle"></i><span class="d-none d-md-inline ms-1">再コレ</span>
+        </button>
+        <button type="button" class="btn btn-sm btn-outline-danger" id="bulk-delete-btn" onclick="bulkDelete()" disabled title="選択した商品を削除">
+            <i class="bi bi-trash-fill"></i><span class="d-none d-md-inline ms-1">選択項目を削除</span>
+        </button>
+    </div>
 </div>
 
 <!-- スマホ表示用の検索フィルター開閉ボタン -->
@@ -180,6 +196,7 @@
                 <div id="infoModalAiCaption" style="white-space: pre-wrap;"></div>
             </div>
             <div class="modal-footer">
+                <button type="button" class="btn btn-info" id="info-modal-recollect-btn">再コレ</button>
                 <button type="button" class="btn btn-danger me-auto" id="info-modal-delete-btn">削除</button>
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">閉じる</button>
             </div>
@@ -211,17 +228,17 @@
 
 {% block scripts %}
 <script>
-    const ITEMS_PER_PAGE = 20;
     let currentPage = 1;
 
     async function fetchPostedProducts(page = 1, searchTerm = '', startDate = '', endDate = '') {
         const tableBody = document.getElementById('posted-products-table-body');
         tableBody.innerHTML = `<tr><td colspan="5" class="text-center"><div class="spinner-border spinner-border-sm" role="status"><span class="visually-hidden">Loading...</span></div></td></tr>`;
         
+        const itemsPerPage = document.getElementById('items-per-page-select').value;
         try {
             const params = new URLSearchParams({
                 page: page,
-                per_page: ITEMS_PER_PAGE,
+                per_page: itemsPerPage,
                 search_term: searchTerm
             });
             if (startDate) params.append('start_date', startDate);
@@ -381,6 +398,7 @@
     function updateBulkActionButtons() {
         const selectedIds = getSelectedProductIds();
         const disabled = selectedIds.length === 0;
+        document.getElementById('bulk-recollect-btn').disabled = disabled;
         document.getElementById('bulk-delete-btn').disabled = disabled;
     }
 
@@ -398,6 +416,20 @@
         updateBulkActionButtons();
     }
 
+    async function bulkRecollect() {
+        const productIds = getSelectedProductIds();
+        if (productIds.length === 0) return;
+        if (!confirm(`${productIds.length}件の商品を「再コレ」（再収集）リストに戻しますか？`)) return;
+
+        // バックエンド実装待ちのため、フロントエンド側の処理のみ実行
+        productIds.forEach(id => {
+            const row = document.getElementById(`product-row-${id}`);
+            if (row) row.remove();
+        });
+        updateBulkActionButtons();
+        console.log(`${productIds.length}件の商品を画面上から削除し、再コレ扱いにしました。`);
+    }
+
     async function bulkDelete() {
         const productIds = getSelectedProductIds();
         if (productIds.length === 0) return;
@@ -412,6 +444,21 @@
         updateBulkActionButtons();
         // ここでToast通知などを表示しても良い
         console.log(`${productIds.length}件の商品を画面上から削除しました。`);
+    }
+
+    function recollectProduct(productId, productName) {
+        if (event) {
+            event.stopPropagation();
+        }
+        if (!confirm(`商品「${productName}」を「再コレ」（再収集）リストに戻しますか？`)) return;
+
+        // バックエンド実装待ちのため、フロントエンド側の処理のみ実行
+        const row = document.getElementById(`product-row-${productId}`);
+        if (row) row.remove();
+        updateBulkActionButtons();
+
+        const infoModal = bootstrap.Modal.getInstance(document.getElementById('infoModal'));
+        if (infoModal) infoModal.hide();
     }
 
     function deleteProduct(productId, productName) {
@@ -447,6 +494,7 @@
         const clearBtn = document.getElementById('clear-btn');
         const startDateInput = document.getElementById('start-date-input');
         const endDateInput = document.getElementById('end-date-input');
+        const itemsPerPageSelect = document.getElementById('items-per-page-select');
 
         searchBtn.addEventListener('click', () => {
             currentPage = 1;
@@ -468,6 +516,11 @@
             }
         });
 
+        itemsPerPageSelect.addEventListener('change', () => {
+            currentPage = 1; // 表示件数を変えたら1ページ目に戻る
+            triggerSearch();
+        });
+
         const infoModal = document.getElementById('infoModal');
         if (infoModal) {
             infoModal.addEventListener('show.bs.modal', function (event) {
@@ -478,6 +531,16 @@
                 
                 infoModal.querySelector('#infoModalProductName').textContent = productName;
                 infoModal.querySelector('#infoModalAiCaption').textContent = aiCaption;
+
+                const recollectBtn = infoModal.querySelector('#info-modal-recollect-btn');
+                const newRecollectBtn = recollectBtn.cloneNode(true);
+                recollectBtn.parentNode.replaceChild(newRecollectBtn, recollectBtn);
+
+                newRecollectBtn.addEventListener('click', () => {
+                    // モーダルを閉じる必要はないので、直接関数を呼び出す
+                    recollectProduct(productId, productName);
+                });
+
 
                 const deleteBtn = infoModal.querySelector('#info-modal-delete-btn');
                 
