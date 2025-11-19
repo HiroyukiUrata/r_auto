@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Request, HTTPException, Depends
+from fastapi import APIRouter, Request, HTTPException, Depends, BackgroundTasks
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, FileResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates 
 import schedule
@@ -15,7 +15,7 @@ from fastapi import BackgroundTasks
 from app.core.task_manager import TaskManager
 from app.core.task_definitions import TASK_DEFINITIONS
 from app.core.database import (get_all_inventory_products, update_product_status, delete_all_products, init_db,
-                               delete_product, update_status_for_multiple_products, delete_multiple_products, get_product_count_by_status, get_reusable_products,
+                               delete_product, update_status_for_multiple_products, delete_multiple_products, get_product_count_by_status, get_reusable_products, recollect_product, bulk_recollect_products,
                                get_error_products_in_last_24h, get_posted_products, update_product_priority, update_product_order, bulk_update_products_from_data, commit_user_actions, get_all_user_engagements, get_users_for_commenting,
                                update_user_comment, get_generated_replies, update_reply_text, ignore_reply, get_commenting_users_summary,
                                get_table_names, export_tables_as_sql, execute_sql_script)
@@ -509,6 +509,86 @@ async def api_get_posted_products(
     except Exception as e:
         logging.error(f"投稿済商品の取得中にエラー: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="商品の取得に失敗しました。")
+
+@router.post("/api/posted-products/{product_id}/recollect")
+async def api_recollect_posted_product(product_id: int, background_tasks: BackgroundTasks):
+    """指定された投稿済商品を「再コレ」するタスクを開始する"""
+    product = get_product_by_id(product_id)
+    if not product:
+        raise HTTPException(status_code=404, detail="商品が見つかりません。")
+
+    task_manager = TaskManager()
+    background_tasks.add_task(
+        task_manager.run_task_by_tag,
+        "delete-room-post",
+        product_id=product_id,
+        room_url=product.get('room_url'),
+        action='recollect'
+    )
+    return JSONResponse(content={"status": "success", "message": f"商品ID: {product_id} の再コレ処理を開始しました。"})
+
+@router.post("/api/posted-products/bulk-recollect")
+async def api_bulk_recollect_posted_products(request: BulkUpdateRequest, background_tasks: BackgroundTasks):
+    """複数の投稿済商品を「再コレ」するタスクを開始する"""
+    if not request.product_ids:
+        raise HTTPException(status_code=400, detail="商品IDが指定されていません。")
+
+    task_manager = TaskManager()
+    for product_id in request.product_ids:
+        product = get_product_by_id(product_id)
+        if product:
+            background_tasks.add_task(
+                task_manager.run_task_by_tag,
+                "delete-room-post",
+                product_id=product_id,
+                room_url=product.get('room_url'),
+                action='recollect'
+            )
+    return JSONResponse(content={"status": "success", "message": f"{len(request.product_ids)}件の商品の再コレ処理を開始しました。"})
+
+@router.delete("/api/posted-products/{product_id}")
+async def api_delete_posted_product(product_id: int, background_tasks: BackgroundTasks):
+    """指定された投稿済商品を削除するタスクを開始する"""
+    product = get_product_by_id(product_id)
+    if not product:
+        raise HTTPException(status_code=404, detail="商品が見つかりません。")
+
+    task_manager = TaskManager()
+    background_tasks.add_task(
+        task_manager.run_task_by_tag,
+        "delete-room-post",
+        product_id=product_id,
+        room_url=product.get('room_url'),
+        action='delete'
+    )
+    return JSONResponse(content={"status": "success", "message": f"商品ID: {product_id} の削除処理を開始しました。"})
+
+@router.post("/api/posted-products/bulk-delete") # DELETE with body is tricky, so use POST
+async def api_bulk_delete_posted_products(request: BulkUpdateRequest, background_tasks: BackgroundTasks):
+    """複数の投稿済商品を削除するタスクを開始する"""
+    # このエンドポイントは、一括削除タスクを起動する役割に変更
+    # 実際の削除は非同期で行われる
+    if not request.product_ids:
+        raise HTTPException(status_code=400, detail="商品IDが指定されていません。")
+
+    task_manager = TaskManager()
+    for product_id in request.product_ids:
+        product = get_product_by_id(product_id)
+        if product:
+            background_tasks.add_task(
+                task_manager.run_task_by_tag,
+                "delete-room-post",
+                product_id=product_id,
+                room_url=product.get('room_url'),
+                action='delete'
+            )
+    return JSONResponse(content={"status": "success", "message": f"{len(request.product_ids)}件の商品の削除処理を開始しました。"})
+
+# BulkUpdateRequest is already defined, no need for PostedProductBulkUpdateRequest
+# class PostedProductBulkUpdateRequest(BaseModel):
+#     product_ids: list[int]
+
+
 
 @router.get("/api/errors")
 async def get_error_products():

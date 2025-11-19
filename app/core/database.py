@@ -260,6 +260,15 @@ def get_product_by_id(product_id):
     conn.close()
     return dict(product) if product else None
 
+def get_product_by_id(product_id: int):
+    """指定されたIDの商品を1件取得する"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM products WHERE id = ?", (product_id,))
+    product = cursor.fetchone()
+    conn.close()
+    return dict(product) if product else None
+
 def get_all_inventory_products():
     """在庫確認ページ用に、「投稿済」「エラー」「対象外」以外の商品をすべて取得する"""
     # 投稿準備が完了していない商品も在庫として表示するため、以前の絞り込みを解除
@@ -412,6 +421,39 @@ def update_status_for_multiple_products(product_ids: list[int], status: str):
         conn.commit()
         logging.info(f"{len(product_ids)}件の商品のステータスを「{status}」に更新しました。")
         return cursor.rowcount
+    finally:
+        conn.close()
+
+def recollect_product(product_id: int):
+    """指定された商品を「投稿準備完了」ステータスに戻し、room_urlとposted_atをNULLにする"""
+    conn = get_db_connection()
+    try:
+        conn.execute("UPDATE products SET status = '投稿準備完了', room_url = NULL, posted_at = NULL, error_message = NULL WHERE id = ?", (product_id,))
+        conn.commit()
+        logging.info(f"商品ID: {product_id} を「再コレ」として更新しました。")
+        return True
+    except sqlite3.Error as e:
+        logging.error(f"商品ID: {product_id} の再コレ処理中にエラーが発生しました: {e}")
+        return False
+    finally:
+        conn.close()
+
+def bulk_recollect_products(product_ids: list[int]):
+    """複数の商品を一括で「投稿準備完了」ステータスに戻し、room_urlとposted_atをNULLにする"""
+    if not product_ids:
+        return 0
+    conn = get_db_connection()
+    try:
+        placeholders = ','.join('?' for _ in product_ids)
+        query = f"UPDATE products SET status = '投稿準備完了', room_url = NULL, posted_at = NULL, error_message = NULL WHERE id IN ({placeholders})"
+        cursor = conn.cursor()
+        cursor.execute(query, product_ids)
+        conn.commit()
+        logging.info(f"{len(product_ids)}件の商品を「再コレ」として一括更新しました。")
+        return cursor.rowcount
+    except sqlite3.Error as e:
+        logging.error(f"商品の一括再コレ処理中にエラーが発生しました: {e}")
+        return 0
     finally:
         conn.close()
 

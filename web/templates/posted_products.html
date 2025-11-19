@@ -421,13 +421,25 @@
         if (productIds.length === 0) return;
         if (!confirm(`${productIds.length}件の商品を「再コレ」（再収集）リストに戻しますか？`)) return;
 
-        // バックエンド実装待ちのため、フロントエンド側の処理のみ実行
+        // UIから即座に削除
         productIds.forEach(id => {
             const row = document.getElementById(`product-row-${id}`);
             if (row) row.remove();
         });
         updateBulkActionButtons();
-        console.log(`${productIds.length}件の商品を画面上から削除し、再コレ扱いにしました。`);
+
+        // バックグラウンドでAPIを呼び出す
+        fetch('/api/posted-products/bulk-recollect', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ product_ids: productIds })
+        })
+        .then(response => response.json())
+        .then(result => {
+            if (!result.status || result.status !== 'success') throw new Error(result.detail || '一括再コレ処理の開始に失敗しました。');
+            showToast('タスク開始', result.message, 'info');
+        })
+        .catch(error => alert(`エラー: ${error.message}`));
     }
 
     async function bulkDelete() {
@@ -435,30 +447,48 @@
         if (productIds.length === 0) return;
         if (!confirm(`${productIds.length}件の商品を削除しますか？この操作は元に戻せません。`)) return;
 
-        // バックエンド実装待ちのため、フロントエンド側の処理のみ実行
-        // UIから削除
+        // UIから即座に削除
         productIds.forEach(id => {
             const row = document.getElementById(`product-row-${id}`);
             if (row) row.remove();
         });
         updateBulkActionButtons();
-        // ここでToast通知などを表示しても良い
-        console.log(`${productIds.length}件の商品を画面上から削除しました。`);
+
+        // バックグラウンドでAPIを呼び出す
+        fetch('/api/posted-products/bulk-delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ product_ids: productIds })
+        })
+        .then(response => response.json())
+        .then(result => {
+            if (!result.status || result.status !== 'success') throw new Error(result.detail || '一括削除処理の開始に失敗しました。');
+            showToast('タスク開始', result.message, 'info');
+        })
+        .catch(error => alert(`エラー: ${error.message}`));
     }
 
-    function recollectProduct(productId, productName) {
+    async function recollectProduct(productId, productName) {
         if (event) {
             event.stopPropagation();
         }
         if (!confirm(`商品「${productName}」を「再コレ」（再収集）リストに戻しますか？`)) return;
-
-        // バックエンド実装待ちのため、フロントエンド側の処理のみ実行
+        
+        // UIから即座に削除
         const row = document.getElementById(`product-row-${productId}`);
         if (row) row.remove();
         updateBulkActionButtons();
-
         const infoModal = bootstrap.Modal.getInstance(document.getElementById('infoModal'));
         if (infoModal) infoModal.hide();
+
+        // バックグラウンドでAPIを呼び出す
+        fetch(`/api/posted-products/${productId}/recollect`, { method: 'POST' })
+            .then(response => response.json())
+            .then(result => {
+                if (!result.status || result.status !== 'success') throw new Error(result.detail || '再コレ処理の開始に失敗しました。');
+                showToast('タスク開始', result.message, 'info');
+            })
+            .catch(error => alert(`エラー: ${error.message}`));
     }
 
     function deleteProduct(productId, productName) {
@@ -476,12 +506,20 @@
         confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
 
         newConfirmBtn.addEventListener('click', async () => {
-            // バックエンド実装待ちのため、フロントエンド側の処理のみ実行
+            // UIから即座に削除
             const row = document.getElementById(`product-row-${productId}`);
             if (row) row.remove();
             updateBulkActionButtons();
             deleteModal.hide();
-            console.log(`商品「${productName}」を画面上から削除しました。`);
+
+            // バックグラウンドでAPIを呼び出す
+            fetch(`/api/posted-products/${productId}`, { method: 'DELETE' })
+                .then(response => response.json())
+                .then(result => {
+                    if (!result.status || result.status !== 'success') throw new Error(result.detail || '削除処理の開始に失敗しました。');
+                    showToast('タスク開始', result.message, 'info');
+                })
+                .catch(error => alert(`エラー: ${error.message}`));
         });
         deleteModal.show();
     }
