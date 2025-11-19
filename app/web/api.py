@@ -15,7 +15,7 @@ from fastapi import BackgroundTasks
 from app.core.task_manager import TaskManager
 from app.core.task_definitions import TASK_DEFINITIONS
 from app.core.database import (get_all_inventory_products, update_product_status, delete_all_products, init_db, get_product_by_id,
-                               delete_product, update_status_for_multiple_products, delete_multiple_products, get_product_count_by_status, get_reusable_products, recollect_product, bulk_recollect_products,
+                               delete_product, update_status_for_multiple_products, delete_multiple_products, get_product_count_by_status, get_reusable_products, recollect_product, bulk_recollect_products, update_product_post_url, update_product_room_url,
                                get_error_products_in_last_24h, get_posted_products, update_product_priority, update_product_order, bulk_update_products_from_data, commit_user_actions, get_all_user_engagements, get_users_for_commenting,
                                update_user_comment, get_generated_replies, update_reply_text, ignore_reply, get_commenting_users_summary,
                                get_table_names, export_tables_as_sql, execute_sql_script)
@@ -125,6 +125,12 @@ class BulkPostRepliesRequest(BaseModel):
 class DbExportRequest(BaseModel):
     table_names: list[str]
     include_delete: bool = False
+
+class PostUrlUpdateRequest(BaseModel):
+    post_url: str
+
+class RoomUrlUpdateRequest(BaseModel):
+    room_url: str
 
 class DbImportRequest(BaseModel):
     sql_script: str
@@ -571,6 +577,35 @@ async def api_bulk_delete_posted_products(request: BulkUpdateRequest, background
     if products_to_process:
         background_tasks.add_task(task_manager.run_task_by_tag, "delete-product-flow", products=products_to_process, action='delete')
     return JSONResponse(content={"status": "success", "message": f"{len(request.product_ids)}件の商品の削除処理を開始しました。"})
+
+@router.post("/api/posted-products/{product_id}/update-url")
+async def api_update_posted_product_url(product_id: int, request: PostUrlUpdateRequest):
+    """指定された投稿済商品のROOM投稿URLを更新する"""
+    try:
+        updated_count = update_product_post_url(product_id, request.post_url)
+        
+        if updated_count == 0:
+            raise HTTPException(status_code=404, detail="商品が見つからないか、URLの更新に失敗しました。")
+        
+        return JSONResponse(content={"status": "success", "message": "ROOM投稿URLを更新しました。"})
+    except Exception as e:
+        logging.error(f"商品ID {product_id} のURL更新中にエラー: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="サーバーエラーによりURLの更新に失敗しました。")
+
+@router.patch("/api/posted-products/{product_id}/room-url")
+async def api_update_posted_product_room_url(product_id: int, request: RoomUrlUpdateRequest):
+    """指定された投稿済商品の投稿済ROOMページURL(room_url)を更新する"""
+    try:
+        updated_count = update_product_room_url(product_id, request.room_url)
+        
+        if updated_count == 0:
+            raise HTTPException(status_code=404, detail="商品が見つからないか、URLの更新に失敗しました。")
+        
+        return JSONResponse(content={"status": "success", "message": "投稿済ROOMページのURLを更新しました。"})
+    except Exception as e:
+        logging.error(f"商品ID {product_id} のroom_url更新中にエラー: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="サーバーエラーによりURLの更新に失敗しました。")
+
 
 # BulkUpdateRequest is already defined, no need for PostedProductBulkUpdateRequest
 # class PostedProductBulkUpdateRequest(BaseModel):

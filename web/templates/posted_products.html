@@ -192,9 +192,17 @@
             <div class="modal-body">
                 <h6 class="fw-bold">商品名</h6>
                 <p id="infoModalProductName" class="mb-3"></p>
-                <div class="d-flex gap-2 mb-3">
-                    <a href="#" id="infoModalProductUrl" class="btn btn-sm btn-outline-primary" target="_blank" rel="noopener noreferrer" style="display: none;"><i class="bi bi-bag-fill me-1"></i>商品ページ</a>
-                    <a href="#" id="infoModalPostUrl" class="btn btn-sm btn-outline-info" target="_blank" rel="noopener noreferrer" style="display: none;"><i class="bi bi-send-fill me-1"></i>ROOM投稿ページ</a>
+                <div class="d-flex flex-wrap gap-2 mb-3">
+                    <a href="#" id="infoModalProductUrl" class="btn btn-sm btn-outline-primary" target="_blank" rel="noopener noreferrer"><i class="bi bi-bag-fill me-1"></i>商品ページ</a>
+                    <!-- コレ！ページ (post_url) -->
+                    <a href="#" id="infoModalPostUrl" class="btn btn-sm btn-outline-success" target="_blank" rel="noopener noreferrer"><i class="bi bi-send-fill me-1"></i>コレ！ページ</a>
+                    <!-- 投稿済ROOMページ (room_url) -->
+                    <a href="#" id="infoModalRoomUrl" class="btn btn-sm btn-outline-info" target="_blank" rel="noopener noreferrer"><i class="bi bi-house-heart-fill me-1"></i>投稿済ROOMページ</a>
+                    <!-- 投稿済ROOMページ登録フォーム -->
+                    <div id="registerRoomUrlForm" class="input-group input-group-sm" style="display: none; max-width: 400px;">
+                        <input type="url" class="form-control" id="roomUrlInput" placeholder="投稿済ROOMページのURLを貼り付け">
+                        <button class="btn btn-success" type="button" id="saveRoomUrlBtn"><i class="bi bi-save-fill"></i></button>
+                    </div>
                 </div>
                 <h6 class="fw-bold"><i class="bi bi-robot me-2"></i>AIによるキャプション</h6>
                 <div id="infoModalAiCaption" style="white-space: pre-wrap;"></div>
@@ -470,6 +478,38 @@
         .catch(error => alert(`エラー: ${error.message}`));
     }
 
+    async function saveRoomUrl(productId) {
+        const input = document.getElementById('roomUrlInput');
+        const url = input.value.trim();
+        if (!url) {
+            alert('URLを入力してください。');
+            return;
+        }
+        
+        try {
+            const response = await fetch(`/api/posted-products/${productId}/room-url`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ room_url: url })
+            });
+            const result = await response.json();
+            if (!response.ok) {
+                throw new Error(result.detail || 'URLの保存に失敗しました。');
+            }
+            showToast('成功', '投稿済ROOMページのURLを保存しました。', 'success');
+            
+            // モーダルを閉じる
+            const infoModal = bootstrap.Modal.getInstance(document.getElementById('infoModal'));
+            if (infoModal) infoModal.hide();
+
+            // ページをリロードせずにUIを更新
+            triggerSearch();
+
+        } catch (error) {
+            alert(`エラー: ${error.message}`);
+        }
+    }
+
     async function recollectProduct(productId, productName) {
         if (event) {
             event.stopPropagation();
@@ -577,13 +617,30 @@
 
                 // リンクの設定
                 const productUrlLink = infoModal.querySelector('#infoModalProductUrl');
-                const postUrlLink = infoModal.querySelector('#infoModalPostUrl');
+                const postUrlLink = infoModal.querySelector('#infoModalPostUrl'); // コレ！ページ用
+                const roomUrlLink = infoModal.querySelector('#infoModalRoomUrl'); // 投稿済ROOMページ用
+                const registerForm = infoModal.querySelector('#registerRoomUrlForm');
+                const saveUrlBtn = infoModal.querySelector('#saveRoomUrlBtn');
+                const roomUrlInput = infoModal.querySelector('#roomUrlInput');
 
                 productUrlLink.href = product.url || '#';
-                productUrlLink.style.display = product.url ? 'inline-block' : 'none';
+                productUrlLink.style.display = product.url ? 'inline-flex' : 'none';
 
+                // コレ！ページ (post_url) は常に表示
                 postUrlLink.href = product.post_url || '#';
-                postUrlLink.style.display = product.post_url ? 'inline-block' : 'none';
+                postUrlLink.style.display = product.post_url ? 'inline-flex' : 'none';
+
+                // 投稿済ROOMページ (room_url) の有無で表示を切り替え
+                if (product.room_url) {
+                    roomUrlLink.href = product.room_url;
+                    roomUrlLink.style.display = 'inline-flex';
+                    registerForm.style.display = 'none';
+                } else {
+                    roomUrlLink.style.display = 'none'; // リンクは非表示
+                    registerForm.style.display = 'flex';
+                    roomUrlInput.value = ''; // 入力欄をクリア
+                    saveUrlBtn.onclick = () => saveRoomUrl(productId);
+                }
 
                 const recollectBtn = infoModal.querySelector('#info-modal-recollect-btn');
                 const newRecollectBtn = recollectBtn.cloneNode(true);

@@ -513,6 +513,42 @@ def update_post_url(product_id, post_url, shop_name=None, new_main_url=None):
     finally:
         conn.close()
 
+def update_product_post_url(product_id: int, post_url: str):
+    """
+    指定された商品のpost_urlとroom_urlを更新する。
+    フロントエンドからはpost_urlとして渡されるが、post_urlカラムのみを更新する。
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        # post_urlカラムのみを更新する
+        cursor.execute("UPDATE products SET post_url = ? WHERE id = ?", (post_url, product_id))
+        conn.commit()
+        logging.info(f"商品ID: {product_id} の投稿URLを更新しました。 URL: {post_url}")
+        return cursor.rowcount
+    except sqlite3.Error as e:
+        logging.error(f"商品ID: {product_id} のpost_url更新中にエラー: {e}")
+        return 0
+    finally:
+        conn.close()
+
+def update_product_room_url(product_id: int, room_url: str):
+    """
+    指定された商品のroom_urlを更新する。
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE products SET room_url = ? WHERE id = ?", (room_url, product_id))
+        conn.commit()
+        logging.info(f"商品ID: {product_id} のROOM URLを更新しました。 URL: {room_url}")
+        return cursor.rowcount
+    except sqlite3.Error as e:
+        logging.error(f"商品ID: {product_id} のroom_url更新中にエラー: {e}")
+        return 0
+    finally:
+        conn.close()
+
 def update_room_url_by_rakuten_url(rakuten_url: str, room_url: str):
     """楽天市場のURLをキーに、ROOMの個別商品ページURLを更新する"""
     if not rakuten_url or not room_url:
