@@ -27,7 +27,8 @@
         /* PC表示時 (768px以上) のみ高さを上書き */
         @media (min-width: 768px) {
             .chart-container {
-                height: 280px; /* PC用の高さを調整 (dashboard.htmlの340pxより少し小さく) */
+                min-width: 800px; /* PC用の最小幅を追加 */
+                height: 340px; /* PC用の高さを調整 (dashboard.htmlと合わせる) */
             }
         }
         /* ★★★ 修正: スマホ用チャートスクロールバーのスタイル (モバイルファースト & !important) ★★★ */
@@ -1109,8 +1110,6 @@
                 }
             });
 
-            // ★★★ 追加: チャート再描画後にスクロールバーの位置と表示範囲をリセット ★★★
-            resetChartView();
         }
     </script>
 {% endblock %}
