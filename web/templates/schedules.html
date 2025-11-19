@@ -230,6 +230,7 @@
         }
         let globalConfig = {}; // ★★★ 追加: グローバル設定を保持する変数
         let isChartEditMode = false; // ★★★ 追加: チャートの編集モード状態を保持
+        let originalDragPosition = null; // ★★★ 追加: ドラッグ開始時の位置を保存する変数
         let originalSchedulesData = []; // ★★★ 追加: ページ読み込み時のデータを保持する変数
         let scheduleChartInstance = null;
         async function saveSchedule(tag, isEnabled, times) {
@@ -581,16 +582,6 @@
             const bulkActions = document.getElementById('bulk-chart-actions');
             bulkActions.style.display = isEditMode ? 'block' : 'none';
 
-            // ラッパーdivのpointer-eventsスタイルを切り替えてドラッグを制御
-            const chartWrapper = document.getElementById('chart-wrapper');
-            chartWrapper.style.pointerEvents = isEditMode ? 'auto' : 'none';
-
-            // ★★★ 修正点: チャートのdragDataプラグインの有効/無効も切り替える ★★★
-            if (scheduleChartInstance) {
-                scheduleChartInstance.options.plugins.dragData.enabled = isEditMode && window.innerWidth >= 768;
-                scheduleChartInstance.update(); // チャートを更新して変更を反映
-            }
-
             // ★★★ 追加: 編集モードOFF時に未保存の変更をキャンセルする ★★★
             if (!isEditMode) {
                 const dirtyCards = document.querySelectorAll('.card[data-is-dirty="true"]');
@@ -893,10 +884,17 @@
                     // ★★★ 変更点: ドラッグ＆ドロップによる時間変更機能を追加 ★★★
                     plugins: {
                         dragData: {
-                            enabled: isChartEditMode && window.innerWidth >= 768, // ★★★ 修正点: 編集モードでのみ有効化
+                            enabled: window.innerWidth >= 768, // ★★★ 修正点: 常に有効化 ★★★
                             dragX: true, // ★★★ 修正点: X軸方向のドラッグを有効にする ★★★
                             round: 0, // ★★★ 修正点: ドラッグ中はスムーズに動かすため、丸めを無効化 ★★★
                             showTooltip: true,
+                            // ★★★ 追加: ドラッグ開始時に元の位置を保存 ★★★
+                            onDragStart: function(e, datasetIndex, index, value) {
+                                // 閲覧モードの時だけ、元の位置を保存
+                                if (!isChartEditMode) {
+                                    originalDragPosition = { x: value.x, y: value.y };
+                                }
+                            },
                             // ★★★ 修正点: ドラッグ中にY軸の値を本来のカテゴリ名で固定する ★★★
                             onDrag: function(e, datasetIndex, index, value) {
                                 const chart = scheduleChartInstance; // chartインスタンスを取得
@@ -924,7 +922,19 @@
                                 }
                             },
                             onDragEnd: function(e, datasetIndex, index, value) {
-                                const chart = scheduleChartInstance; // ★★★ 修正点: chartを最初に定義
+                                const chart = scheduleChartInstance;
+
+                                // ★★★ 修正点: 閲覧モードの場合は元の位置に戻す ★★★
+                                if (!isChartEditMode) {
+                                    if (originalDragPosition) {
+                                        chart.data.datasets[datasetIndex].data[index].x = originalDragPosition.x;
+                                        chart.data.datasets[datasetIndex].data[index].y = originalDragPosition.y;
+                                        chart.update(); // チャートを更新して点を元の位置に戻す
+                                        originalDragPosition = null; // 保存した位置をクリア
+                                    }
+                                    //showToast('閲覧モード', '変更するには「編集モード」をONにしてください。', 'info');
+                                    return; // ここで処理を終了
+                                }
 
                                 // ★★★ 修正点: ドラッグ終了時に、最も近い5分刻みに丸める ★★★
                                 const fiveMinutes = 5 * 60 * 1000;
@@ -1027,7 +1037,6 @@
                 }
             });
 
-            toggleChartEditMode(isChartEditMode); // 現在のモード状態をUIに反映
         }
     </script>
 {% endblock %} 

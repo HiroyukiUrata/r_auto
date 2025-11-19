@@ -171,7 +171,7 @@ class BindProductUrlRoomUrlTask(BaseTask):
             logger.error(f"タスクの実行中にエラーが発生しました: {e}", exc_info=True)
             return False
         finally:
-            logger.debug(f"合計 {processed_count} 件のカードを処理しました。")
+            logger.info(f"合計 {processed_count} 件のカードを処理しました。")
             logger.info(f"--- {self.action_name}を終了します ---")
         
         return True
