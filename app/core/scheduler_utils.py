@@ -64,6 +64,8 @@ def get_recent_activities_from_log(limit=5, max_lines=1000):
             "商品調達": "商品調達",
             "マイコメ返信": "マイコメ返信",
         }
+        log_name_to_ui_name["再コレ"] = "再コレ"
+        log_name_to_ui_name["投稿削除"] = "投稿削除"
 
         # 正規表現パターン
         summary_pattern = re.compile(r"\[Action Summary\]\s*name=(?P<name>[^,]+)(?:,\s*count=(?P<count>\d+))?(?:,\s*message='(?P<message>[^']*)')?")
@@ -102,10 +104,15 @@ def get_recent_activities_from_log(limit=5, max_lines=1000):
                         continue
 
                     count_str = data.get('count')
+                    errors_str = data.get('errors')
                     message = data.get('message')
 
                     if message:
                         activities.append({"name": ui_name, "timestamp": timestamp_iso, "status": "success", "message": message})
+                    elif count_str and errors_str:
+                        activities.append({"name": ui_name, "timestamp": timestamp_iso, "status": "success", "message": f"{int(count_str)}件 成功, {int(errors_str)}件 失敗"})
+                    elif count_str and not errors_str:
+                        activities.append({"name": ui_name, "timestamp": timestamp_iso, "status": "success", "message": f"{int(count_str)}件 完了"})
                     elif count_str:
                         activities.append({"name": ui_name, "timestamp": timestamp_iso, "status": "success", "message": f"{int(count_str)}件 完了"})
                     processed_actions[ui_name] = dt_obj # 処理済みアクションとして記録
@@ -141,6 +148,7 @@ def get_log_summary(period='24h', max_lines_to_scan=20000):
         'いいね返し': {'count': 0, 'errors': 0},
         'コメント返し': {'count': 0, 'errors': 0},
         'マイコメ返信': {'count': 0, 'errors': 0},
+        '投稿削除': {'count': 0, 'errors': 0},
     }
     
     # ログ名とUI表示名をマッピング
@@ -150,6 +158,8 @@ def get_log_summary(period='24h', max_lines_to_scan=20000):
         "フォロー": "フォロー活動",
         "商品調達": "商品調達",
         "マイコメ返信": "マイコメ返信",
+        "再コレ": "投稿削除", # 再コレも投稿削除として集計
+        "投稿削除": "投稿削除",
     }
 
     # ログから情報を抽出する正規表現パターン

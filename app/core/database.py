@@ -428,7 +428,7 @@ def recollect_product(product_id: int):
     """指定された商品を「投稿準備完了」ステータスに戻し、room_urlとposted_atをNULLにする"""
     conn = get_db_connection()
     try:
-        conn.execute("UPDATE products SET status = '投稿準備完了', room_url = NULL, posted_at = NULL, error_message = NULL WHERE id = ?", (product_id,))
+        conn.execute("UPDATE products SET status = '投稿準備完了', room_url = NULL, posted_at = NULL, error_message = NULL, priority = NULL WHERE id = ?", (product_id,))
         conn.commit()
         logging.info(f"商品ID: {product_id} を「再コレ」として更新しました。")
         return True
@@ -445,11 +445,11 @@ def bulk_recollect_products(product_ids: list[int]):
     conn = get_db_connection()
     try:
         placeholders = ','.join('?' for _ in product_ids)
-        query = f"UPDATE products SET status = '投稿準備完了', room_url = NULL, posted_at = NULL, error_message = NULL WHERE id IN ({placeholders})"
+        query = f"UPDATE products SET status = '投稿準備完了', room_url = NULL, posted_at = NULL, error_message = NULL, priority = NULL WHERE id IN ({placeholders})"
         cursor = conn.cursor()
         cursor.execute(query, product_ids)
         conn.commit()
-        logging.info(f"{len(product_ids)}件の商品を「再コレ」として一括更新しました。")
+        logging.debug(f"{len(product_ids)}件の商品を「再コレ」として一括更新しました。")
         return cursor.rowcount
     except sqlite3.Error as e:
         logging.error(f"商品の一括再コレ処理中にエラーが発生しました: {e}")
@@ -774,7 +774,7 @@ def delete_multiple_products(product_ids: list[int]):
         cursor = conn.cursor()
         cursor.execute(query, product_ids)
         conn.commit()
-        logging.info(f"{len(product_ids)}件の商品を削除しました。")
+        logging.debug(f"{len(product_ids)}件の商品を削除しました。")
         return cursor.rowcount
     finally:
         conn.close()

@@ -446,7 +446,7 @@
         const productIds = getSelectedProductIds();
         if (productIds.length === 0) return;
         if (!confirm(`${productIds.length}件の商品を削除しますか？この操作は元に戻せません。`)) return;
-
+        
         // UIから即座に削除
         productIds.forEach(id => {
             const row = document.getElementById(`product-row-${id}`);

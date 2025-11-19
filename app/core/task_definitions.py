@@ -17,6 +17,7 @@ from app.tasks.commit_stale_actions import run_commit_stale_actions
 from app.tasks.rakuten_search_procure import search_and_procure_from_rakuten
 from app.tasks.notification_analyzer import run_notification_analyzer
 from app.tasks.rakuten_api_procure import procure_from_rakuten_api
+from app.tasks.delete_room_post import run_delete_room_post
 from app.tasks.generate_engagement_comments import run_generate_engagement_comments
 from app.tasks.generate_product_caption import generate_product_caption
 from app.tasks.scrape_my_comments import run_scrape_my_comments
@@ -361,6 +362,32 @@ TASK_DEFINITIONS = {
         "description": "件数入力ボックスが表示されないことを確認するためのダミーフローです。",
         "order": 91,
         "flow": [("check-login-status", {})] # フローの内容はシンプルでOK
+    },
+    "delete-room-post": {
+        "name_ja": "（内部処理）ROOM投稿削除",
+        "function": run_delete_room_post,
+        "is_debug": False,
+        "show_in_schedule": False,
+        "description": "指定されたROOMの投稿を削除または再コレ状態にします。",
+        "order": 9999,
+    },
+    "recollect-product-flow": {
+        "name_ja": "（内部処理）商品再コレフロー",
+        "function": None,
+        "is_debug": False,
+        "show_in_schedule": False,
+        "description": "ログイン状態を確認後、商品を再コレ状態にします。",
+        "flow": "check-login-status | delete-room-post",
+        "order": 9999,
+    },
+    "delete-product-flow": {
+        "name_ja": "（内部処理）商品削除フロー",
+        "function": None,
+        "is_debug": False,
+        "show_in_schedule": False,
+        "description": "ログイン状態を確認後、商品を削除します。",
+        "flow": "check-login-status | delete-room-post",
+        "order": 9999,
     },
     "reply-to-comment": {
         "function": reply_to_comments,
