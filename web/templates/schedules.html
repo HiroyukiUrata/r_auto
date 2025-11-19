@@ -792,7 +792,33 @@
             fetchGlobalConfig();
             fetchProfiles();
             if (typeof ChartDataLabels !== 'undefined') Chart.register(ChartDataLabels);
+
+            // ★★★ 追加: チャートスクロールバーのイベントリスナー ★★★
+            const chartScrollbar = document.getElementById('chart-scrollbar');
+            if (chartScrollbar) {
+                chartScrollbar.addEventListener('input', function() {
+                    if (!scheduleChartInstance) return;
+
+                    // 1日の総分数 (24 * 60 = 1440)
+                    const totalMinutesInDay = 1440;
+                    // スマホでの表示範囲（分単位）。例: 8時間 = 480分
+                    const viewWidthMinutes = 8 * 60;
+
+                    // スクロールバーの位置(0-100)に応じて、表示開始時刻を計算
+                    const scrollPercentage = this.value / 100;
+                    const startMinute = scrollPercentage * (totalMinutesInDay - viewWidthMinutes);
+
+                    // チャートの表示範囲を更新
+                    updateChartView(startMinute, viewWidthMinutes);
+                });
+            }
         });
+        // ★★★ 追加: チャートの表示範囲を初期化する関数 ★★★
+        function resetChartView() {
+            const chartScrollbar = document.getElementById('chart-scrollbar');
+            if (chartScrollbar) chartScrollbar.value = 0;
+            updateChartView(0, 8 * 60); // 0分から8時間分表示
+        }
         function renderScheduleChart(schedules) {
             // X軸の最小値と最大値を明示的に設定し、常に1日の全範囲をカバーするようにする
             const today = new Date();
@@ -807,6 +833,9 @@
             if (scheduleChartInstance) {
                 scheduleChartInstance.destroy();
             }
+            // ★★★ 追加: チャート再描画時にスクロールバーの位置と表示範囲をリセット ★★★
+            resetChartView();
+
 
             const ctx = document.getElementById('scheduleChart').getContext('2d');
 
@@ -873,18 +902,20 @@
             // Y軸に表示するタスク名のリストを作成
             const yLabels = [...new Set(schedules.filter(j => j.enabled).map(job => job.name_ja))];
 
+            // ★★★ 修正点: dragDataプラグインを常に登録する ★★★
+            const chartPlugins = [ChartDataLabels, Chart.registry.plugins.get('annotation'), Chart.registry.plugins.get('dragdata')];
+
             scheduleChartInstance = new Chart(ctx, {
                 type: 'scatter', // グラフの種類を散布図に変更
-                data: {
-                    datasets: datasets
-                },
+                data: { datasets: datasets },
+                plugins: chartPlugins, // ★★★ 修正点: 動的に生成したプラグインリストを使用 ★★★
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
                     // ★★★ 変更点: ドラッグ＆ドロップによる時間変更機能を追加 ★★★
                     plugins: {
                         dragData: {
-                            enabled: window.innerWidth >= 768, // ★★★ 修正点: 常に有効化 ★★★
+                            enabled: isChartEditMode, // ★★★ 修正点: 編集モードがONの時のみドラッグを有効化 ★★★
                             dragX: true, // ★★★ 修正点: X軸方向のドラッグを有効にする ★★★
                             round: 0, // ★★★ 修正点: ドラッグ中はスムーズに動かすため、丸めを無効化 ★★★
                             showTooltip: true,
@@ -1037,6 +1068,23 @@
                 }
             });
 
+        }
+    </script>
+    <!-- ★★★ 追加: チャート表示範囲を更新するヘルパー関数 ★★★ -->
+    <script>
+        function updateChartView(startMinute, widthMinutes) {
+            if (!scheduleChartInstance) return;
+
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const startOfDay = today.getTime();
+
+            const newMin = startOfDay + startMinute * 60 * 1000;
+            const newMax = newMin + widthMinutes * 60 * 1000;
+
+            scheduleChartInstance.options.scales.x.min = newMin;
+            scheduleChartInstance.options.scales.x.max = newMax;
+            scheduleChartInstance.update('none'); // アニメーションなしで更新
         }
     </script>
 {% endblock %} 
