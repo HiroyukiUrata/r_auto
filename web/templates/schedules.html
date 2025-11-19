@@ -872,15 +872,6 @@
             today.setHours(23, 59, 59, 999); // 今日の23:59:59.999
             const endOfDay = today.getTime();
 
-
-            // ★★★ 修正点: 新しいチャートを描画する前に、必ず既存のインスタンスを破棄する ★★★
-            if (scheduleChartInstance) {
-                scheduleChartInstance.destroy();
-            }
-            // ★★★ 追加: チャート再描画時にスクロールバーの位置と表示範囲をリセット ★★★
-            resetChartView(); // ★★★ 修正点: resetChartViewを呼び出す
-
-
             const ctx = document.getElementById('scheduleChart').getContext('2d');
 
             // 色の定義
@@ -948,6 +939,12 @@
 
             // ★★★ 修正点: dragDataプラグインを常に登録する ★★★
             const chartPlugins = [ChartDataLabels, Chart.registry.plugins.get('annotation'), Chart.registry.plugins.get('dragdata')];
+
+            // ★★★ 修正点: 新しいチャートを描画する前に、必ず既存のインスタンスを破棄する ★★★
+            if (scheduleChartInstance) {
+                scheduleChartInstance.destroy();
+            }
+
 
             scheduleChartInstance = new Chart(ctx, {
                 type: 'scatter', // グラフの種類を散布図に変更
@@ -1111,6 +1108,9 @@
                     }
                 }
             });
+
+            // ★★★ 追加: チャート再描画後にスクロールバーの位置と表示範囲をリセット ★★★
+            resetChartView();
         }
     </script>
 {% endblock %}
