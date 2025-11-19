@@ -16,7 +16,7 @@ from app.core.task_manager import TaskManager
 from app.core.task_definitions import TASK_DEFINITIONS
 from app.core.database import (get_all_inventory_products, update_product_status, delete_all_products, init_db,
                                delete_product, update_status_for_multiple_products, delete_multiple_products, get_product_count_by_status, get_reusable_products,
-                               get_error_products_in_last_24h, update_product_priority, update_product_order, bulk_update_products_from_data, commit_user_actions, get_all_user_engagements, get_users_for_commenting,
+                               get_error_products_in_last_24h, get_posted_products, update_product_priority, update_product_order, bulk_update_products_from_data, commit_user_actions, get_all_user_engagements, get_users_for_commenting,
                                update_user_comment, get_generated_replies, update_reply_text, ignore_reply, get_commenting_users_summary,
                                get_table_names, export_tables_as_sql, execute_sql_script)
 from app.tasks.posting import run_posting
@@ -168,6 +168,11 @@ async def read_system_config(request: Request):
 async def read_inventory(request: Request):
     """在庫確認ページを表示する"""
     return request.app.state.templates.TemplateResponse("inventory.html", {"request": request})
+
+@router.get("/posted-products", response_class=HTMLResponse)
+async def read_posted_products_page(request: Request):
+    """投稿済商品一覧ページを表示する"""
+    return request.app.state.templates.TemplateResponse("posted_products.html", {"request": request})
 
 @router.get("/keywords", response_class=HTMLResponse)
 async def read_keywords_page(request: Request):
@@ -481,6 +486,21 @@ async def get_inventory():
     # sqlite3.Rowは直接JSONシリアライズできないため、辞書のリストに変換
     products_list = [dict(product) for product in products]
     return JSONResponse(content=products_list)
+
+@router.get("/api/posted-products")
+async def api_get_posted_products(request: Request):
+    """投稿済商品をページネーション付きで取得する"""
+    try:
+        page = int(request.query_params.get("page", 1))
+        per_page = int(request.query_params.get("per_page", 20))
+        search_term = request.query_params.get("search_term", "")
+
+        products, total_pages = get_posted_products(page=page, per_page=per_page, search_term=search_term)
+        
+        return JSONResponse(content={"products": products, "total_pages": total_pages, "current_page": page})
+    except Exception as e:
+        logging.error(f"投稿済商品の取得中にエラー: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="商品の取得に失敗しました。")
 
 @router.get("/api/errors")
 async def get_error_products():

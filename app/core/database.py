@@ -1,6 +1,7 @@
 import sqlite3
 import logging
 import os
+import math
 from urllib.parse import urlparse, parse_qs
 import json
 from datetime import datetime, timezone, timedelta
@@ -269,6 +270,36 @@ def get_all_inventory_products():
     products = conn.execute(query).fetchall()
     conn.close()
     return products
+
+def get_posted_products(page: int = 1, per_page: int = 20, search_term: str = ""):
+    """
+    投稿済の商品をページネーションと検索機能付きで取得する。
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    base_query = "FROM products WHERE status = '投稿済'"
+    count_params = []
+    
+    if search_term:
+        base_query += " AND (name LIKE ? OR ai_caption LIKE ?)"
+        count_params.extend([f"%{search_term}%", f"%{search_term}%"])
+    
+    # 総件数を取得
+    cursor.execute(f"SELECT COUNT(*) {base_query}", count_params)
+    total_items = cursor.fetchone()[0]
+    total_pages = math.ceil(total_items / per_page) if total_items > 0 else 1
+    
+    # データを取得
+    offset = (page - 1) * per_page
+    data_query = f"SELECT * {base_query} ORDER BY posted_at DESC LIMIT ? OFFSET ?"
+    data_params = count_params + [per_page, offset]
+    
+    cursor.execute(data_query, data_params)
+    products = [dict(row) for row in cursor.fetchall()]
+    
+    conn.close()
+    return products, total_pages
 
 def get_reusable_products():
     """procurement_keywordが「再コレ再利用」の商品をすべて取得する"""
