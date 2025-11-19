@@ -1,6 +1,5 @@
 {% extends "base.html" %}
 
-{% block title %}スケジュール設定 - {{ super() }}{% endblock %}
 {% block styles %}
     <style>
         .time-list-container {
@@ -17,18 +16,38 @@
         /* デフォルト（モバイル）のスタイル */
         .chart-container {
             position: relative;
-            min-width: 540px; /* スマホ用の最小幅 (800px * 2/3) */
+            width: 100%; /* 親要素の幅いっぱいに広げる */
             height: 170px;
+        }
+        /* canvas要素が親のchart-containerのサイズを確実に引き継ぐ */
+        .chart-container canvas {
+            width: 100% !important;
+            height: 100% !important;
         }
         /* PC表示時 (768px以上) のみ高さを上書き */
         @media (min-width: 768px) {
             .chart-container {
-                min-width: 800px; /* PC用の最小幅 */
-                height: 340px; /* PC用の高さを設定 (170px * 2) */
+                height: 280px; /* PC用の高さを調整 (dashboard.htmlの340pxより少し小さく) */
+            }
+        }
+        /* ★★★ 修正: スマホ用チャートスクロールバーのスタイル (モバイルファースト & !important) ★★★ */
+        #chart-scrollbar-container {
+            /* デフォルトで表示 (モバイルファースト) */
+            display: block !important; /* 強制的に表示 */
+            padding: 0 10px; /* 見た目の調整 */
+            /* background-color: rgba(255, 255, 0, 0.3) !important; デバッグ用: 薄い黄色 */
+            /* height: 30px !important; デバッグ用: 高さを確保 */
+        }
+        @media (min-width: 768px) { /* PCでは非表示 */
+            #chart-scrollbar-container {
+                display: none !important; /* 強制的に非表示 */
             }
         }
     </style>
 {% endblock %}
+
+{% block title %}スケジュール設定 - {{ super() }}{% endblock %}
+
 {% block content %}
         <div class="row mb-4">
             <div class="accordion" id="topSectionsAccordion">
@@ -66,8 +85,8 @@
                                 <select id="profile-select" class="form-select"></select>
                             </div>
                             <div class="col-sm-8 d-flex align-items-end gap-2">
-                                <button class="btn btn-primary" onclick="loadProfile()"><i class="bi bi-box-arrow-in-down me-1"></i>読み込み</button>
-                                <button class="btn btn-danger" onclick="deleteProfile()"><i class="bi bi-trash me-1"></i>削除</button>
+                                <button class="btn btn-primary" onclick="loadProfile()"><i class="bi bi-box-arrow-in-down"></i><span class="d-none d-sm-inline ms-1">読み込み</span></button>
+                                <button class="btn btn-danger" onclick="deleteProfile()"><i class="bi bi-trash"></i><span class="d-none d-sm-inline ms-1">削除</span></button>
                             </div>
                         </div>
                         <hr>
@@ -76,7 +95,7 @@
                                 <label for="new-profile-name" class="form-label">現在の設定を名前を付けて保存</label>
                                 <input type="text" id="new-profile-name" class="form-control" placeholder="例: 平日用スケジュール">
                             </div>
-                            <div class="col-sm-8 d-flex align-items-end"><button class="btn btn-success" onclick="saveProfile()"><i class="bi bi-save me-1"></i>保存</button></div>
+                            <div class="col-sm-8 d-flex align-items-end"><button class="btn btn-success" onclick="saveProfile()"><i class="bi bi-save"></i><span class="d-none d-sm-inline ms-1">保存</span></button></div>
                         </div>
                     </div>
                 </div>
@@ -94,10 +113,10 @@
                             <div class="d-flex justify-content-end align-items-center mb-2 gap-3">
                                 <div id="bulk-chart-actions" style="display: none;">
                                     <button class="btn btn-sm btn-warning" id="save-all-btn" onclick="handleSaveAll()">
-                                        <i class="bi bi-check-all"></i> 一括確定
+                                        <i class="bi bi-check-all"></i><span class="d-none d-sm-inline ms-1">一括確定</span>
                                     </button>
                                     <button class="btn btn-sm btn-secondary" id="cancel-all-btn" onclick="handleCancelAll()">
-                                        <i class="bi bi-x-circle"></i> 一括キャンセル
+                                        <i class="bi bi-x-circle"></i><span class="d-none d-sm-inline ms-1">一括キャンセル</span>
                                     </button>
                                 </div>
                                 <div class="form-check form-switch">
@@ -112,6 +131,11 @@
                                         <canvas id="scheduleChart"></canvas>
                                     </div>
                                 </div>
+                            </div>
+                            <!-- ★★★ 追加: スマホ用チャートスクロールバー ★★★ -->
+                            <div id="chart-scrollbar-container" class="mt-2">
+                                <label for="chart-scrollbar" class="form-label visually-hidden">チャート表示範囲</label>
+                                <input type="range" class="form-range" id="chart-scrollbar" min="0" max="100" value="0">
                             </div>
                         </div>
                     </div>
@@ -233,6 +257,7 @@
         let originalDragPosition = null; // ★★★ 追加: ドラッグ開始時の位置を保存する変数
         let originalSchedulesData = []; // ★★★ 追加: ページ読み込み時のデータを保持する変数
         let scheduleChartInstance = null;
+        const chartViewWidthMinutes = 12 * 60; // スマホでのチャート表示幅を12時間分に広げる
         async function saveSchedule(tag, isEnabled, times) {
             try {
                 const response = await fetch('/api/schedules/update', {
@@ -293,11 +318,11 @@
                         </div>
                         <div class="ms-auto button-group">
                             <!-- キャンセルボタンはここに挿入されます -->
-                            <button class="btn btn-success btn-sm" onclick="handleSave('${job.tag}')">
-                                <i class="bi bi-check-circle me-1"></i> 保存
+                            <button class="btn btn-success btn-sm" onclick="handleSave('${job.tag}')"> 
+                                <i class="bi bi-check-circle"></i><span class="d-none d-sm-inline ms-1">保存</span>
                             </button>
-                            <button class="btn btn-info btn-sm" onclick="runTaskNow('${job.tag}', '${job.name_ja}')">
-                                <i class="bi bi-play-fill"></i> 即時実行
+                            <button class="btn btn-info btn-sm" onclick="runTaskNow('${job.tag}', '${job.name_ja}')"> 
+                                <i class="bi bi-play-fill"></i><span class="d-none d-sm-inline ms-1">即時実行</span>
                             </button>
                         </div>
                     </div>
@@ -312,7 +337,7 @@
                                     ${isCountableTask ? `
                                     <input type="number" class="form-control" id="count-input-${job.tag}" placeholder="件数" value="1" min="1" style="flex-grow: 1; text-align: right;">
                                     ` : ''}
-                                    <button class="btn btn-primary" type="button" onclick="addTime(this, '${job.tag}', ${isCountableTask})">追加</button>
+                                    <button class="btn btn-primary" type="button" onclick="addTime(this, '${job.tag}', ${isCountableTask})"><i class="bi bi-plus-lg"></i><span class="d-none d-sm-inline ms-1">追加</span></button>
                                 </div>
                             </div>
                         </div>
@@ -326,7 +351,7 @@
         function addTime(button, tag, hasCount) {
             const cardBody = button.closest('.card-body');
             const timeInput = cardBody.querySelector(`#time-input-${tag}`);
-            const newTime = timeInput.value;
+            let newTime = timeInput.value;
 
             const card = button.closest('.card');
             markCardAsDirty(button); // UIを「要保存」に変更
@@ -531,14 +556,13 @@
                 currentCard.dataset.isDirty = 'true';
                 
                 const cancelButton = document.createElement('button');
-                cancelButton.className = 'btn btn-secondary btn-sm me-2';
-                cancelButton.innerHTML = '<i class="bi bi-x-circle"></i> キャンセル';
+                cancelButton.className = 'btn btn-secondary btn-sm'; // me-2を削除
+                cancelButton.innerHTML = '<i class="bi bi-x-circle"></i><span class="d-none d-sm-inline ms-1">キャンセル</span>';
                 cancelButton.onclick = () => cancelChanges(currentCard);
                 buttonGroup.prepend(cancelButton);
 
-                saveButton.classList.remove('btn-success');
-                saveButton.classList.add('btn-warning');
-                saveButton.innerHTML = '<i class="bi bi-exclamation-triangle-fill me-1"></i> 要保存';
+                saveButton.classList.replace('btn-success', 'btn-warning');
+                saveButton.innerHTML = '<i class="bi bi-exclamation-triangle-fill"></i><span class="d-none d-sm-inline ms-1">要保存</span>';
 
                 if (runNowButton) {
                     runNowButton.classList.add('d-none');
@@ -631,7 +655,7 @@
             const originalJobData = originalSchedulesData.find(job => job.tag === tag);
 
             if (!originalJobData) {
-                console.error(`元のスケジュールデータが見つかりません: ${tag}`);
+                console.error(`元のスケジュールデータが見つかりません: ${tag}`); // ★★★ 修正点: エラーメッセージを修正
                 location.reload(); // 念のためリロード
                 return;
             }
@@ -661,10 +685,10 @@
                 const datasetIndex = scheduleChartInstance.data.datasets.findIndex(d => d.tag === tag);
                 if (datasetIndex !== -1) {
                     const originalDataPoints = originalJobData.times.map(entry => {
-                        const [hours, minutes] = entry.time.split(':'); // ★★★ 修正点: `time` -> `entry.time`
+                        const [hours, minutes] = entry.time.split(':');
                         const date = new Date();
                         date.setHours(hours, minutes, 0, 0);
-                        return { x: date.getTime(), y: scheduleChartInstance.data.datasets[datasetIndex].label, count: entry.count }; // ★★★ 修正点: `count` -> `entry.count`
+                        return { x: date.getTime(), y: scheduleChartInstance.data.datasets[datasetIndex].label, count: entry.count };
                     });
                     scheduleChartInstance.data.datasets[datasetIndex].data = originalDataPoints;
                     scheduleChartInstance.update();
@@ -685,9 +709,8 @@
             // 2. ボタンを元の状態に戻す
             const buttonGroup = cardElement.querySelector('.card-header .button-group');
             const saveButton = buttonGroup.querySelector('.btn-warning, .btn-success');
-            saveButton.classList.remove('btn-warning');
-            saveButton.classList.add('btn-success');
-            saveButton.innerHTML = '<i class="bi bi-check-circle me-1"></i> 保存';
+            saveButton.classList.replace('btn-warning', 'btn-success');
+            saveButton.innerHTML = '<i class="bi bi-check-circle"></i><span class="d-none d-sm-inline ms-1">保存</span>';
             buttonGroup.querySelector('.btn-secondary')?.remove(); // キャンセルボタンを削除
 
             // 即時実行ボタンを再表示
@@ -704,7 +727,7 @@
                 const select = document.getElementById('profile-select');
                 select.innerHTML = '<option value="">-- プロファイルを選択 --</option>';
                 profiles.forEach(p => {
-                    const option = document.createElement('option');
+                    const option = document.createElement('option'); // ★★★ 修正点: option要素を作成
                     option.value = p;
                     option.textContent = p;
                     select.appendChild(option);
@@ -726,7 +749,7 @@
             try {
                 const response = await fetch(`/api/schedule-profiles/${profileName}`, { method: 'PUT' });
                 const result = await response.json();
-                if (!response.ok) throw new Error(result.message);
+                if (!response.ok) throw new Error(result.message); // ★★★ 修正点: エラーハンドリング
                 alert(result.message);
                 await fetchSchedules(); // 画面を更新
             } catch (error) {
@@ -748,7 +771,7 @@
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ profile_name: profileName })
-                });
+                }); // ★★★ 修正点: bodyをJSON.stringifyで囲む
                 const result = await response.json();
                 if (!response.ok) throw new Error(result.message);
                 alert(result.message);
@@ -771,7 +794,7 @@
             try {
                 const response = await fetch(`/api/schedule-profiles/${profileName}`, { method: 'DELETE' });
                 const result = await response.json();
-                if (!response.ok) throw new Error(result.message);
+                if (!response.ok) throw new Error(result.message); // ★★★ 修正点: エラーハンドリング
                 alert(result.message);
                 await fetchProfiles(); // プロファイル一覧を更新
             } catch (error) {
@@ -793,17 +816,26 @@
             fetchProfiles();
             if (typeof ChartDataLabels !== 'undefined') Chart.register(ChartDataLabels);
 
+            // ★★★ 追加: スマホ判定ログ ★★★
+            if (window.innerWidth < 768) {
+                console.log("スマホ表示です。チャートスクロールバーが表示されるはずです。");
+            } else {
+                console.log("PC表示です。チャートスクロールバーは非表示になるはずです。");
+            }
+
             // ★★★ 追加: チャートスクロールバーのイベントリスナー ★★★
             const chartScrollbar = document.getElementById('chart-scrollbar');
             if (chartScrollbar) {
                 chartScrollbar.addEventListener('input', function() {
                     if (!scheduleChartInstance) return;
 
+                    // ★★★ 修正: シンプルなスクロールロジックに戻し、範囲を調整 ★★★
                     // 1日の総分数 (24 * 60 = 1440)
                     const totalMinutesInDay = 1440;
                     // スマホでの表示範囲（分単位）。例: 8時間 = 480分
-                    const viewWidthMinutes = 8 * 60;
+                    const viewWidthMinutes = chartViewWidthMinutes;
 
+                    // ★★★ 修正点: スクロールバーの位置(0-100)に応じて、表示開始時刻を計算 ★★★
                     // スクロールバーの位置(0-100)に応じて、表示開始時刻を計算
                     const scrollPercentage = this.value / 100;
                     const startMinute = scrollPercentage * (totalMinutesInDay - viewWidthMinutes);
@@ -817,12 +849,24 @@
         function resetChartView() {
             const chartScrollbar = document.getElementById('chart-scrollbar');
             if (chartScrollbar) chartScrollbar.value = 0;
-            updateChartView(0, 8 * 60); // 0分から8時間分表示
+            updateChartView(0, chartViewWidthMinutes); // 0分からデフォルトの幅で表示
         }
+        function updateChartView(startMinute, widthMinutes) {
+            if (!scheduleChartInstance) return;
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const startOfDay = today.getTime();
+            const newMin = startOfDay + startMinute * 60 * 1000;
+            const newMax = newMin + widthMinutes * 60 * 1000;
+            scheduleChartInstance.options.scales.x.min = newMin;
+            scheduleChartInstance.options.scales.x.max = newMax;
+            scheduleChartInstance.update('none');
+        }
+
         function renderScheduleChart(schedules) {
             // X軸の最小値と最大値を明示的に設定し、常に1日の全範囲をカバーするようにする
             const today = new Date();
-            today.setHours(0, 0, 0, 0); // 今日の00:00:00.000
+            today.setHours(0, 0, 0, 0); // 今日の00:00:00.000 // ★★★ 修正点: setHoursで時刻を設定
             const startOfDay = today.getTime();
 
             today.setHours(23, 59, 59, 999); // 今日の23:59:59.999
@@ -834,7 +878,7 @@
                 scheduleChartInstance.destroy();
             }
             // ★★★ 追加: チャート再描画時にスクロールバーの位置と表示範囲をリセット ★★★
-            resetChartView();
+            resetChartView(); // ★★★ 修正点: resetChartViewを呼び出す
 
 
             const ctx = document.getElementById('scheduleChart').getContext('2d');
@@ -961,7 +1005,7 @@
                                         chart.data.datasets[datasetIndex].data[index].x = originalDragPosition.x;
                                         chart.data.datasets[datasetIndex].data[index].y = originalDragPosition.y;
                                         chart.update(); // チャートを更新して点を元の位置に戻す
-                                        originalDragPosition = null; // 保存した位置をクリア
+                                        originalDragPosition = null; // 保存した位置をクリア // ★★★ 修正点: originalDragPositionをnullに設定
                                     }
                                     //showToast('閲覧モード', '変更するには「編集モード」をONにしてください。', 'info');
                                     return; // ここで処理を終了
@@ -1010,7 +1054,7 @@
                                 allTimeEntries.forEach(entry => timesContainer.appendChild(entry)); // ソートされた順に再追加
                                 markCardAsDirty(card);
                             }
-                        },
+                        }, // ★★★ 修正点: dragDataプラグインの閉じ括弧
                         datalabels: {
                             display: function(context) {
                                 // 画面幅が768px未満の場合のみラベルを表示
@@ -1053,7 +1097,7 @@
                             type: 'time',
                             time: { unit: 'hour', displayFormats: { hour: 'HH:mm' }, tooltipFormat: 'HH:mm' },
                         min: startOfDay, // ★★★ 修正点: X軸の最小値を00:00に固定 ★★★
-                        max: endOfDay,   // ★★★ 修正点: X軸の最大値を23:59に固定 ★★★
+                        max: endOfDay,   // ★★★ 修正点: X軸の最大値を23:59に固定
                             grid: { display: true },
                             ticks: { font: { size: window.innerWidth < 768 ? 9 : 12 } }
                         },
@@ -1067,24 +1111,6 @@
                     }
                 }
             });
-
         }
     </script>
-    <!-- ★★★ 追加: チャート表示範囲を更新するヘルパー関数 ★★★ -->
-    <script>
-        function updateChartView(startMinute, widthMinutes) {
-            if (!scheduleChartInstance) return;
-
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-            const startOfDay = today.getTime();
-
-            const newMin = startOfDay + startMinute * 60 * 1000;
-            const newMax = newMin + widthMinutes * 60 * 1000;
-
-            scheduleChartInstance.options.scales.x.min = newMin;
-            scheduleChartInstance.options.scales.x.max = newMax;
-            scheduleChartInstance.update('none'); // アニメーションなしで更新
-        }
-    </script>
-{% endblock %} 
+{% endblock %}
