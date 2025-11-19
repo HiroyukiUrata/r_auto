@@ -192,6 +192,10 @@
             <div class="modal-body">
                 <h6 class="fw-bold">商品名</h6>
                 <p id="infoModalProductName" class="mb-3"></p>
+                <div class="d-flex gap-2 mb-3">
+                    <a href="#" id="infoModalProductUrl" class="btn btn-sm btn-outline-primary" target="_blank" rel="noopener noreferrer" style="display: none;"><i class="bi bi-bag-fill me-1"></i>商品ページ</a>
+                    <a href="#" id="infoModalPostUrl" class="btn btn-sm btn-outline-info" target="_blank" rel="noopener noreferrer" style="display: none;"><i class="bi bi-send-fill me-1"></i>ROOM投稿ページ</a>
+                </div>
                 <h6 class="fw-bold"><i class="bi bi-robot me-2"></i>AIによるキャプション</h6>
                 <div id="infoModalAiCaption" style="white-space: pre-wrap;"></div>
             </div>
@@ -285,8 +289,10 @@
                         thumbnailHtml = `<img src="${product.image_url || 'https://via.placeholder.com/60'}" alt="${product.name}" class="img-thumbnail product-thumbnail grayscale" title="ROOM投稿URL未取得">`;
                     }
 
+                    const escapedProductJson = JSON.stringify(product).replace(/'/g, '&apos;').replace(/"/g, '&quot;');
+
                     const row = `
-                        <tr id="product-row-${product.id}">
+                        <tr id="product-row-${product.id}" data-product='${escapedProductJson}'>
                             <td data-label="サムネイル">
                                 ${thumbnailHtml}
                             </td>
@@ -298,12 +304,8 @@
                             <td data-label="i" class="text-center">
                                 ${product.ai_caption ? `
                                 <i class="bi bi-info-circle text-primary fs-5"
-                                   style="cursor: pointer;"
                                    data-bs-toggle="modal"
-                                   data-bs-target="#infoModal"
-                                   data-product-id="${product.id}"
-                                   data-product-name="${(product.name || '').replace(/"/g, '&quot;')}"
-                                   data-ai-caption="${(product.ai_caption || '').replace(/"/g, '&quot;')}"></i>` : ''}
+                                   data-bs-target="#infoModal"></i>` : ''}
                             </td>
                         </tr>
                     `;
@@ -563,12 +565,25 @@
         if (infoModal) {
             infoModal.addEventListener('show.bs.modal', function (event) {
                 const button = event.relatedTarget;
-                const productId = button.getAttribute('data-product-id');
-                const productName = button.getAttribute('data-product-name');
-                const aiCaption = button.getAttribute('data-ai-caption');
+                const row = button.closest('tr');
+                const product = JSON.parse(row.dataset.product.replace(/&apos;/g, "'").replace(/&quot;/g, '"'));
+
+                const productId = product.id;
+                const productName = product.name;
+                const aiCaption = product.ai_caption;
                 
                 infoModal.querySelector('#infoModalProductName').textContent = productName;
                 infoModal.querySelector('#infoModalAiCaption').textContent = aiCaption;
+
+                // リンクの設定
+                const productUrlLink = infoModal.querySelector('#infoModalProductUrl');
+                const postUrlLink = infoModal.querySelector('#infoModalPostUrl');
+
+                productUrlLink.href = product.url || '#';
+                productUrlLink.style.display = product.url ? 'inline-block' : 'none';
+
+                postUrlLink.href = product.post_url || '#';
+                postUrlLink.style.display = product.post_url ? 'inline-block' : 'none';
 
                 const recollectBtn = infoModal.querySelector('#info-modal-recollect-btn');
                 const newRecollectBtn = recollectBtn.cloneNode(true);
