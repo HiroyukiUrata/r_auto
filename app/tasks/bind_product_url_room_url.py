@@ -19,8 +19,8 @@ class BindProductUrlRoomUrlTask(BaseTask):
         """
         タスクのメインロジック。
         """
-        logger.info(f"--- {self.action_name}を開始します ---")
-        logger.info(f"処理目標件数: {self.target_count}件")
+        logger.debug(f"--- {self.action_name}を開始します ---")
+        logger.debug(f"処理目標件数: {self.target_count}件")
 
         page = self.page
         
@@ -38,7 +38,7 @@ class BindProductUrlRoomUrlTask(BaseTask):
             myroom_link.click()
             page.wait_for_load_state("domcontentloaded", timeout=15000)
             my_room_url = page.url # 自分のROOMのURLを保存
-            logger.info(f"対象URL: 「{my_room_url}」")
+            logger.debug(f"対象URL: 「{my_room_url}」")
 
             # 処理済みのカードの画像srcを記録するためのセット
             globally_processed_srcs = set()
@@ -132,7 +132,7 @@ class BindProductUrlRoomUrlTask(BaseTask):
                 detail_page_url = None
                 try:
                     number_to_display = processed_count + 1
-                    logger.info(f"  [{number_to_display}/{self.target_count}] カードをクリックして詳細ページに遷移します...")
+                    logger.debug(f"  [{number_to_display}/{self.target_count}] カードをクリックして詳細ページに遷移します...")
                     
                     image_link_selector = convert_to_robust_selector("a[class*='link-image--']")
                     target_card.locator(image_link_selector).first.click()
@@ -140,14 +140,14 @@ class BindProductUrlRoomUrlTask(BaseTask):
                     page_transitioned = True
                     
                     detail_page_url = page.url
-                    logger.info(f"    -> 詳細ページURL取得: {detail_page_url}")
+                    logger.debug(f"    -> 詳細ページURL取得: {detail_page_url}")
 
                     rakuten_link_selector = convert_to_robust_selector('div[class*="ichiba-in-page--"] a')
                     rakuten_link_element = page.locator(rakuten_link_selector).first
                     rakuten_link_element.wait_for(state="visible", timeout=15000)
                     rakuten_url = rakuten_link_element.get_attribute('href')
                     if rakuten_url:
-                        logger.info(f"    -> 楽天市場URL取得: {rakuten_url[:60]}...")
+                        logger.debug(f"    -> 楽天市場URL取得: {rakuten_url[:60]}...")
                     else:
                         logger.warning("    -> 楽天市場URLの取得に失敗しました。")
 
@@ -171,8 +171,8 @@ class BindProductUrlRoomUrlTask(BaseTask):
             logger.error(f"タスクの実行中にエラーが発生しました: {e}", exc_info=True)
             return False
         finally:
-            logger.info(f"合計 {processed_count} 件のカードを処理しました。")
-            logger.info(f"--- {self.action_name}を終了します ---")
+            logger.debug(f"合計 {processed_count} 件のカードを処理しました。")
+            logger.debug(f"--- {self.action_name}を終了します ---")
         
         return True
 

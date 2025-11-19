@@ -98,7 +98,7 @@ class BaseTask(ABC):
             self.context = self.playwright.chromium.launch_persistent_context(
                 user_data_dir=PROFILE_DIR,
                 headless=headless_mode,
-                slow_mo=500 if not headless_mode else 0,
+                slow_mo=250, # ヘッドレスでも少し遅延を入れて人間らしさを演出
                 env={"DISPLAY": ":0"},
                 args=["--disable-blink-features=AutomationControlled"] # 自動化検知を回避する引数を追加
             )
@@ -106,7 +106,7 @@ class BaseTask(ABC):
             logging.debug("新しいブラウザセッション（認証プロファイルなし）で起動します。")
             browser = self.playwright.chromium.launch(
                 headless=headless_mode,
-                slow_mo=500 if not headless_mode else 0,
+                slow_mo=250, # ヘッドレスでも少し遅延を入れて人間らしさを演出
                 env={"DISPLAY": ":0"},
                 args=["--disable-blink-features=AutomationControlled"] # 自動化検知を回避する引数を追加
             )
@@ -116,32 +116,49 @@ class BaseTask(ABC):
         # ビューポートサイズを固定して、ヘッドレスモードと通常モードの挙動の差をなくす
         self.page.set_viewport_size({"width": 1920, "height": 1080})
 
+        # ★★★ ログ追加: ブラウザ起動後のロックファイル確認 ★★★
+        if self.use_auth_profile:
+            import glob
+            singleton_files_after_setup = glob.glob(os.path.join(PROFILE_DIR, "Singleton*"))
+            logging.debug(f"[ロックファイル確認] ブラウザ起動直後のSingletonファイル: {singleton_files_after_setup}")
+
+
     def _teardown_browser(self):
         """ブラウザコンテキストを閉じる"""
         if self.context:
             try:
                 logging.debug("ブラウザコンテキストを閉じています...")
                 self.context.close()
+                time.sleep(5)  # 閉じるのを少し待つ
             except Exception as e:
                 logging.error(f"ブラウザコンテキストのクローズ中にエラーが発生しました: {e}")
             finally:
-                # プロファイルを使用している場合のみ、ロックファイルの解放を待つ
+                # ★★★ ログ追加 & 処理整理: ブラウザ終了後のロックファイルクリーンアップ ★★★
                 if self.use_auth_profile:
-                    lockfile_path = os.path.join(PROFILE_DIR, "SingletonLock")
-                    # 最大10秒間、ロックファイルが消えるのを待つ
-                    for i in range(10):
-                        if not os.path.exists(lockfile_path):
-                            logging.debug(f"プロファイルのロックが正常に解放されました。({i+1}秒)")
+                    import glob
+                    # ブラウザプロセスが完全に終了するのを少し待つ
+                    time.sleep(3)
+
+                    # 10秒間、ロックファイルが消えるのを待機し、それでも残っていれば強制削除
+                    for i in range(10): # 最大10秒
+                        remaining_files = glob.glob(os.path.join(PROFILE_DIR, "Singleton*"))
+                        if not remaining_files:
+                            logging.debug(f"[ロックファイル確認] プロファイルのロックが正常に解放されました。({i+1}秒)")
                             break
+                        logging.debug(f"[ロックファイル確認] ロックファイルがまだ存在します。待機中... ({i+1}秒): {remaining_files}")
                         time.sleep(1)
-                    else:
-                        # タイムアウト後もロックファイルが残っている場合
-                        logging.warning(f"ブラウザ終了後もロックファイルが残っています: {lockfile_path}")
-                        try:
-                            os.remove(lockfile_path)
-                            logging.warning("  -> 残存していたロックファイルを強制的に削除しました。")
-                        except OSError as e:
-                            logging.error(f"  -> ロックファイルの強制削除に失敗しました: {e}")
+                    else: # forループがbreakされずに完了した場合 (タイムアウト)
+                        final_remaining_files = glob.glob(os.path.join(PROFILE_DIR, "Singleton*"))
+                        if not final_remaining_files:
+                            logging.debug("[ロックファイル確認] 最終確認でロックファイルの解放を確認しました。")
+                            return
+                        logging.warning(f"ブラウザ終了後もSingletonファイルが残存しています。強制削除を試みます: {final_remaining_files}")
+                        for file_path in final_remaining_files:
+                            try:
+                                os.remove(file_path)
+                                logging.info(f"  -> 残存ファイルを強制削除しました: {file_path}")
+                            except OSError as e:
+                                logging.error(f"  -> ファイルの削除に失敗しました: {file_path}, エラー: {e}")
 
     def run(self):
         """タスクの実行フローを管理する"""
@@ -151,9 +168,23 @@ class BaseTask(ABC):
         else:
             logging.debug(f"「{self.action_name}」アクションを開始します。")
 
+        # ★★★ ログ追加: コンテナ上のプロファイルパスの存在確認 ★★★
+        # 'Last Version'ファイルはブラウザの起動有無に関わらず、プロファイルディレクトリが正しく認識されていれば存在するはず。
+        last_version_path = os.path.join(PROFILE_DIR, "Last Version")
+        if os.path.exists(last_version_path):
+            logging.info(f"[プロファイルパス確認] コンテナ上の '{last_version_path}' は存在します。")
+        else:
+            logging.warning(f"[プロファイルパス確認] コンテナ上の '{last_version_path}' は存在しません。パスが正しいか確認してください。")
+
         if self.needs_browser:
             with sync_playwright() as p:
                 self.playwright = p
+                # ★★★ ログ追加: ブラウザ終了直前のロックファイル確認 ★★★
+                if self.use_auth_profile:
+                    import glob
+                    singleton_files_before_teardown = glob.glob(os.path.join(PROFILE_DIR, "Singleton*"))
+                    logging.debug(f"[ロックファイル確認] ブラウザ終了直前のSingletonファイル: {singleton_files_before_teardown}")
+
                 try:
                     self._setup_browser()
                     # _execute_main_logic の戻り値（True/False）を success 変数に格納する
@@ -167,6 +198,11 @@ class BaseTask(ABC):
                     self._take_screenshot_on_error()
                     success = False # 例外発生時は明確に False とする
                 finally:
+                    # ★★★ ログ追加: ブラウザ終了直前のロックファイル確認 ★★★
+                    if self.use_auth_profile:
+                        import glob
+                        singleton_files_before_teardown = glob.glob(os.path.join(PROFILE_DIR, "Singleton*"))
+                        logging.debug(f"[ロックファイル確認] ブラウザ終了直前のSingletonファイル: {singleton_files_before_teardown}")
                     self._teardown_browser()
         else:
             # ブラウザ不要のタスク
