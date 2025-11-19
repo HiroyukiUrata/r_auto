@@ -13,9 +13,9 @@ from app.core.database import init_db, add_recollection_product
 # テスト対象のユーザーページURL
 TARGET_URL = "https://room.rakuten.co.jp/room_79a45994e0/items"
 # 探したい日付の文字列（例: "10月29日", "3日前" など、ページに表示されるままの形式）
-TARGET_DATE_STR = "11月01日"
+TARGET_DATE_STR = "11月15日"
 # 取得する最大件数
-MAX_FETCH_COUNT = 65 #ここは手動で設定するから変更しないで！！
+MAX_FETCH_COUNT = 5 #ここは手動で設定するから変更しないで！！
 # 1日あたりの平均投稿数（スクロール計算用）
 POSTS_PER_DAY = 30
 # 1回のスクロールで読み込まれるおおよそのカード数（スクロール計算用）
@@ -116,6 +116,11 @@ def process_and_delete_if_needed(page: Page, image_src: str) -> dict | None:
         hashtag_elements = description_container.locator('a[class*="tag-link--"]').all()
         hashtags = [tag.text_content().strip() for tag in hashtag_elements if tag.text_content().strip().startswith('#')]
         logger.debug(f"    -> ハッシュタグを {len(hashtags)} 件取得しました: {hashtags}")
+
+        # --- ★★★ 投稿日のチェックを追加 ★★★ ---
+        if post_date_text and "10月" not in post_date_text:
+            logger.info(f"    -> 投稿日が10月ではないため、スキップします。 ({post_date_text})")
+            return None
 
         # --- ★★★ 削除ロジック ★★★ ---
         if "#オリジナル写真" in hashtags:
@@ -231,14 +236,27 @@ def run_test(page: Page):
                     # 2. 毎回、計算された回数の高速スクロールを実行
                     logger.info(f"目的の日付 ({TARGET_DATE_STR}) まで、推定 {required_scrolls} 回の高速スクロールを実行します...")
                     for i in range(required_scrolls):
+                        # まず1回スクロール
                         page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
                         try:
-                            page.locator(spinner_selector).wait_for(state="visible", timeout=3000)
-                            page.locator(spinner_selector).wait_for(state="hidden", timeout=20000)
-                            # logger.debug(f"  -> 高速スクロール {i + 1}/{required_scrolls} 回完了")
+                            # スピナーの表示を短時間待つ
+                            page.locator(spinner_selector).wait_for(state="visible", timeout=1500)
+                            # スピナーが消えるのを待つ
+                            page.locator(spinner_selector).wait_for(state="hidden", timeout=15000)
                         except Error:
-                            logger.warning(f"  -> スピナーが表示されませんでした。ページの終端か、読み込みが遅い可能性があります。")
-                            break
+                            # スピナーが出なかった場合、追加のアクションを試みる
+                            logger.debug(f"  -> スピナーが表示されませんでした。追加のスクロールを試みます。({i + 1}/{required_scrolls})")
+                            try:
+                                # 少し上にスクロールしてから再度下にスクロール
+                                page.evaluate("window.scrollBy(0, -500)") # 500px上にスクロール
+                                page.wait_for_timeout(200)
+                                page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                                # 追加アクション後、スピナーの表示・非表示を待つ
+                                page.locator(spinner_selector).wait_for(state="visible", timeout=3000)
+                                page.locator(spinner_selector).wait_for(state="hidden", timeout=15000)
+                            except Error:
+                                logger.warning(f"  -> 追加スクロール後もスピナーが表示されませんでした。ページの終端か、読み込みが遅い可能性があります。")
+                                time.sleep(1.5) # 念のため待機
                     logger.info("高速スクロールが完了しました。")
 
                 # 3. 画面上の最初の「未処理」カードを探す

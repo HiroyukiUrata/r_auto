@@ -80,6 +80,7 @@ class ConfigUpdateRequest(BaseModel):
     procurement_method: str | None = None
     caption_creation_method: str | None = None
     debug_screenshot_enabled: bool | None = None
+    preferred_profile: str | None = None # 優先プロファイル設定を追加
 
 class JsonImportRequest(BaseModel):
     products: list[dict]
@@ -470,7 +471,8 @@ async def get_config_tasks():
 @router.get("/api/config")
 async def read_config():
     """現在の設定をJSONで返す"""
-    return JSONResponse(content=get_config())
+    config = get_config()
+    return JSONResponse(content=config)
 
 @router.get("/api/inventory")
 async def get_inventory():
@@ -1140,16 +1142,20 @@ async def delete_all_products_endpoint():
 
 @router.post("/api/config")
 async def update_config(config_request: ConfigUpdateRequest):
-    """設定を更新する"""
-    logging.debug(f"設定更新リクエストを受け取りました: {config_request.dict()}")
+    """設定を更新する。Pydanticモデルまたは生の辞書を受け入れる。"""
+    try:
+        # Pydanticモデルとしてパースしようと試みる
+        update_data = config_request.dict(exclude_unset=True)
+    except Exception:
+        # ダミーのConfigUpdateRequestインスタンスからdictを取得し、実際のリクエストで更新
+        update_data = config_request
+
     current_config = get_config()
-    # リクエストで送信された値（Noneでないもの）だけを更新する
-    update_data = config_request.dict(exclude_unset=True)
     current_config.update(update_data)
     save_config(current_config)
-    clear_config_cache() # 設定保存後にキャッシュをクリア
-    logging.info("設定が更新され、キャッシュがクリアされました。")
-    return {"status": "success", "message": "設定を更新しました。"}
+    # save_config内でキャッシュクリアされるため、ここでの呼び出しは不要
+    #logging.info(f"システム設定が更新されました: {update_data}")
+    return {"status": "success", "message": "設定を更新しました。", "new_config": get_config()}
 
 
 @router.post("/api/schedules/update")
@@ -1360,29 +1366,41 @@ def _run_task_internal(tag: str, is_part_of_flow: bool, **kwargs):
     # 結果を待って返すタイプのタスク
     if tag in ["check-login-status", "save-auth-state", "restore-auth-state"]:
         # save-auth-stateは手動操作のため、タイムアウトを長めに設定
-        timeout = 310 if "save-auth-state" in tag else 60
+        # check-login-statusはプロファイル切り替えと復旧で時間がかかる可能性があるため、タイムアウトを延長
+        if "save-auth-state" in tag:
+            timeout = 310
+        elif "check-login-status" in tag:
+            timeout = 120 # 60秒から120秒に延長
+        else:
+            timeout = 60
 
         # task_wrapperは後続タスクを呼び出す可能性があるため、直接タスク関数を呼び出す
         task_func = definition["function"]
         job_thread, result_container = run_threaded(task_func, **kwargs)
         job_thread.join(timeout=timeout) # タスクに応じた時間待つ
         if job_thread.is_alive():
-            return JSONResponse(status_code=500, content={"status": "error", "message": "タスクがタイムアウトしました。"})
+            return JSONResponse(status_code=500, content={"status": "error", "message": f"タスクがタイムアウトしました（{timeout}秒）。"})
         
         result = result_container.get('result')
         logging.debug(f"スレッドから受け取った結果 (タスク: {tag}): {result} (型: {type(result)})")
+
+        # BaseTask.run()の戻り値がタプル(success, message)か、単なるboolかを判定
+        success = result[0] if isinstance(result, tuple) else result
+        custom_message = result[1] if isinstance(result, tuple) and len(result) > 1 else ""
+
         if "check-login-status" in tag:
-            message = "成功: ログイン状態が維持されています。" if result else "失敗: ログイン状態が確認できませんでした。"
+            default_message = "成功: ログイン状態が維持されています。" if success else "失敗: ログイン状態が確認できませんでした。"
+            message = f"{default_message}\n{custom_message}".strip()
         elif "save-auth-state" in tag:
-            message = "成功: 認証状態を保存しました。" if result else "失敗: 認証状態の保存に失敗しました。詳細はログを確認してください。"
+            message = "成功: 認証状態を保存しました。" if success else "失敗: 認証状態の保存に失敗しました。詳細はログを確認してください。"
         elif "restore-auth-state" in tag:
-            message = "成功: 認証プロファイルを復元しました。" if result else "失敗: 認証プロファイルの復元に失敗しました。詳細はログを確認してください。"
+            message = "成功: 認証プロファイルを復元しました。" if success else "失敗: 認証プロファイルの復元に失敗しました。詳細はログを確認してください。"
         else:
             message = "タスクが完了しました。" # フォールバックメッセージ
         
         logging.debug(f"APIレスポンス (タスク: {tag}): {message}")
 
-        return JSONResponse(content={"status": "success" if result else "error", "message": message})
+        return JSONResponse(content={"status": "success" if success else "error", "message": message})
 
     # 上記以外のバックグラウンドで実行するタスク
     # 1. デフォルト引数を取得, 2. 実行時引数で上書き

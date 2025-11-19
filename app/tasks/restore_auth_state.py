@@ -3,9 +3,7 @@ import shutil
 import os
 
 from app.core.base_task import BaseTask
-
-PROFILE_DIR = "db/playwright_profile"
-BACKUP_PROFILE_DIR = "db/playwright_profile_backup"
+from app.core.base_task import PRIMARY_PROFILE_DIR, SECONDARY_PROFILE_DIR, BACKUP_PROFILE_DIR
 
 class RestoreAuthStateTask(BaseTask):
     """
@@ -25,20 +23,28 @@ class RestoreAuthStateTask(BaseTask):
             logging.error("復元に失敗しました。先に「認証状態の保存」タスクを実行してバックアップを作成してください。")
             return False
 
-        # プロファイルが現在使用中かどうかを確認
-        lockfile_path = os.path.join(PROFILE_DIR, "SingletonLock")
-        if os.path.exists(lockfile_path):
-            logging.error(f"プロファイルが現在使用中のようです（ロックファイルが存在します: {lockfile_path}）。")
-            logging.error("実行中の他のブラウザタスクが完了してから、再度試してください。")
-            return False
+        # 両方のプロファイルが使用中でないか確認
+        for profile_dir in [PRIMARY_PROFILE_DIR, SECONDARY_PROFILE_DIR]:
+            lockfile_path = os.path.join(profile_dir, "SingletonLock")
+            if os.path.exists(lockfile_path):
+                logging.error(f"プロファイルが現在使用中のようです（ロックファイルが存在します: {lockfile_path}）。")
+                logging.error("実行中の他のブラウザタスクが完了してから、再度試してください。")
+                return False
 
         try:
-            logging.debug(f"現在のプロファイルディレクトリ {PROFILE_DIR} を削除します。")
-            if os.path.exists(PROFILE_DIR):
-                shutil.rmtree(PROFILE_DIR)
+            # 1. プライマリとセカンダリの両方のプロファイルを削除
+            for profile_dir in [PRIMARY_PROFILE_DIR, SECONDARY_PROFILE_DIR]:
+                logging.debug(f"現在のプロファイルディレクトリ {profile_dir} を削除します。")
+                if os.path.exists(profile_dir):
+                    shutil.rmtree(profile_dir)
 
-            logging.debug(f"バックアップ {BACKUP_PROFILE_DIR} からプロファイルをコピーしています...")
-            shutil.copytree(BACKUP_PROFILE_DIR, PROFILE_DIR)
+            # 2. バックアップからプライマリプロファイルを復元
+            logging.info(f"バックアップからプライマリプロファイル ({PRIMARY_PROFILE_DIR}) を復元します...")
+            shutil.copytree(BACKUP_PROFILE_DIR, PRIMARY_PROFILE_DIR)
+            
+            # 3. バックアップからセカンダリプロファイルを復元
+            logging.info(f"バックアップからセカンダリプロファイル ({SECONDARY_PROFILE_DIR}) を復元します...")
+            shutil.copytree(BACKUP_PROFILE_DIR, SECONDARY_PROFILE_DIR)
 
             logging.info("認証プロファイルの復元に成功しました。")
             return True

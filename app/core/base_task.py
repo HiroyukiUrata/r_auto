@@ -1,19 +1,27 @@
 import logging
 import os
 import time
+import shutil
 import sys
 from abc import ABC, abstractmethod
 from typing import Optional
-from playwright.sync_api import sync_playwright, BrowserContext, Page, Locator
-from app.core.config_manager import is_headless, SCREENSHOT_DIR
+from playwright.sync_api import sync_playwright, BrowserContext, Page, Locator, Error as PlaywrightError
+from app.core.config_manager import is_headless, SCREENSHOT_DIR, get_config
 
-PROFILE_DIR = "db/playwright_profile"
+# --- プロファイルパスの定義 ---
+PRIMARY_PROFILE_DIR = "db/playwright_profile"
+SECONDARY_PROFILE_DIR = "db/playwright_profile_secondary"
+BACKUP_PROFILE_DIR = "db/playwright_profile_backup"
+
+class LoginRedirectError(Exception):
+    """ログインページへのリダイレクトを検知した際に送出されるカスタム例外"""
+    pass
 
 class BaseTask(ABC):
     """
     すべてのタスククラスが継承する基本クラス。
     """
-    def __init__(self, count: Optional[int] = None, max_duration_seconds: int = 600, dry_run: bool = False):
+    def __init__(self, count: Optional[int] = None, max_duration_seconds: int = 600, dry_run: bool = False, preferred_profile: Optional[str] = None):
         self.target_count = count
         self.max_duration_seconds = max_duration_seconds
         self.context: Optional[BrowserContext] = None
@@ -22,6 +30,20 @@ class BaseTask(ABC):
         self.needs_browser = True # デフォルトではブラウザを必要とする
         self.use_auth_profile = True # デフォルトでは認証プロファイルを使用する
         self.dry_run = dry_run
+
+        # --- プロファイル切り替えロジック用の属性 ---
+        # 引数で指定されていない場合、グローバル設定から読み込む
+        profile_to_use = preferred_profile
+        if profile_to_use is None:
+            config = get_config()
+            profile_to_use = config.get('preferred_profile', 'primary')
+
+        if profile_to_use == 'secondary':
+            self.profile_dirs = [SECONDARY_PROFILE_DIR, PRIMARY_PROFILE_DIR]
+        else: # 'primary' またはデフォルト
+            self.profile_dirs = [PRIMARY_PROFILE_DIR, SECONDARY_PROFILE_DIR]
+        self.current_profile_dir = self.profile_dirs[0] # 最初は優先プロファイルを使用
+
         if self.dry_run:
             self.action_name += " (DRY RUN)"
 
@@ -77,7 +99,7 @@ class BaseTask(ABC):
         if not self.dry_run:
             return func(*args, **kwargs)
         else:
-            logging.info(f"  -> [DRY RUN] 副作用のあるアクション '{action_name}' をスキップします。")
+            logging.debug(f"  -> [DRY RUN] 副作用のあるアクション '{action_name}' をスキップします。")
             return None
 
     def _setup_browser(self):
@@ -85,18 +107,18 @@ class BaseTask(ABC):
         headless_mode = is_headless()
         logging.debug(f"Playwright ヘッドレスモード: {headless_mode}")
 
-        if self.use_auth_profile:
-            logging.debug(f"認証プロファイル ({PROFILE_DIR}) を使用してブラウザを起動します。")
-            if not os.path.exists(PROFILE_DIR):
-                raise FileNotFoundError(f"認証プロファイル {PROFILE_DIR} が見つかりません。「認証状態の保存」または「認証プロファイルの復元」タスクを実行してください。")
+        if self.use_auth_profile: # 認証プロファイルを使用する場合
+            logging.debug(f"認証プロファイル ({self.current_profile_dir}) を使用してブラウザを起動します。")
+            # プロファイルディレクトリが存在しない場合は作成
+            os.makedirs(self.current_profile_dir, exist_ok=True)
 
-            lockfile_path = os.path.join(PROFILE_DIR, "SingletonLock")
+            lockfile_path = os.path.join(self.current_profile_dir, "SingletonLock")
             if os.path.exists(lockfile_path):
                 logging.warning(f"古いロックファイル {lockfile_path} が見つかったため、削除します。")
                 os.remove(lockfile_path)
 
             self.context = self.playwright.chromium.launch_persistent_context(
-                user_data_dir=PROFILE_DIR,
+                user_data_dir=self.current_profile_dir,
                 headless=headless_mode,
                 slow_mo=250, # ヘッドレスでも少し遅延を入れて人間らしさを演出
                 env={"DISPLAY": ":0"},
@@ -119,17 +141,16 @@ class BaseTask(ABC):
         # ★★★ ログ追加: ブラウザ起動後のロックファイル確認 ★★★
         if self.use_auth_profile:
             import glob
-            singleton_files_after_setup = glob.glob(os.path.join(PROFILE_DIR, "Singleton*"))
-            logging.debug(f"[ロックファイル確認] ブラウザ起動直後のSingletonファイル: {singleton_files_after_setup}")
-
+            singleton_files_after_setup = glob.glob(os.path.join(self.current_profile_dir, "Singleton*"))
+            #logging.debug(f"[ロックファイル確認] ブラウザ起動直後のSingletonファイル: {singleton_files_after_setup}")
 
     def _teardown_browser(self):
         """ブラウザコンテキストを閉じる"""
         if self.context:
             try:
-                logging.debug("ブラウザコンテキストを閉じています...")
+                #logging.debug("ブラウザコンテキストを閉じています...")
                 self.context.close()
-                time.sleep(5)  # 閉じるのを少し待つ
+                time.sleep(2)  # 閉じるのを少し待つ
             except Exception as e:
                 logging.error(f"ブラウザコンテキストのクローズ中にエラーが発生しました: {e}")
             finally:
@@ -141,68 +162,126 @@ class BaseTask(ABC):
 
                     # 10秒間、ロックファイルが消えるのを待機し、それでも残っていれば強制削除
                     for i in range(10): # 最大10秒
-                        remaining_files = glob.glob(os.path.join(PROFILE_DIR, "Singleton*"))
+                        remaining_files = glob.glob(os.path.join(self.current_profile_dir, "Singleton*"))
                         if not remaining_files:
-                            logging.debug(f"[ロックファイル確認] プロファイルのロックが正常に解放されました。({i+1}秒)")
+                            #logging.debug(f"[ロックファイル確認] プロファイルのロックが正常に解放されました。({i+1}秒)")
                             break
                         logging.debug(f"[ロックファイル確認] ロックファイルがまだ存在します。待機中... ({i+1}秒): {remaining_files}")
                         time.sleep(1)
                     else: # forループがbreakされずに完了した場合 (タイムアウト)
-                        final_remaining_files = glob.glob(os.path.join(PROFILE_DIR, "Singleton*"))
+                        final_remaining_files = glob.glob(os.path.join(self.current_profile_dir, "Singleton*"))
                         if not final_remaining_files:
-                            logging.debug("[ロックファイル確認] 最終確認でロックファイルの解放を確認しました。")
+                            #logging.debug("[ロックファイル確認] 最終確認でロックファイルの解放を確認しました。")
                             return
                         logging.warning(f"ブラウザ終了後もSingletonファイルが残存しています。強制削除を試みます: {final_remaining_files}")
                         for file_path in final_remaining_files:
                             try:
                                 os.remove(file_path)
-                                logging.info(f"  -> 残存ファイルを強制削除しました: {file_path}")
+                                logging.debug(f"  -> 残存ファイルを強制削除しました: {file_path}")
                             except OSError as e:
                                 logging.error(f"  -> ファイルの削除に失敗しました: {file_path}, エラー: {e}")
+
+    def _backup_current_profile(self):
+        """現在使用している正常なプロファイルをバックアップする"""
+        if not self.use_auth_profile or self.dry_run:
+            return
+        
+        logging.debug(f"現在の正常なプロファイル '{self.current_profile_dir}' を '{BACKUP_PROFILE_DIR}' にバックアップします。")
+        try:
+            if os.path.exists(BACKUP_PROFILE_DIR):
+                shutil.rmtree(BACKUP_PROFILE_DIR)
+            ignore_patterns = shutil.ignore_patterns('Singleton*', '*.lock', '*Cache*')
+            shutil.copytree(self.current_profile_dir, BACKUP_PROFILE_DIR, ignore=ignore_patterns)
+            logging.debug("プロファイルのバックアップが完了しました。")
+        except Exception as e:
+            logging.error(f"プロファイルのバックアップ作成中にエラーが発生しました: {e}", exc_info=True)
 
     def run(self):
         """タスクの実行フローを管理する"""
         success = False
+        message = "" # タスク結果のメッセージを格納する変数
         if self.target_count is not None:
             logging.debug(f"「{self.action_name}」アクションを開始します。目標件数: {self.target_count}")
         else:
             logging.debug(f"「{self.action_name}」アクションを開始します。")
 
-        # ★★★ ログ追加: コンテナ上のプロファイルパスの存在確認 ★★★
-        # 'Last Version'ファイルはブラウザの起動有無に関わらず、プロファイルディレクトリが正しく認識されていれば存在するはず。
-        last_version_path = os.path.join(PROFILE_DIR, "Last Version")
-        if os.path.exists(last_version_path):
-            logging.info(f"[プロファイルパス確認] コンテナ上の '{last_version_path}' は存在します。")
-        else:
-            logging.warning(f"[プロファイルパス確認] コンテナ上の '{last_version_path}' は存在しません。パスが正しいか確認してください。")
-
         if self.needs_browser:
             with sync_playwright() as p:
                 self.playwright = p
-                # ★★★ ログ追加: ブラウザ終了直前のロックファイル確認 ★★★
-                if self.use_auth_profile:
-                    import glob
-                    singleton_files_before_teardown = glob.glob(os.path.join(PROFILE_DIR, "Singleton*"))
-                    logging.debug(f"[ロックファイル確認] ブラウザ終了直前のSingletonファイル: {singleton_files_before_teardown}")
+                
+                for i, profile_dir in enumerate(self.profile_dirs):
+                    self.current_profile_dir = profile_dir
+                    try:
+                        self._setup_browser()
+                        success = self._execute_main_logic()
+                        
+                        # タスクが正常に完了し、かつプロファイルの切り替えが発生した場合（i > 0）のみ、
+                        # 現在の正常なプロファイル（セカンダリ）をバックアップする。
+                        if success and i > 0:
+                            # --- ★★★ 重要 ★★★ ---
+                            # ファイル操作の前に、現在のブラウザコンテキストを完全に閉じてファイルロックを解放する
+                            logging.debug("自動復旧の前にブラウザコンテキストを閉じます...")
+                            self._teardown_browser()
 
-                try:
-                    self._setup_browser()
-                    # _execute_main_logic の戻り値（True/False）を success 変数に格納する
-                    success = self._execute_main_logic()
-                except FileNotFoundError as e:
-                    logging.error(f"ファイルが見つかりません: {e}")
-                except Exception as e:
-                    # 本番環境(simple)ではトレースバックを抑制し、開発環境(detailed)では表示する
-                    is_detailed_log = os.getenv('LOG_FORMAT', 'detailed').lower() == 'detailed'
-                    logging.error(f"「{self.action_name}」アクション中に予期せぬエラーが発生しました: {e}", exc_info=is_detailed_log)
-                    self._take_screenshot_on_error()
-                    success = False # 例外発生時は明確に False とする
-                finally:
-                    # ★★★ ログ追加: ブラウザ終了直前のロックファイル確認 ★★★
-                    if self.use_auth_profile:
-                        import glob
-                        singleton_files_before_teardown = glob.glob(os.path.join(PROFILE_DIR, "Singleton*"))
-                        logging.debug(f"[ロックファイル確認] ブラウザ終了直前のSingletonファイル: {singleton_files_before_teardown}")
+                            # --- 失敗したプロファイルの自動復旧ロジック ---
+                            # self.profile_dirs[0] は最初に試行した（失敗した）プロファイル
+                            # self.profile_dirs[1] は次に試行した（成功した）プロファイル
+                            failed_profile = self.profile_dirs[0]
+                            successful_profile = self.profile_dirs[1]
+
+                            logging.debug(f"プロファイル '{failed_profile}' での失敗後、'{successful_profile}' で成功しました。失敗したプロファイルを自動復旧します。")
+                            try:
+                                # 1. 失敗したプロファイルを削除
+                                if os.path.exists(failed_profile):
+                                    shutil.rmtree(failed_profile)
+                                    logging.debug(f"失敗したプロファイル '{failed_profile}' を削除しました。")
+
+                                # 2. 成功したプロファイルを、失敗したプロファイルの場所にコピー（復旧）
+                                shutil.copytree(successful_profile, failed_profile, ignore=shutil.ignore_patterns('Singleton*', '*.lock', '*Cache*'))
+                                logging.debug(f"プロファイル '{failed_profile}' を正常なプロファイル '{successful_profile}' の内容で復旧しました。")
+
+                                # 3. 復旧したプロファイル（元々失敗していた方）を新しいバックアップとして保存
+                                # これにより、常に両方のプロファイルが正常な状態に保たれる
+                                self.current_profile_dir = failed_profile # バックアップ対象を復旧したプロファイルに設定
+                                self._backup_current_profile()
+                                # 自動復旧が成功したことをメッセージに設定
+                                message = "プロファイルの自動復旧が完了しました。"
+
+                            except Exception as recovery_e:
+                                logging.error(f"プロファイルの自動復旧中にエラーが発生しました: {recovery_e}", exc_info=True)
+
+                        # 正常に完了したらループを抜ける
+                        break
+
+                    except LoginRedirectError as e:
+                        logging.warning(e)
+                        if i < len(self.profile_dirs) - 1:
+                            logging.warning("別のプロファイルで再試行します...")
+                            # ブラウザを閉じてから次のループへ
+                            self._teardown_browser() 
+                            continue
+                        else:
+                            logging.error("すべてのプロファイルでログインに失敗しました。タスクを中止します。")
+                            success = False
+                            break
+                    except FileNotFoundError as e:
+                        logging.error(f"ファイルが見つかりません: {e}")
+                        success = False
+                        break # ファイルがない場合は再試行しても無駄なので終了
+                    except Exception as e:
+                        is_detailed_log = os.getenv('LOG_FORMAT', 'detailed').lower() == 'detailed'
+                        logging.error(f"「{self.action_name}」アクション中に予期せぬエラーが発生しました: {e}", exc_info=is_detailed_log)
+                        self._take_screenshot_on_error()
+                        success = False
+                        break # 予期せぬエラーでも再試行はせず終了
+                    finally:
+                        # 各試行の最後に必ずブラウザを閉じる
+                        # （ただし、ループの最後のエラーでない場合は、次のループの前に閉じる）
+                        if self.page and not self.page.is_closed():
+                            self._teardown_browser()
+                
+                # ループを抜けた後、万が一コンテキストが残っていれば閉じる
+                if self.page and not self.page.is_closed():
                     self._teardown_browser()
         else:
             # ブラウザ不要のタスク
@@ -210,11 +289,13 @@ class BaseTask(ABC):
                 success = self._execute_main_logic()
             except Exception as e:
                 # 本番環境(simple)ではトレースバックを抑制し、開発環境(detailed)では表示する
-                is_detailed_log = os.getenv('LOG_FORMAT', 'detailed').lower() == 'detailed'
                 logging.error(f"「{self.action_name}」アクション中にエラーが発生しました: {e}", exc_info=is_detailed_log)
                 success = False
 
         logging.debug(f"「{self.action_name}」アクションを終了します。")
+        # 戻り値を (成功/失敗, メッセージ) のタプルに変更
+        if message:
+            return success, message
         return success
 
     def _take_screenshot_on_error(self, prefix: str = "error"):

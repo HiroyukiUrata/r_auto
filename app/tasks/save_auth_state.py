@@ -3,10 +3,7 @@ import shutil
 import os
 import time
 from playwright.sync_api import sync_playwright
-from app import locators
-
-PROFILE_DIR = "db/playwright_profile"
-BACKUP_PROFILE_DIR = "db/playwright_profile_backup"
+from app.core.base_task import PRIMARY_PROFILE_DIR, BACKUP_PROFILE_DIR
 
 class SaveAuthStateTask:
     """
@@ -20,18 +17,18 @@ class SaveAuthStateTask:
         logging.debug("VNCクライアントで localhost:5900 に接続してください。")
         logging.debug("ログインが完了すると、このタスクは自動で終了します。")
 
-        lockfile_path = os.path.join(PROFILE_DIR, "SingletonLock")
+        lockfile_path = os.path.join(PRIMARY_PROFILE_DIR, "SingletonLock")
         if os.path.exists(lockfile_path):
             logging.warning(f"古いロックファイル {lockfile_path} が見つかったため、削除します。")
             os.remove(lockfile_path)
         
         # プロファイルディレクトリが存在しない場合は作成する
-        os.makedirs(PROFILE_DIR, exist_ok=True)
+        os.makedirs(PRIMARY_PROFILE_DIR, exist_ok=True)
 
         try:
             with sync_playwright() as p:
                 with p.chromium.launch_persistent_context(
-                    user_data_dir=PROFILE_DIR,
+                    user_data_dir=PRIMARY_PROFILE_DIR,
                     headless=False,
                     locale="ja-JP",
                     timezone_id="Asia/Tokyo",
@@ -51,7 +48,7 @@ class SaveAuthStateTask:
                         if os.path.exists(BACKUP_PROFILE_DIR):
                             shutil.rmtree(BACKUP_PROFILE_DIR)
                         ignore_patterns = shutil.ignore_patterns('Singleton*', '*.lock', '*Cache*')
-                        shutil.copytree(PROFILE_DIR, BACKUP_PROFILE_DIR, ignore=ignore_patterns)
+                        shutil.copytree(PRIMARY_PROFILE_DIR, BACKUP_PROFILE_DIR, ignore=ignore_patterns)
                         logging.debug(f"プロファイルのバックアップを {BACKUP_PROFILE_DIR} に作成しました。")
                     except Exception as e:
                         logging.error(f"プロファイルのバックアップ作成中にエラーが発生しました: {e}")

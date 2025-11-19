@@ -446,7 +446,7 @@ def update_room_url_by_rakuten_url(rakuten_url: str, room_url: str):
         cursor.execute("UPDATE products SET room_url = ? WHERE url = ?", (room_url, normalized_url))
         
         if cursor.rowcount > 0:
-            logging.info(f"  -> {cursor.rowcount}件のレコードのroom_urlを更新しました。(正規化URL: {normalized_url})")
+            logging.debug(f"  -> {cursor.rowcount}件のレコードのroom_urlを更新しました。(正規化URL: {normalized_url})")
             conn.commit()
             return
 
@@ -463,7 +463,7 @@ def update_room_url_by_rakuten_url(rakuten_url: str, room_url: str):
                 product_id_to_update = found_products[0]['id']
                 cursor.execute("UPDATE products SET room_url = ? WHERE id = ?", (room_url, product_id_to_update))
                 if cursor.rowcount > 0:
-                    logging.info(f"  -> 1件のレコードのroom_urlを更新しました。(部分一致パターン)")
+                    logging.debug(f"  -> 1件のレコードのroom_urlを更新しました。(部分一致パターン)")
             elif len(found_products) > 1:
                 logging.warning(f"  -> 部分一致で複数の更新対象が見つかったため、更新をスキップします。({len(found_products)}件)")
             else:

@@ -60,6 +60,20 @@
 
                 <hr class="my-4">
 
+                <div class="mb-3">
+                    <label class="form-label">
+                        <i class="bi bi-person-bounding-box me-1"></i>優先実行プロファイル
+                        <i class="bi bi-info-circle" data-bs-toggle="tooltip" data-bs-placement="top" title="タスク実行時に優先して使用する認証プロファイルを選択します。プライマリでログインリダイレクトが発生した場合、自動的にもう一方に切り替わります。"></i>
+                    </label>
+                    <div class="btn-group" role="group" aria-label="Preferred profile toggle">
+                        <input type="radio" class="btn-check" name="preferredProfile" id="profile-primary" value="primary" autocomplete="off">
+                        <label class="btn btn-outline-primary" for="profile-primary">プライマリ (通常)</label>
+
+                        <input type="radio" class="btn-check" name="preferredProfile" id="profile-secondary" value="secondary" autocomplete="off">
+                        <label class="btn btn-outline-primary" for="profile-secondary">セカンダリ (予備)</label>
+                    </div>
+                </div>
+
                 <div class="d-flex justify-content-start align-items-center gap-2">
                     <button class="btn btn-sm btn-info" onclick="runTaskNow('check-login-status', 'ログイン状態チェック', event)">
                         <i class="bi bi-person-check-fill"></i> ログイン状態チェック
@@ -195,12 +209,20 @@
         try {
             const response = await fetch('/api/config');
             const config = await response.json();
+            console.log('[Config] APIから取得した設定:', config);
             document.getElementById('headless-switch').checked = config.playwright_headless;
             document.getElementById('debug-screenshot-switch').checked = config.debug_screenshot_enabled;
             document.getElementById('procurement-method').value = config.procurement_method || 'rakuten_search';
+            // 優先プロファイル設定の読み込み
+            const preferredProfile = config.preferred_profile || 'primary';
+            if (document.getElementById(`profile-${preferredProfile}`)) {
+                document.getElementById(`profile-${preferredProfile}`).checked = true;
+            } else {
+                document.getElementById('profile-primary').checked = true; // 不正な値の場合はプライマリをデフォルトに
+            }
             document.getElementById('caption-creation-method').value = config.caption_creation_method || 'api';
         } catch (error) {
-            console.error('Failed to fetch global config:', error);
+            console.error('[Config] グローバル設定の取得に失敗しました:', error);
             // alert(error.message);
         }
     }
@@ -216,6 +238,7 @@
             debug_screenshot_enabled: isDebugScreenshotEnabled,
         };
 
+        console.log('[Config] 一般設定を保存します:', payload);
         try {
             const response = await fetch('/api/config', {
                 method: 'POST',
@@ -226,10 +249,10 @@
             if (!response.ok) {
                 throw new Error(result.message || '設定の保存に失敗しました。');
             }
-            alert('設定を保存しました。');
+            showToast('成功', '設定を保存しました。');
         } catch (error) {
-            console.error('Error saving global config:', error);
-            alert(error.message);
+            console.error('[Config] 一般設定の保存中にエラー:', error);
+            showToast('エラー', error.message, 'danger');
         }
     }
 
@@ -294,7 +317,9 @@
             if (!response.ok) {
                 throw new Error(result.message || 'タスクの実行に失敗しました。');
             }
-            alert(result.message);
+            // メッセージに改行が含まれている可能性を考慮
+            const messageToShow = result.message.replace(/\\n/g, '\n');
+            alert(messageToShow);
         } catch (error) {
             console.error('Error running task:', error);
             alert(error.message);
@@ -442,10 +467,69 @@
         }
     }
 
+    async function savePreferredProfile(profileValue) {
+        // この関数は優先プロファイル設定のみを保存する
+        const payload = {
+            preferred_profile: profileValue
+        };
+
+        console.log('[Config] 優先プロファイルを保存します:', payload);
+        try {
+            const response = await fetch('/api/config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const result = await response.json();
+            if (!response.ok) {
+                throw new Error(result.message || '設定の保存に失敗しました。');
+            }
+            // 成功した場合、trueを返す
+            return true;
+        } catch (error) {
+            console.error('[Config] 優先プロファイルの保存中にエラー:', error);
+            // 失敗した場合、エラーをスローする
+            throw error;
+        }
+    }
+
+    function setupProfileToggle() {
+        const profileRadios = document.querySelectorAll('input[name="preferredProfile"]');
+        let previousProfileValue;
+
+        // ラジオボタンにフォーカスが当たった時に、変更前の値を保持する
+        profileRadios.forEach(radio => {
+            radio.addEventListener('focus', () => {
+                previousProfileValue = document.querySelector('input[name="preferredProfile"]:checked').value;
+            });
+
+            // ラジオボタンの値が変更された時に発火
+            radio.addEventListener('change', (event) => {
+                const newValue = event.target.value;
+                const newLabel = document.querySelector(`label[for="${event.target.id}"]`).textContent;
+
+                if (confirm(`優先プロファイルを「${newLabel}」に変更しますか？`)) {
+                    // OKが押されたら、設定を保存
+                    savePreferredProfile(newValue).then(() => {
+                        showToast('成功', '優先プロファイルを更新しました。');
+                    }).catch(error => {
+                        showToast('エラー', `設定の保存に失敗しました: ${error.message}`, 'danger');
+                        // 保存に失敗したら、UIの選択状態を元に戻す
+                        document.getElementById(`profile-${previousProfileValue}`).checked = true;
+                    });
+                } else {
+                    // キャンセルが押されたら、選択状態を元に戻す
+                    document.getElementById(`profile-${previousProfileValue}`).checked = true;
+                }
+            });
+        });
+    }
+
     document.addEventListener('DOMContentLoaded', () => {
         fetchDebugTasks();
         fetchGlobalConfig();
         fetchDbTables();
+        setupProfileToggle(); // プロファイル切り替えのイベントリスナーを設定
     });
 </script>
 {% endblock %}
