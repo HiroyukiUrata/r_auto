@@ -128,7 +128,9 @@
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-dragdata@2.2.5/dist/chartjs-plugin-dragdata.min.js"></script>
     <script>
+        let originalSchedulesData = []; // ★★★ 追加: ページ読み込み時のデータを保持する変数
         let scheduleChartInstance = null;
         async function saveSchedule(tag, isEnabled, times) {
             try {
@@ -156,6 +158,7 @@
         async function fetchSchedules() {
             const response = await fetch('/api/schedules');
             const schedules = await response.json();
+            originalSchedulesData = JSON.parse(JSON.stringify(schedules)); // ★★★ 追加: データをディープコピーして保存
 
             const container = document.getElementById('schedules-container');
             container.innerHTML = '';
@@ -224,15 +227,11 @@
             const timeInput = cardBody.querySelector(`#time-input-${tag}`);
             const newTime = timeInput.value;
 
+            const card = button.closest('.card');
+            markCardAsDirty(button); // UIを「要保存」に変更
+
             // ★変更点: 先に値のチェックを行い、空なら何もせずに終了
             if (!newTime) return;
-
-            // 1. 変更前に元の状態を保存し、UIをDirty状態にする
-            const card = button.closest('.card');
-            if (!card.dataset.isDirty) {
-                card.dataset.originalTimesHtml = card.querySelector('.time-list-container').innerHTML;
-            }
-            markCardAsDirty(button); // UIを「要保存」に変更
 
             let newCount = 1;
             const countInput = cardBody.querySelector(`#count-input-${tag}`);
@@ -263,22 +262,12 @@
         }
 
         function removeTime(button) {
-            // 1. 変更前に元の状態を保存し、UIをDirty状態にする
-            const card = button.closest('.card');
-            if (!card.dataset.isDirty) {
-                card.dataset.originalTimesHtml = card.querySelector('.time-list-container').innerHTML;
-            }
             markCardAsDirty(button); // UIを「要保存」に変更
-            // 2. 要素を削除
             button.parentElement.remove();
         }
 
         function editTime(spanElement, hasCount) {
-            // ★変更点: 編集開始時に元の状態を保存するが、UIはまだ変更しない
             const card = spanElement.closest('.card');
-            if (!card.dataset.isDirty) {
-                card.dataset.originalTimesHtml = card.querySelector('.time-list-container').innerHTML;
-            }
             // 他の編集中の入力があれば、先にそれを確定させる
             const existingInput = spanElement.closest('.time-list-container').querySelector('input[type="time"].time-edit-input');
             if (existingInput) {
@@ -434,7 +423,11 @@
             
             // 既に編集モードでなければ、元の状態を保存し、キャンセルボタンを追加
             if (!currentCard.dataset.isDirty) {
-                // ★変更点: 元のHTMLの保存は各編集アクションの開始時に行うため、ここではUIの変更のみ
+                // ★★★ 修正点: 変更の初回に、元の状態をdata属性に保存する ★★★
+                currentCard.dataset.originalNextRun = cardHeader.querySelector('.text-muted, .text-danger').textContent.replace('次の実行: ', '').trim();
+                currentCard.dataset.originalTimesHtml = currentCard.querySelector('.time-list-container').innerHTML;
+                currentCard.dataset.originalToggleState = masterToggle.checked;
+
                 currentCard.dataset.isDirty = 'true';
                 
                 const cancelButton = document.createElement('button');
@@ -451,14 +444,6 @@
                     runNowButton.classList.add('d-none');
                 }
             }
-
-            // 他のすべてのカードを無効化する
-            const allCards = document.querySelectorAll('#schedules-container .card');
-            allCards.forEach(card => {
-                if (card !== currentCard) {
-                    card.classList.add('disabled');
-                }
-            });
         }
 
         async function handleSave(tag) {
@@ -480,43 +465,86 @@
 
             const success = await saveSchedule(tag, isEnabled, newTimes);
             if (success) {
-                // 現在のスクロール位置を記憶
-                const scrollY = window.scrollY;
-
                 showToast('保存完了', 'スケジュールを保存しました。');
-                // 画面を再描画
-                await fetchSchedules();
-                // 記憶したスクロール位置に戻す
-                window.scrollTo(0, scrollY);
+                // ★★★ 修正点: ページ全体ではなく、カードの状態のみをリセット ★★★
+                resetCardState(card);
+                // ★★★ 修正点: チャートと「元のデータ」の両方を更新する ★★★
+                const schedules = await (await fetch('/api/schedules')).json();
+                originalSchedulesData = JSON.parse(JSON.stringify(schedules)); // ディープコピーして保存
+                renderScheduleChart(schedules);
             }
         }
 
         function cancelChanges(cardElement) {
-            // 1. 時刻リストを元の状態に戻す
-            const timesContainer = cardElement.querySelector('.time-list-container');
-            timesContainer.innerHTML = cardElement.dataset.originalTimesHtml;
+            // ★★★ 修正点: DOM操作での復元をやめ、元のJSONデータから再描画する方式に変更 ★★★
+            const tag = cardElement.id.replace('task-card-', '');
+            const originalJobData = originalSchedulesData.find(job => job.tag === tag);
 
-            // 2. 編集モードのフラグとデータを削除
+            if (!originalJobData) {
+                console.error(`元のスケジュールデータが見つかりません: ${tag}`);
+                location.reload(); // 念のためリロード
+                return;
+            }
+
+            // 1. カードの表示を元のデータで再描画
+            const isCountableTask = originalJobData.show_count_in_schedule !== false;
+            const timesHtml = originalJobData.times.map(entry => `
+                <div class="time-entry d-flex justify-content-between align-items-center p-2 border-bottom">
+                    <span class="time-display" onclick="editTime(this, ${isCountableTask})">${entry.time}<span class="badge bg-secondary ms-2 count-display" data-count="${entry.count}">${isCountableTask ? (entry.count > 0 ? `${entry.count}件` : '0件') : ''}</span></span>
+                    <button type="button" class="btn btn-sm btn-danger py-0 px-1" aria-label="削除" onclick="removeTime(this)"><i class="bi bi-x-lg"></i></button>
+                </div>
+            `).join('');
+
+            const timesContainer = cardElement.querySelector('.time-list-container');
+            timesContainer.innerHTML = timesHtml;
+
+            const masterToggle = cardElement.querySelector('.form-check-input[role="switch"]');
+            masterToggle.checked = originalJobData.enabled;
+
+            const cardHeader = cardElement.querySelector('.card-header');
+            cardHeader.classList.toggle('bg-light', !masterToggle.checked);
+            const statusTextElement = cardHeader.querySelector('.text-muted, .text-danger');
+            statusTextElement.innerHTML = masterToggle.checked ? `次の実行: ${originalJobData.next_run || 'N/A'}` : '無効';
+
+            // 2. チャートのデータも元のデータで更新
+            if (scheduleChartInstance) {
+                const datasetIndex = scheduleChartInstance.data.datasets.findIndex(d => d.tag === tag);
+                if (datasetIndex !== -1) {
+                    const originalDataPoints = originalJobData.times.map(entry => {
+                        const [hours, minutes] = entry.time.split(':'); // ★★★ 修正点: `time` -> `entry.time`
+                        const date = new Date();
+                        date.setHours(hours, minutes, 0, 0);
+                        return { x: date.getTime(), y: scheduleChartInstance.data.datasets[datasetIndex].label, count: entry.count }; // ★★★ 修正点: `count` -> `entry.count`
+                    });
+                    scheduleChartInstance.data.datasets[datasetIndex].data = originalDataPoints;
+                    scheduleChartInstance.update();
+                }
+            }
+
+            // 3. 最後にUIをリセット（保存成功時と同じ関数を流用）
+            resetCardState(cardElement);
+        }
+        
+        // ★★★ 追加: 保存成功後にカードの状態をリセットする関数 ★★★
+        function resetCardState(cardElement) {
+            // 1. 編集モードのフラグとデータを削除
             delete cardElement.dataset.isDirty;
             delete cardElement.dataset.originalTimesHtml;
+            delete cardElement.dataset.originalToggleState;
 
-            // 3. ボタンを元の状態に戻す
+            // 2. ボタンを元の状態に戻す
             const buttonGroup = cardElement.querySelector('.card-header .button-group');
-            const saveButton = buttonGroup.querySelector('.btn-warning');
+            const saveButton = buttonGroup.querySelector('.btn-warning, .btn-success');
             saveButton.classList.remove('btn-warning');
             saveButton.classList.add('btn-success');
             saveButton.innerHTML = '<i class="bi bi-check-circle me-1"></i> 保存';
-            buttonGroup.querySelector('.btn-secondary').remove(); // キャンセルボタンを削除
+            buttonGroup.querySelector('.btn-secondary')?.remove(); // キャンセルボタンを削除
 
             // 即時実行ボタンを再表示
             const runNowButton = buttonGroup.querySelector('.btn-info');
             if (runNowButton) {
                 runNowButton.classList.remove('d-none');
             }
-
-            // 4. 他のカードの無効化を解除
-            const allCards = document.querySelectorAll('#schedules-container .card');
-            allCards.forEach(card => card.classList.remove('disabled'));
         }
 
         async function fetchProfiles() {
@@ -609,6 +637,15 @@
         });
 
         function renderScheduleChart(schedules) {
+            // X軸の最小値と最大値を明示的に設定し、常に1日の全範囲をカバーするようにする
+            const today = new Date();
+            today.setHours(0, 0, 0, 0); // 今日の00:00:00.000
+            const startOfDay = today.getTime();
+
+            today.setHours(23, 59, 59, 999); // 今日の23:59:59.999
+            const endOfDay = today.getTime();
+
+
             const ctx = document.getElementById('scheduleChart').getContext('2d');
 
             // 色の定義
@@ -686,7 +723,51 @@
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
+                    // ★★★ 変更点: ドラッグ＆ドロップによる時間変更機能を追加 ★★★
                     plugins: {
+                        dragData: {
+                            enabled: window.innerWidth >= 768, // PC表示でのみ有効化
+                            dragX: true, // ★★★ 修正点: X軸方向のドラッグを有効にする ★★★
+                            round: 0, // 分単位で丸めるため、小数点以下の丸めは不要
+                            showTooltip: true,
+                            // ★★★ 修正点: ドラッグ中にY軸の値を本来のカテゴリ名で固定する ★★★
+                            onDrag: function(e, datasetIndex, index, value) {
+                                const chart = scheduleChartInstance;
+                                // Y軸がずれるのを防ぐため、ドラッグ中は常に元のY軸カテゴリ名（タスク名）をセットし続ける
+                                value.y = chart.data.datasets[datasetIndex].label;
+                            },
+                            onDragEnd: function(e, datasetIndex, index, value) {
+                                const chart = scheduleChartInstance;
+                                const tag = chart.data.datasets[datasetIndex].tag;
+                                const card = document.getElementById(`task-card-${tag}`);
+                                if (!card) return;
+
+                                // 対応する時刻エントリーを取得
+                                const timeEntry = card.querySelectorAll('.time-entry')[index];
+                                if (!timeEntry) return;
+
+                                // 新しい時刻を HH:mm 形式にフォーマット
+                                const newDate = new Date(value.x);
+                                const newTime = newDate.toTimeString().slice(0, 5);
+
+                                // UIを更新
+                                const timeDisplaySpan = timeEntry.querySelector('.time-display');
+                                timeDisplaySpan.childNodes[0].nodeValue = newTime; // テキストノードの値を更新
+
+                                // ★★★ 修正点: 時刻リストをソートして再描画する ★★★
+                                const timesContainer = card.querySelector('.time-list-container');
+                                const allTimeEntries = Array.from(timesContainer.querySelectorAll('.time-entry'));
+
+                                allTimeEntries.sort((a, b) => {
+                                    const timeA = a.querySelector('.time-display').childNodes[0].nodeValue.trim();
+                                    const timeB = b.querySelector('.time-display').childNodes[0].nodeValue.trim();
+                                    return timeA.localeCompare(timeB);
+                                });
+
+                                allTimeEntries.forEach(entry => timesContainer.appendChild(entry)); // ソートされた順に再追加
+                                markCardAsDirty(card);
+                            }
+                        },
                         datalabels: {
                             display: function(context) {
                                 // 画面幅が768px未満の場合のみラベルを表示
@@ -723,6 +804,8 @@
                         x: {
                             type: 'time',
                             time: { unit: 'hour', displayFormats: { hour: 'HH:mm' }, tooltipFormat: 'HH:mm' },
+                        min: startOfDay, // ★★★ 修正点: X軸の最小値を00:00に固定 ★★★
+                        max: endOfDay,   // ★★★ 修正点: X軸の最大値を23:59に固定 ★★★
                             grid: { display: true },
                             ticks: { font: { size: window.innerWidth < 768 ? 9 : 12 } }
                         },
