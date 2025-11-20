@@ -1518,12 +1518,14 @@ def _run_task_internal(tag: str, is_part_of_flow: bool, **kwargs):
                 else:
                     total_error_count += 1 # フロー自体が失敗したことをエラーとしてカウント
                     logging.error(f"--- フロー中断: 「{definition['name_ja']}」は途中で失敗しました。(実行時間: {duration_str}) ---")
-                
+
+                # サマリーログ用の名前を決定 (summary_nameがあれば優先、なければname_ja)
+                summary_name = definition.get("summary_name", definition['name_ja'])
                 # --- フローの最後に必ずサマリーを出力 ---
                 if summary_message: # ★★★ 修正: messageが設定されていれば優先的に出力
-                    logging.info(f"[Action Summary] name={definition['name_ja']}, message='{summary_message}'")
+                    logging.info(f"[Action Summary] name={summary_name}, message='{summary_message}'")
                 elif main_success_count > 0 or total_error_count > 0:
-                    logging.info(f"[Action Summary] name={definition['name_ja']}, count={main_success_count}, errors={total_error_count}")
+                    logging.info(f"[Action Summary] name={summary_name}, count={main_success_count}, errors={total_error_count}")
                 # ---
         
         run_threaded(run_flow)
