@@ -541,7 +541,7 @@ def update_product_room_url(product_id: int, room_url: str):
         cursor = conn.cursor()
         cursor.execute("UPDATE products SET room_url = ? WHERE id = ?", (room_url, product_id))
         conn.commit()
-        logging.info(f"商品ID: {product_id} のROOM URLを更新しました。 URL: {room_url}")
+        logging.debug(f"商品ID: {product_id} のROOM URLを更新しました。 URL: {room_url}")
         return cursor.rowcount
     except sqlite3.Error as e:
         logging.error(f"商品ID: {product_id} のroom_url更新中にエラー: {e}")
