@@ -23,8 +23,6 @@ from app.tasks.generate_product_caption import generate_product_caption
 from app.tasks.scrape_my_comments import run_scrape_my_comments
 from app.tasks.generate_replies_to_my_room import run_generate_my_room_replies
 from app.tasks.reply_to_comments import reply_to_comments
-from app.tasks.okaeshi_action import run_okaeshi_action # この行は変更不要ですが、念のため記載
-from app.tasks.like_back_task import run_like_back
 from app.tasks.new_like_back_task import run_new_like_back
 from app.tasks.new_comment_back_task import run_new_comment_back
 
@@ -300,24 +298,6 @@ TASK_DEFINITIONS = {
         "description": "24時間以上放置されている未処理のアクションを自動的にスキップ扱いとしてコミットします。",
         "order": 90,
     },
-    "_internal-okaeshi-action": {
-        "name_ja": "（内部処理）お返しアクション実行",
-        "function": run_okaeshi_action,
-        "is_debug": False,
-        "show_in_schedule": False, # APIからのみ呼び出す
-        "description": "（内部処理用）指定された複数のユーザーにいいねバックとコメント投稿を行います。",
-        "order": 9999,
-    },
-    "engage-user": {
-        "name_ja": "お返しアクション実行",
-        "function": None, # フローなので関数はなし
-        "is_debug": False,
-        "show_in_schedule": False, # APIからのみ呼び出す
-        "description": "選択されたユーザーに対して、いいねバックとコメント投稿を行います。",
-        "order": 9999,
-        "flow": "check-login-status | _internal-okaeshi-action", # このフローは最終的に削除される
-        "aggregate_results": False, # このフローは個別集計
-    },
 
     "_internal-scrape-my-comments": {
         "name_ja": "（内部処理）自分の投稿からコメント収集",
@@ -413,13 +393,6 @@ TASK_DEFINITIONS = {
         "description": "「リピーター育成」ページで選択されたコメントに返信を投稿します。",
         "is_debug": True,
         "show_in_schedule": False,
-    },
-    "like-back": {
-        "function": run_like_back,
-        "name_ja": "いいね返し実行",
-        "description": "「リピーター育成」画面から指定されたユーザーにいいね返しを行います。",
-        "is_debug": False,
-        "show_in_schedule": False, # APIからのみ呼び出す
     },
     "bind-product-url-room-url": {
         "name_ja": "商品URLとROOM URLの紐付け",
