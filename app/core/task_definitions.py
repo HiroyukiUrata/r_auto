@@ -53,6 +53,7 @@ from app.tasks.like_back_task import run_like_back
 #     "name_ja": "フローの日本語名",
 #     "function": None または プレースホルダー関数 (例: run_sample_flow_1),
 #     "flow": [ ... ], # フローの内容を定義
+#     "summary_name": "サマリーログ用の名前", # [Action Summary]ログで使われる名前。ダッシュボード集計用。
 #     ... (他のキーはタスク定義と同様)
 # }
 
@@ -291,14 +292,24 @@ TASK_DEFINITIONS = {
         "description": "24時間以上放置されている未処理のアクションを自動的にスキップ扱いとしてコミットします。",
         "order": 90,
     },
-    "engage-user": {
-        "name_ja": "（内部処理）お返しアクション実行", # この行は変更不要ですが、念のため記載
-        "function": run_okaeshi_action, # この行は変更不要ですが、念のため記載
+    "_internal-okaeshi-action": {
+        "name_ja": "（内部処理）お返しアクション実行",
+        "function": run_okaeshi_action,
         "is_debug": False,
         "show_in_schedule": False, # APIからのみ呼び出す
         "description": "（内部処理用）指定された複数のユーザーにいいねバックとコメント投稿を行います。",
         "order": 9999,
     },
+    "engage-user": {
+        "name_ja": "お返しアクション実行",
+        "function": None, # フローなので関数はなし
+        "is_debug": False,
+        "show_in_schedule": False, # APIからのみ呼び出す
+        "description": "選択されたユーザーに対して、いいねバックとコメント投稿を行います。",
+        "order": 9999,
+        "flow": "check-login-status | _internal-okaeshi-action",
+    },
+
     "_internal-scrape-my-comments": {
         "name_ja": "（内部処理）自分の投稿からコメント収集",
         "function": run_scrape_my_comments,

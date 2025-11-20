@@ -27,6 +27,8 @@ class OkaeshiActionTask(BaseTask):
 
     def _like_back(self, page: Page, user_id: str, user_name: str, like_back_count: int, profile_page_url: str):
         """いいね返し処理"""
+        logger.info(f"「{user_name}」にいいね返しを開始します。")
+        
         # APIからlike_countが指定されている場合（画面入力がある場合）は、その値を最優先する
         if self.like_count is not None and self.like_count > 0:
             target_like_count = self.like_count
