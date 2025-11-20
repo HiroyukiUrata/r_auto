@@ -704,25 +704,41 @@ function toggleSelectAllSummaryUsers(forceState) {
 }
 
 async function bulkLikeBack(isDryRun = false) {
-    const selectedUserPageUrls = Array.from(document.querySelectorAll('.summary-user-checkbox:checked')).map(cb => cb.value);
     const likeCount = parseInt(document.getElementById('like-back-count-input').value, 10);
 
-    if (selectedUserPageUrls.length === 0) return;
     if (isNaN(likeCount) || likeCount < 1) {
         alert('いいね数には1以上の数値を入力してください。');
         return;
     }
 
+    // 選択された行から、APIが必要とする users: list[dict] 形式のデータを作成する
+    const selectedUsers = Array.from(document.querySelectorAll('.user-summary-row.selected')).map(row => {
+        return {
+            id: row.dataset.userPageUrl, // ユーザーIDの代わりとしてプロフィールURLを使用
+            name: row.dataset.sortUserName,
+            profile_page_url: row.dataset.userPageUrl,
+            // engage-user API が like_count を受け取るので、recent_like_count は不要
+        };
+    });
+
+    if (selectedUsers.length === 0) return;
+
     const actionText = isDryRun ? "予行" : "本実行";
-    if (!confirm(`${selectedUserPageUrls.length}人のユーザーに ${likeCount}件の「いいね返し」を${actionText}しますか？`)) {
+    if (!confirm(`${selectedUsers.length}人のユーザーに ${likeCount}件の「いいね返し」を${actionText}しますか？`)) {
         return;
     }
 
     try {
-        const response = await fetch('/api/users/bulk-like-back', {
+        // 呼び出し先を /api/users/bulk-engage に統一
+        const response = await fetch('/api/users/bulk-engage', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ user_ids: selectedUserPageUrls, like_count: likeCount, dry_run: isDryRun })
+            body: JSON.stringify({ 
+                users: selectedUsers, 
+                like_count: likeCount, 
+                dry_run: isDryRun, 
+                engage_mode: 'like_only' // いいね返しなのでモードを固定
+            })
         });
         const result = await response.json();
         if (!response.ok) throw new Error(result.detail || 'いいね返しタスクの開始に失敗しました。');
@@ -731,7 +747,8 @@ async function bulkLikeBack(isDryRun = false) {
         showToast('タスク開始', result.message, 'success');
         // ドライランでない場合のみUIを更新
         if (!isDryRun) {
-            selectedUserPageUrls.forEach(url => {
+            selectedUsers.forEach(user => {
+                const url = user.profile_page_url;
                 const row = document.querySelector(`.user-summary-row[data-user-page-url="${url}"]`);
                 if (row) row.classList.add('action-done');
             });

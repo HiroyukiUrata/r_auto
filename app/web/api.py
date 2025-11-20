@@ -943,10 +943,18 @@ async def engage_with_multiple_users(request: BulkEngageRequest, background_task
     if not request.users:
         raise HTTPException(status_code=400, detail="対象ユーザーが指定されていません。")
 
+    # engage_modeに応じて実行するフローのタグを決定
+    if request.engage_mode == 'like_only':
+        task_tag = "new-engage-flow-like-only"
+    elif request.engage_mode == 'comment_only':
+        task_tag = "new-engage-flow-comment-only"
+    else: # 'all' または未指定の場合
+        task_tag = "new-engage-flow-all"
+
     task_manager = TaskManager()
     background_tasks.add_task(
         task_manager.run_task_by_tag, 
-        "engage-user", 
+        task_tag, 
         users=request.users, 
         dry_run=request.dry_run, 
         engage_mode=request.engage_mode,
@@ -1061,25 +1069,6 @@ async def bulk_post_replies(request: BulkPostRepliesRequest, background_tasks: B
 
     mode_text = "予行投稿" if request.dry_run else "投稿"
     return {"message": f"{len(request.replies)}件のコメントへの「{mode_text}」タスクを開始しました。"}
-
-@router.post("/api/users/bulk-like-back", summary="選択した複数のユーザーにいいね返しタスクを実行")
-async def bulk_like_back_users(request: UserBulkLikeBack, background_tasks: BackgroundTasks):
-    """
-    選択された複数のユーザーに対して、いいね返しタスクを非同期で実行する。
-    主にリピーター育成画面のサマリーからの実行を想定。
-    """
-    if not request.user_ids:
-        raise HTTPException(status_code=400, detail="対象ユーザーが指定されていません。")
-
-    task_manager = TaskManager()
-    background_tasks.add_task(
-        task_manager.run_task_by_tag,
-        "like-back",
-        user_ids=request.user_ids,
-        like_count=request.like_count,
-        dry_run=request.dry_run
-    )
-    return {"message": f"{len(request.user_ids)}件のユーザーへの「いいね返し」タスクを開始しました。"}
 
 @router.get("/api/db/tables", summary="DBのテーブル一覧を取得")
 async def api_get_db_tables():
@@ -1401,11 +1390,11 @@ def _run_task_internal(tag: str, is_part_of_flow: bool, **kwargs):
         logging.info(f"--- フロー実行: 「{definition['name_ja']}」を開始します。 ---")
 
         def run_flow():
-            # --- 集計変数を run_flow の中で初期化 ---
-            main_success_count = 0
-            total_error_count = 0
-            summary_message = None # ★★★ 追加: message形式のサマリーを保持する変数
-            # ---
+            # フローの集計方法を決定
+            should_aggregate = definition.get("aggregate_results", False)
+            main_success_count = 0 if should_aggregate else None
+            total_error_count = 0 if should_aggregate else None
+            summary_message = None if should_aggregate else None
 
             def format_duration(seconds: float) -> str:
                 """実行時間を分かりやすい形式に変換する"""
@@ -1473,29 +1462,31 @@ def _run_task_internal(tag: str, is_part_of_flow: bool, **kwargs):
                             # ★★★ デバッグログ追加 ★★★
                             logging.debug(f"      -> タスク '{sub_task_id}' の戻り値: {task_result} (型: {type(task_result)})")
 
-                            # --- ★★★ 追加: message形式のサマリーをハンドリング ---
-                            if isinstance(task_result, str):
-                                summary_message = task_result
-                                logging.debug(f"      -> [集計] summary_message を設定しました: '{summary_message}'")
-
-                            # --- 戻り値を解析して集計 ---
-                            # boolはintのサブクラスなので、boolを除外するチェックを追加
-                            if isinstance(task_result, int) and not isinstance(task_result, bool):
-                                # 最初に返された0より大きいintを主たる成功件数とする
-                                if main_success_count == 0:
-                                    if task_result > 0:
+                            if should_aggregate:
+                                # --- 合算モード ---
+                                if isinstance(task_result, str):
+                                    summary_message = task_result
+                                    logging.debug(f"      -> [集計] summary_message を設定しました: '{summary_message}'")
+                                elif isinstance(task_result, int) and not isinstance(task_result, bool):
+                                    if main_success_count == 0 and task_result > 0:
                                         main_success_count = task_result
                                         logging.debug(f"      -> [集計] main_success_count を {main_success_count} に設定しました。")
-                            elif isinstance(task_result, tuple) and len(task_result) >= 2 and all(isinstance(n, int) for n in task_result):
-                                # (成功件数, エラー件数, ...) のタプルを想定
-                                # postingタスクのように、主たる成果をタプルで返す場合を考慮
-                                if main_success_count == 0 and task_result[0] > 0:
-                                    main_success_count = task_result[0]
-                                    logging.debug(f"      -> [集計] main_success_count を {main_success_count} に設定しました。(from tuple)")
-                                # 補助タスクのエラー件数のみ加算
-                                total_error_count += task_result[1]
-                                logging.debug(f"      -> [集計] total_error_count を {task_result[1]} 加算しました。 (現在値: {total_error_count})")
-                            # ---
+                                elif isinstance(task_result, tuple) and len(task_result) >= 2 and all(isinstance(n, int) for n in task_result):
+                                    if main_success_count == 0 and task_result[0] > 0:
+                                        main_success_count = task_result[0]
+                                        logging.debug(f"      -> [集計] main_success_count を {main_success_count} に設定しました。(from tuple)")
+                                    total_error_count += task_result[1]
+                                    logging.debug(f"      -> [集計] total_error_count を {task_result[1]} 加算しました。 (現在値: {total_error_count})")
+                            else:
+                                # --- 個別報告モード ---
+                                sub_summary_name = sub_task_def.get("summary_name")
+                                if sub_summary_name:
+                                    if isinstance(task_result, tuple) and len(task_result) >= 2:
+                                        success_count, error_count = task_result[0], task_result[1]
+                                        if success_count > 0 or error_count > 0:
+                                            logging.info(f"[Action Summary] name={sub_summary_name}, count={success_count}, errors={error_count}")
+                                    elif isinstance(task_result, str):
+                                        logging.info(f"[Action Summary] name={sub_summary_name}, message='{task_result}'")
 
                         except Exception as e:
                             logging.error(f"フロー内のタスク「{sub_task_def['name_ja']}」実行中に予期せぬエラーが発生しました: {e}", exc_info=os.getenv('LOG_FORMAT', 'detailed').lower() == 'detailed')
@@ -1516,17 +1507,15 @@ def _run_task_internal(tag: str, is_part_of_flow: bool, **kwargs):
                 if flow_succeeded:
                     logging.info(f"--- フロー完了: 「{definition['name_ja']}」が正常に完了しました。(実行時間: {duration_str}) ---")
                 else:
-                    total_error_count += 1 # フロー自体が失敗したことをエラーとしてカウント
                     logging.error(f"--- フロー中断: 「{definition['name_ja']}」は途中で失敗しました。(実行時間: {duration_str}) ---")
 
-                # サマリーログ用の名前を決定 (summary_nameがあれば優先、なければname_ja)
-                summary_name = definition.get("summary_name", definition['name_ja'])
-                # --- フローの最後に必ずサマリーを出力 ---
-                if summary_message: # ★★★ 修正: messageが設定されていれば優先的に出力
-                    logging.info(f"[Action Summary] name={summary_name}, message='{summary_message}'")
-                elif main_success_count > 0 or total_error_count > 0:
-                    logging.info(f"[Action Summary] name={summary_name}, count={main_success_count}, errors={total_error_count}")
-                # ---
+                # 合算モードの場合のみ、フロー全体のサマリーを出力
+                if should_aggregate:
+                    summary_name = definition.get("summary_name", definition['name_ja'])
+                    if summary_message:
+                        logging.info(f"[Action Summary] name={summary_name}, message='{summary_message}'")
+                    elif main_success_count > 0 or total_error_count > 0:
+                        logging.info(f"[Action Summary] name={summary_name}, count={main_success_count}, errors={total_error_count}")
         
         run_threaded(run_flow)
         return {"status": "success", "message": f"タスクフロー「{definition['name_ja']}」(件数: {flow_kwargs.get('count')})の実行を開始しました。"}

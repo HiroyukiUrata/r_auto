@@ -25,6 +25,8 @@ from app.tasks.generate_replies_to_my_room import run_generate_my_room_replies
 from app.tasks.reply_to_comments import reply_to_comments
 from app.tasks.okaeshi_action import run_okaeshi_action # この行は変更不要ですが、念のため記載
 from app.tasks.like_back_task import run_like_back
+from app.tasks.new_like_back_task import run_new_like_back
+from app.tasks.new_comment_back_task import run_new_comment_back
 
 """
 システム内の全タスクの定義を一元管理する。
@@ -93,6 +95,7 @@ TASK_DEFINITIONS = {
             ("get-post-url", {}),
             ("_create-caption-wrapper", {})
         ],
+        "aggregate_results": True, # フロー全体で結果を合算する
         "order": 10,
     },
     "_internal-post-article": {
@@ -115,7 +118,8 @@ TASK_DEFINITIONS = {
             ("check-login-status", {}),
             ("_internal-post-article", {"count": "flow_count"}),
             ("bind-product-url-room-url", {"count": "flow_count"})
-        ]
+        ],
+        "aggregate_results": True, # フロー全体で結果を合算する
     },
     "_internal-like-action": {
         "name_ja": "（内部処理）いいね実行",
@@ -133,7 +137,8 @@ TASK_DEFINITIONS = {
         "default_kwargs": {"count": 15, "max_duration_seconds": 1800}, # フロー全体に渡す引数
         "description": "ログイン状態を確認後、設定されたキーワードに基づいて「いいね」アクションを実行します。",
         "order": 60,
-        "flow": "check-login-status | _internal-like-action"
+        "flow": "check-login-status | _internal-like-action",
+        "aggregate_results": True, # フロー全体で結果を合算する
     },
     "_internal-follow-action": {
         "name_ja": "（内部処理）フォロー実行",
@@ -151,7 +156,8 @@ TASK_DEFINITIONS = {
         "default_kwargs": {"count": 3}, # フロー全体に渡す引数
         "description": "ログイン状態を確認後、設定されたキーワードに基づいて「フォロー」アクションを実行します。",
         "order": 70,
-        "flow": "check-login-status | _internal-follow-action"
+        "flow": "check-login-status | _internal-follow-action",
+        "aggregate_results": True, # フロー全体で結果を合算する
     },
     "json-import-flow": {
         "name_ja": "JSONインポート後フロー",
@@ -160,6 +166,7 @@ TASK_DEFINITIONS = {
         "show_in_schedule": False, # UIには表示しない
         "description": "JSONインポート後に、URL取得と投稿文作成を連続実行します。",
         "flow": "get-post-url | create-caption-flow",
+        "aggregate_results": True, # フロー全体で結果を合算する
         "order": 9999,
     },
 
@@ -274,7 +281,8 @@ TASK_DEFINITIONS = {
         "show_count_in_schedule": False, # 件数入力は不要
         "description": "通知を分析しコメントを生成します。スケジュール実行時は12時間、即時実行時は30分(hours_ago=0.5)が推奨です。",
         "order": 80,
-        "flow": [ ("check-login-status",{}), ("_internal-notification-analyzer", {"hours_ago": "flow_hours_ago"}), ("commit-stale-actions", {}), ("generate-engagement-comments", {})]
+        "flow": [ ("check-login-status",{}), ("_internal-notification-analyzer", {"hours_ago": "flow_hours_ago"}), ("commit-stale-actions", {}), ("generate-engagement-comments", {})],
+        "aggregate_results": True, # フロー全体で結果を合算する
     },
     "generate-engagement-comments": {
         "name_ja": "エンゲージメントコメント生成",
@@ -307,7 +315,8 @@ TASK_DEFINITIONS = {
         "show_in_schedule": False, # APIからのみ呼び出す
         "description": "選択されたユーザーに対して、いいねバックとコメント投稿を行います。",
         "order": 9999,
-        "flow": "check-login-status | _internal-okaeshi-action",
+        "flow": "check-login-status | _internal-okaeshi-action", # このフローは最終的に削除される
+        "aggregate_results": False, # このフローは個別集計
     },
 
     "_internal-scrape-my-comments": {
@@ -326,7 +335,8 @@ TASK_DEFINITIONS = {
         "show_count_in_dashboard": False,
         "description": "ログイン状態を確認後、自分のROOMに移動し、ピン留めされた投稿からコメントを収集してDBに保存します。返信コメント生成の元データになります。",
         "order": 88,
-        "flow": "check-login-status | _internal-scrape-my-comments"
+        "flow": "check-login-status | _internal-scrape-my-comments",
+        "aggregate_results": True, # フロー全体で結果を合算する
     },
     "generate-my-room-replies-step": {
         "name_ja": "自分の投稿への返信コメント生成",
@@ -350,8 +360,9 @@ TASK_DEFINITIONS = {
         "flow": [
             ("check-login-status", {}),
             ("_internal-scrape-my-comments", {}),
-            ("generate-my-room-replies-step", {})
-        ]
+            ("generate-my-room-replies-step", {}),
+        ],
+        "aggregate_results": True, # フロー全体で結果を合算する
     },
     "dummy-flow-no-count": {
         "name_ja": "（ダミー）件数表示なしフロー",
@@ -363,7 +374,8 @@ TASK_DEFINITIONS = {
         "show_count_in_schedule": False,
         "description": "件数入力ボックスが表示されないことを確認するためのダミーフローです。",
         "order": 91,
-        "flow": [("check-login-status", {})] # フローの内容はシンプルでOK
+        "flow": [("check-login-status", {})], # フローの内容はシンプルでOK
+        "aggregate_results": True, # フロー全体で結果を合算する
     },
     "delete-room-post": {
         "name_ja": "（内部処理）ROOM投稿削除",
@@ -381,6 +393,7 @@ TASK_DEFINITIONS = {
         "description": "ログイン状態を確認後、商品を「再コレ」として再度在庫化します。",
         "summary_name": "再コレ",
         "flow": "check-login-status | delete-room-post",
+        "aggregate_results": True, # フロー全体で結果を合算する
         "order": 9999,
     },
     "delete-product-flow": {
@@ -391,6 +404,7 @@ TASK_DEFINITIONS = {
         "description": "ログイン状態を確認後、商品を削除します。",
         "summary_name": "投稿削除",
         "flow": "check-login-status | delete-room-post",
+        "aggregate_results": True, # フロー全体で結果を合算する
         "order": 9999,
     },
     "reply-to-comment": {
@@ -426,3 +440,55 @@ TASK_DEFINITIONS = {
         "default_kwargs": {"script": "test_scripts/example.py"},
     },
 }
+
+# --- 新しいエンゲージメントタスク定義 ---
+TASK_DEFINITIONS.update({
+    "new-like-back": {
+        "function": run_new_like_back,
+        "name_ja": "【新】いいね返し実行",
+        "description": "新しい「いいね返し」専門タスクを実行します。",
+        "is_debug": True, # テスト中はデバッグ画面に表示
+        "show_in_schedule": False,
+        "summary_name": "いいね返し", # フロー集計用の名前
+        "order": 101,
+    },
+    "new-comment-back": {
+        "function": run_new_comment_back,
+        "name_ja": "【新】コメント返し実行",
+        "description": "新しい「コメント返し」専門タスクを実行します。",
+        "is_debug": True, # テスト中はデバッグ画面に表示
+        "show_in_schedule": False,
+        "summary_name": "コメント返し", # フロー集計用の名前
+        "order": 102,
+    },
+    "new-engage-flow-all": {
+        "name_ja": "【新】お返しフロー（いいね＆コメント）",
+        "function": None,
+        "is_debug": True, # テスト中はデバッグ画面に表示
+        "show_in_schedule": False,
+        "description": "「いいね返し」と「コメント返し」を連続で実行します。",
+        "flow": "check-login-status | new-like-back | new-comment-back",
+        "aggregate_results": False, # 個別集計を行う
+        "order": 103,
+    },
+    "new-engage-flow-like-only": {
+        "name_ja": "【新】お返しフロー（いいねのみ）",
+        "function": None,
+        "is_debug": True,
+        "show_in_schedule": False,
+        "description": "「いいね返し」のみを実行します。",
+        "flow": "check-login-status | new-like-back",
+        "aggregate_results": False,
+        "order": 104,
+    },
+    "new-engage-flow-comment-only": {
+        "name_ja": "【新】お返しフロー（コメントのみ）",
+        "function": None,
+        "is_debug": True,
+        "show_in_schedule": False,
+        "description": "「コメント返し」のみを実行します。",
+        "flow": "check-login-status | new-comment-back",
+        "aggregate_results": False,
+        "order": 105,
+    },
+})
