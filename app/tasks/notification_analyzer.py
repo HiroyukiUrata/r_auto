@@ -347,7 +347,7 @@ class NotificationAnalyzerTask(BaseTask):
                 if last_scroll_position > 0:
                     page.evaluate(f"window.scrollTo(0, {last_scroll_position})")
                     page.wait_for_timeout(500) # 復元後の描画を少し待つ
-                    logger.debug(f"  スクロール位置を {last_scroll_position}px に復元しました。")
+                    logger.trace(f"  スクロール位置を {last_scroll_position}px に復元しました。")
 
                 # ユーザーの通知アイテムを見つける
                 user_li_locator = page.locator(f"li[ng-repeat='notification in notifications.activityNotifications']:has-text(\"{user_data['name']}\")").filter(has=page.locator(f"span.notice-name span.strong:text-is(\"{user_data['name']}\")")).first
@@ -376,7 +376,7 @@ class NotificationAnalyzerTask(BaseTask):
                 page.wait_for_load_state("domcontentloaded", timeout=15000)
                 
                 user_data['profile_page_url'] = page.url
-                logger.debug(f"  -> 取得したURL: {page.url}")
+                logger.trace(f"  -> 取得したURL: {page.url}")
                 
                 page.go_back(wait_until="domcontentloaded")
                 url_acquired_count += 1
@@ -460,9 +460,7 @@ class NotificationAnalyzerTask(BaseTask):
 
             # --- フェーズ7: 結果サマリーの生成 ---
             # このタスク内で実際に処理した件数を元にメッセージを生成
-            summary_message = f"いいね待ち: {url_acquired_count}件, コメント待ち: {prompt_generated_count}件"
-            logger.info(f"[Action Summary] name=お知らせ解析, message='{summary_message}'")
-
+            
             cleanup_old_user_engagements(days=30)
         except Exception as e:
             logger.error(f"データベースへの保存中にエラーが発生しました: {e}", exc_info=True)
@@ -470,9 +468,11 @@ class NotificationAnalyzerTask(BaseTask):
             return False
         
         logger.debug("検証タスクの全フェーズが正常に完了しました。")
-        return True
+        # フロー側で集計するため、処理件数を返す
+        return 0, 0 # このタスクの戻り値はフロー全体の成果ではないため、0を返す
 
 def run_notification_analyzer(hours_ago: int = 12):
     """ラッパー関数"""
     task = NotificationAnalyzerTask(hours_ago=hours_ago)
-    return task.run()
+    result = task.run()
+    return result if isinstance(result, tuple) else (0, 0)

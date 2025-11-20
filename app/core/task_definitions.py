@@ -23,7 +23,7 @@ from app.tasks.generate_product_caption import generate_product_caption
 from app.tasks.scrape_my_comments import run_scrape_my_comments
 from app.tasks.generate_replies_to_my_room import run_generate_my_room_replies
 from app.tasks.reply_to_comments import reply_to_comments
-from app.tasks.engage_user import run_engage_user
+from app.tasks.okaeshi_action import run_okaeshi_action # この行は変更不要ですが、念のため記載
 from app.tasks.like_back_task import run_like_back
 
 """
@@ -88,26 +88,11 @@ TASK_DEFINITIONS = {
         "show_in_schedule": True,
         "description": "設定された方法で商品を調達し、後続タスク（URL取得→投稿文作成）を自動実行します。",
         "flow": [
-            ("_procure-wrapper", {"count": "flow_count"}), # 動的解決用のラッパーを呼び出す
+            # この部分はapi.pyで動的に挿入される
             ("get-post-url", {}),
-            ("create-caption-flow", {})
+            ("_create-caption-wrapper", {})
         ],
         "order": 10,
-    },
-    "procure-products-single": {
-        "name_ja": "商品調達",
-        "function": None, # ラッパーを呼び出す
-        "is_debug": True, # UIに表示する
-        "description": "設定画面で選択された方法（ブラウザ or API）で商品を調達します。",
-        "default_kwargs": {"count": 5},
-        "flow": [("_procure-wrapper", {"count": "flow_count"})],
-        "order": 15,
-    },
-    "_procure-wrapper": {
-        "name_ja": "（内部処理）商品調達ラッパー",
-        "function": None, # 何も実行しないプレースホルダー
-        "is_debug": False,
-        "show_in_schedule": False,
     },
     "_internal-post-article": {
         "name_ja": "（内部処理）記事投稿実行",
@@ -263,6 +248,12 @@ TASK_DEFINITIONS = {
         "description": "設定画面で選択された方法（ブラウザ or API）で投稿文を作成します。",
         "order": 35,
     },
+    "_create-caption-wrapper": {
+        "name_ja": "（内部処理）投稿文作成ラッパー",
+        "function": None, # 何も実行しないプレースホルダー
+        "is_debug": False,
+        "show_in_schedule": False,
+    },
     "_internal-notification-analyzer": {
         "name_ja": "（内部処理）通知分析実行",
         "function": run_notification_analyzer,
@@ -301,8 +292,8 @@ TASK_DEFINITIONS = {
         "order": 90,
     },
     "engage-user": {
-        "name_ja": "（内部処理）ユーザーエンゲージメント実行",
-        "function": run_engage_user,
+        "name_ja": "（内部処理）お返しアクション実行", # この行は変更不要ですが、念のため記載
+        "function": run_okaeshi_action, # この行は変更不要ですが、念のため記載
         "is_debug": False,
         "show_in_schedule": False, # APIからのみ呼び出す
         "description": "（内部処理用）指定された複数のユーザーにいいねバックとコメント投稿を行います。",

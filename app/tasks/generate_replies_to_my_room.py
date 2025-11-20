@@ -40,12 +40,17 @@ class GenerateMyRoomRepliesTask(BaseTask):
 
         # 1. 未返信コメントを持つ投稿URLのリストを取得
         post_urls_to_process = get_post_urls_with_unreplied_comments()
+        # ★★★ ここで処理対象の総数を先にカウントする ★★★
+        total_unreplied_count = sum(len(get_unreplied_comments_for_post(url)) for url in post_urls_to_process)
+
         if not post_urls_to_process:
             logger.info("返信対象の新しいコメントはありませんでした。")
-            return True
+            # 呼び出し元でフロー名を付与するため、具体的な内容のみを返す
+            return "新規コメント0件、AI返信0件"
 
         logger.debug(f"{len(post_urls_to_process)}件の投稿に未返信のコメントがあります。")
         total_updated_count = 0
+        total_error_count = 0
         client = genai.Client(api_key=api_key)
 
         # 2. 投稿ごとにループ処理
@@ -81,6 +86,7 @@ class GenerateMyRoomRepliesTask(BaseTask):
             if not generated_data:
                 logger.error(f"  -> AIの応答からJSONブロックを抽出できませんでした。この投稿の処理をスキップします。")
                 logger.debug(f"AIからの生応答: {response_text}")
+                total_error_count += len(comments_data)
                 continue
             
             # 7. 結果をDBに保存
@@ -102,10 +108,17 @@ class GenerateMyRoomRepliesTask(BaseTask):
                 logger.debug(f"       Reply: {text}")
             logger.debug("  --------------------------")
         
-        #logger.info(f"[Action Summary] name=返信コメント生成, count={total_updated_count}")
-        return True
+        # --- フロー全体のサマリーログを生成 ---
+        try:
+            summary_message = f"新規コメント{total_unreplied_count}件、AI返信{total_updated_count}件"
+            # サマリー文字列を戻り値として返す
+            return summary_message
+        except Exception as e:
+            logger.error(f"最終サマリーログの生成中にエラーが発生しました: {e}")
+            return "サマリーの生成に失敗しました。"
 
 def run_generate_my_room_replies():
     """ラッパー関数"""
     task = GenerateMyRoomRepliesTask()
-    return task.run()
+    result = task.run()
+    return result # 文字列またはタプルをそのまま返す

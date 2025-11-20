@@ -34,6 +34,7 @@ class PostingTask(BaseTask):
                 return
 
         posted_count = 0
+        error_count = 0
         for product in products:
             page = None
             try:
@@ -71,14 +72,20 @@ class PostingTask(BaseTask):
                     page.context.tracing.stop() # トレースは停止するが、zipファイルは保存しない
                     page.screenshot(path=os.path.join(TRACE_DIR, f"error_screenshot_{product['id']}.png"))
                 update_product_status(product['id'], 'エラー', error_message=str(e)) # エラーメッセージも記録
+                error_count += 1
             finally:
                 if page and not page.is_closed():
                     page.close()
         
-        #logging.info(f"自動投稿タスクを終了します。成功: {posted_count}件")
-        logging.info(f"[Action Summary] name=投稿, count={posted_count}")
+        # --- 最終サマリーログの出力 ---
+        if posted_count > 0 or error_count > 0:
+            logger.info(f"[Action Summary] name=投稿, count={posted_count}, errors={error_count}")
+
+        return posted_count, error_count
 
 def run_posting(count: int = 10, product_id: int = None):
     """ラッパー関数"""
     task = PostingTask(count=count, product_id=product_id)
-    return task.run()
+    result = task.run()
+    # 確実に (成功数, エラー数) のタプルを返すようにする
+    return result if isinstance(result, tuple) and len(result) >= 2 else (0, 1 if result is False else 0)

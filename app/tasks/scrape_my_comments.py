@@ -84,7 +84,7 @@ class ScrapeMyCommentsTask(BaseTask):
             
             if not pinned_cards:
                 logger.warning("ピン留めされた投稿が見つかりませんでした。")
-                return True
+                return 0, 0
 
             logger.debug(f"{len(pinned_cards)}件のピン留めされた投稿を発見しました。最大3件を処理します。")
             
@@ -260,15 +260,16 @@ class ScrapeMyCommentsTask(BaseTask):
         except Exception as e:
             logger.error(f"タスク実行中に予期せぬエラーが発生しました: {e}", exc_info=True)
             self._take_screenshot_on_error(prefix="scrape_my_comments_error")
-            return False
+            return total_inserted_count, 1 # 途中でエラーが起きた場合
         finally:
             if page:
                 page.close()
         
-        logger.info(f"[Action Summary] name=自分の投稿からコメント収集, count={total_inserted_count}")
-        return True
+        # 収集した件数を返す
+        return total_inserted_count, 0
 
 def run_scrape_my_comments():
     """ラッパー関数"""
     task = ScrapeMyCommentsTask()
-    return task.run()
+    result = task.run()
+    return result if isinstance(result, tuple) else (0, 0)

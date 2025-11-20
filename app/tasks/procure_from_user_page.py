@@ -244,12 +244,10 @@ class ProcureFromUserPageTask(BaseTask):
             return False
         finally:
             added_count = len(newly_procured_items)
-            if added_count > 0:
-                logger.info(f"[Action Summary] name=商品調達, count={added_count}")
             logger.debug(f"--- ユーザーページ巡回調達タスクを完了します ---")
             logger.debug(f"最終的な新規獲得商品数: {added_count}件")
 
-        return True
+        return added_count
 
 
 def run_procure_from_user_page(count: int = 50, **kwargs):
@@ -257,4 +255,5 @@ def run_procure_from_user_page(count: int = 50, **kwargs):
     ProcureFromUserPageTask のラッパー関数。
     """
     task = ProcureFromUserPageTask(count=count)
-    return task.run()
+    result = task.run()
+    return result if isinstance(result, int) else 0

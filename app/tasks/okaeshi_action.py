@@ -9,13 +9,13 @@ from app.core.base_task import BaseTask
 
 logger = logging.getLogger(__name__)
 
-class EngageUserTask(BaseTask):
+class OkaeshiActionTask(BaseTask):
     """
     指定されたユーザーに対して「いいねバック」と「コメント投稿」を行うタスク。
     """
     def __init__(self, users: list[dict], dry_run: bool = False, engage_mode: str = 'all', like_count: int = None):
         super().__init__(count=None, dry_run=dry_run)
-        self.action_name = f"複数ユーザーへのエンゲージメント ({len(users)}人)"
+        self.action_name = f"お返しアクション実行 ({len(users)}人)"
         self.needs_browser = True
         self.use_auth_profile = True
 
@@ -23,7 +23,7 @@ class EngageUserTask(BaseTask):
         self.users = users
         self.engage_mode = engage_mode # 'all', 'like_only', 'comment_only'
         self.like_count = like_count # 画面から指定されたいいね数
-        logger.debug(f"EngageUserTaskが初期化されました。Mode: {self.engage_mode}, DryRun: {self.dry_run}, LikeCount: {self.like_count}")
+        logger.debug(f"OkaeshiActionTaskが初期化されました。Mode: {self.engage_mode}, DryRun: {self.dry_run}, LikeCount: {self.like_count}")
 
     def _like_back(self, page: Page, user_id: str, user_name: str, like_back_count: int, profile_page_url: str):
         """いいね返し処理"""
@@ -265,16 +265,17 @@ class EngageUserTask(BaseTask):
             finally:
                 if page:
                     page.close()
-
+        
+        # --- 最終サマリーログの出力 ---
+        # このタスクは単体で実行されるため、自身でサマリーログを出力する
         if like_back_processed_count > 0 or like_back_error_count > 0:
             logger.info(f"[Action Summary] name=いいね返し, count={like_back_processed_count}, errors={like_back_error_count}")
-
         if comment_processed_count > 0 or comment_error_count > 0:
             logger.info(f"[Action Summary] name=コメント返し, count={comment_processed_count}, errors={comment_error_count}")
+            
+        return like_back_processed_count, like_back_error_count, comment_processed_count, comment_error_count
 
-        return True
-
-def run_engage_user(users: list[dict], dry_run: bool = False, engage_mode: str = 'all', like_count: int = None):
+def run_okaeshi_action(users: list[dict], dry_run: bool = False, engage_mode: str = 'all', like_count: int = None):
     """ラッパー関数"""
-    task = EngageUserTask(users=users, dry_run=dry_run, engage_mode=engage_mode, like_count=like_count)
+    task = OkaeshiActionTask(users=users, dry_run=dry_run, engage_mode=engage_mode, like_count=like_count)
     return task.run()

@@ -11,6 +11,8 @@ from app.utils.selector_utils import convert_to_robust_selector
 # selector_utilsからconvert_to_robust_selectorをインポート
 from app.utils.selector_utils import convert_to_robust_selector
 
+logger = logging.getLogger(__name__)
+
 class FollowTask(BaseTask):
     """
     楽天ROOMのユーザーを検索し、「フォロー」アクションを実行する。（導線修正・安定版）
@@ -47,7 +49,7 @@ class FollowTask(BaseTask):
             page.evaluate(js_code)
             #logging.info(f"残留していた「フォロー中」カードを非表示にしました。")
         except Exception as e:
-            logging.error(f"残留カードの非表示処理中にエラーが発生しました: {e}")
+            logger.error(f"残留カードの非表示処理中にエラーが発生しました: {e}")
 
 
     def scroll_to_load_more(self, page, scroll_delay=4, max_scrolls_per_attempt=5) -> bool:
@@ -69,7 +71,7 @@ class FollowTask(BaseTask):
                 time.sleep(scroll_delay)
                 current_height = page.locator(scroll_container_selector).evaluate("node => node.scrollHeight")
             except Exception as e:
-                logging.warning(f"スクロール中にエラーが発生しました: {e}。スクロールを終了します。")
+                logger.warning(f"スクロール中にエラーが発生しました: {e}。スクロールを終了します。")
                 return True # エラー時は終端と見なす
 
             #logging.info(f"モーダルをスクロールしました。({scroll_count}/{max_scrolls_per_attempt})。現在の高さ: {current_height}px")
@@ -79,7 +81,7 @@ class FollowTask(BaseTask):
                 #logging.info(f"高さが変わらなかったため、このロードは完了したと判断します。")
                 # 3回連続で変わらない場合、終端の可能性が高いと判断
                 if scroll_count >= 3: 
-                    logging.debug("3回以上の連続スクロールで高さが変わらなかったため、リスト終端と判断します。")
+                    logger.debug("3回以上の連続スクロールで高さが変わらなかったため、リスト終端と判断します。")
                     return True
                 # 連続で高さが変わらないがまだロード途中かもしれないので、今回はロード済みとしてループを抜ける
                 break 
@@ -129,7 +131,7 @@ class FollowTask(BaseTask):
         except Exception:
             user_name = "（ユーザー名取得失敗）"
         
-        logging.info(f"ユーザー「{user_name}」のルームに遷移します。")
+        logger.info(f"ユーザー「{user_name}」のルームに遷移します。")
         first_user_profile_link.click()
         page.wait_for_load_state("domcontentloaded", timeout=15000)
         #time.sleep(3) # 遷移先の描画待ち
@@ -192,11 +194,11 @@ class FollowTask(BaseTask):
                             self.target_users.append(user_name_found)
                             #logging.info(f"ユーザー「{user_name_found}」をフォロー対象リストに追加しました。({len(self.target_users)}/{self.target_count}件)")
                 except Exception:
-                    logging.warning("ユーザー名の取得に失敗しましたが、リストアップ処理は続行します。")
+                    logger.warning("ユーザー名の取得に失敗しましたが、リストアップ処理は続行します。")
             
             # 5. リストが更新されていない（新しいユーザーが見つからなかった）場合、リスト終端と判断
             if len(self.target_users) == initial_count and not is_list_end:
-                 logging.warning("スクロールを繰り返しましたが、新しいフォロー対象ユーザーが見つからなかったため、リストの終端に達したと判断します。")
+                 logger.warning("スクロールを繰り返しましたが、新しいフォロー対象ユーザーが見つからなかったため、リストの終端に達したと判断します。")
                  is_list_end = True
             
             # 6. リスト終端に達したと判断され、かつ目標件数に達していない場合はループを抜ける
@@ -205,7 +207,7 @@ class FollowTask(BaseTask):
         
         
         if not self.target_users:
-            logging.warning("フォロー対象ユーザーがリストアップされなかったため、タスクを終了します。")
+            logger.warning("フォロー対象ユーザーがリストアップされなかったため、タスクを終了します。")
             # logging.info("タスクの全フォロー処理が完了しました。ユーザーの要望に基づき、60秒間待機します。")
             # time.sleep(60)
             # logging.info("60秒間の待機を終了します。タスクを終了します。")
@@ -230,7 +232,7 @@ class FollowTask(BaseTask):
             
             elapsed_time = time.time() - start_time
             if elapsed_time > self.max_duration_seconds:
-                logging.info(f"最大実行時間（{self.max_duration_seconds}秒）に達したため、タスクを終了します。")
+                logger.info(f"最大実行時間（{self.max_duration_seconds}秒）に達したため、タスクを終了します。")
                 break
             
             # --- ロケータの準備 ---
@@ -241,10 +243,10 @@ class FollowTask(BaseTask):
                 ).first
                 
                 if profile_wrapper_locator.count() == 0:
-                    logging.warning(f"ユーザー「{user_name_to_follow}」のカードが見つかりませんでした。スキップします。")
+                    logger.warning(f"ユーザー「{user_name_to_follow}」のカードが見つかりませんでした。スキップします。")
                     continue
             except Exception as e:
-                logging.error(f"ユーザー行の特定中にエラーが発生しました（ユーザー: {user_name_to_follow}）: {e}")
+                logger.error(f"ユーザー行の特定中にエラーが発生しました（ユーザー: {user_name_to_follow}）: {e}")
                 continue
 
             # --- フォローアクションとリトライ処理 (最大n回) ---
@@ -258,13 +260,13 @@ class FollowTask(BaseTask):
                 followed_button = profile_wrapper_locator.get_by_role("button", name="フォロー中")
 
                 if follow_button.count() == 0 and followed_button.count() > 0:
-                    logging.info(f"ユーザー「{user_name_to_follow}」は既にフォロー中でした。スキップします。")
+                    logger.info(f"ユーザー「{user_name_to_follow}」は既にフォロー中でした。スキップします。")
                     success = True
                     break
                 
                 # ボタンが存在しない場合、そもそもスキップ
                 if follow_button.count() == 0:
-                    logging.warning(f"ユーザー「{user_name_to_follow}」の「フォローする」ボタンが見つかりません。スキップします。")
+                    logger.warning(f"ユーザー「{user_name_to_follow}」の「フォローする」ボタンが見つかりません。スキップします。")
                     break 
                          
                 
@@ -288,7 +290,7 @@ class FollowTask(BaseTask):
                     # 状態遷移に失敗した場合（タイムアウトなど）
                     if attempt == max_retries - 1:
                         # 最終試行でも失敗した場合のみ、エラーログを出力し、次のユーザーへ
-                        logging.debug(f"ユーザー「{user_name_to_follow}」のフォローは、{max_retries}回の試行後も失敗しました。このユーザーをスキップします。エラー詳細: {e.__class__.__name__}")
+                        logger.debug(f"ユーザー「{user_name_to_follow}」のフォローは、{max_retries}回の試行後も失敗しました。このユーザーをスキップします。エラー詳細: {e.__class__.__name__}")
                         break # 内側のループを抜けて、次のユーザーの処理へ
                     
                     # リトライが残っている場合は警告ログを出力して続行
@@ -300,20 +302,17 @@ class FollowTask(BaseTask):
                 followed_count += 1
                 # log_message = f"ユーザー「{user_name_to_follow}」のフォローに成功し、状態遷移を確認しました。(実行: {followed_count}/{len(self.target_users)}件)"
                 log_message = f"{user_name_to_follow}をフォローしました。({followed_count}/{len(self.target_users)})"
-                logging.debug(log_message)
+                logger.debug(log_message)
             
             #time.sleep(random.uniform(2, 3)) # フォロー間隔
 
         # logging.info(f"合計{followed_count}件のフォローを実行しました。")
-        logging.info(f"[Action Summary] name=フォロー, count={followed_count}")
+        # --- 最終サマリーログの出力 ---
+        logger.info(f"[Action Summary] name=フォロー, count={followed_count}, errors=0")
 
-        # ★★★ 処理完了後の60秒待機 ★★★
-        # logging.info("タスクの全フォロー処理が完了しました。ユーザーの要望に基づき、60秒間待機します。")
-        # time.sleep(60)
-
-        # logging.info("60秒間の待機を終了します。タスクを終了します。")
+        return followed_count
 
 def run_follow_action(count: int = 10):
     """ラッパー関数"""
     task = FollowTask(count=count)
-    return task.run()
+    return task.run() or 0 # 失敗時は 0 を返す

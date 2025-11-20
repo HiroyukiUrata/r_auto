@@ -35,7 +35,7 @@ class LikeBackTask(BaseTask):
         )
         liked_count, error_count = liker.execute()
         # 1件でも成功していればTrueを返す（ドライラン時も同様）
-        return liked_count > 0 or self.dry_run
+        return liked_count, error_count
 
     def _execute_main_logic(self):
         users_details = get_user_details_for_like_back(self.user_ids)
@@ -52,24 +52,29 @@ class LikeBackTask(BaseTask):
             page = self.context.new_page()
             try:
                 page.goto(user['user_page_url'], wait_until="domcontentloaded")
-                if self._execute_like_action(page, user['user_id'], user['user_name']):
-                    like_back_processed_count += 1
+                liked_this_user, errors_this_user = self._execute_like_action(page, user['user_id'], user['user_name'])
+                if liked_this_user > 0 or self.dry_run:
+                    like_back_processed_count += liked_this_user if not self.dry_run else 1
                     # いいね返しが成功したら、DBのステータスを更新する
                     self._execute_side_effect(
                         update_like_back_status,
                         user_page_url=user['user_page_url'],
                         like_count=self.like_count
                     )
-                else:
-                    like_back_error_count += 1
+                if errors_this_user > 0:
+                    like_back_error_count += errors_this_user
             finally:
                 page.close()
 
+        # --- 最終サマリーログの出力 ---
         if like_back_processed_count > 0 or like_back_error_count > 0:
             logger.info(f"[Action Summary] name=いいね返し, count={like_back_processed_count}, errors={like_back_error_count}")
-        return True
+
+        # 成功件数とエラー件数をタプルで返す
+        return like_back_processed_count, like_back_error_count
 
 def run_like_back(user_ids: list[str], like_count: int, dry_run: bool = False):
     """LikeBackTaskのラッパー関数"""
     task = LikeBackTask(user_ids=user_ids, like_count=like_count, dry_run=dry_run)
-    return task.run()
+    result = task.run()
+    return result if isinstance(result, tuple) else (0, 0)

@@ -6,7 +6,7 @@ import random
 import time 
 from google import genai
 from app.core.base_task import BaseTask
-from app.core.database import get_users_for_ai_comment_creation, update_user_comment
+from app.core.database import get_users_for_ai_comment_creation, update_user_comment, get_users_for_commenting
 from app.core.ai_utils import call_gemini_api_with_retry
 from app.utils.json_utils import parse_json_with_rescue
 
@@ -102,7 +102,7 @@ class GenerateEngagementCommentsTask(BaseTask):
             users = get_users_for_ai_comment_creation()
             if not users:
                 logger.debug("AIコメント作成対象のユーザーはいません。")
-                return True
+                # 対象がいなくても、サマリー計算のために処理を続行する
 
             logger.debug(f"--- {len(users)}人のユーザーを対象にAIコメント作成を開始します ---")
 
@@ -160,16 +160,24 @@ class GenerateEngagementCommentsTask(BaseTask):
                     updated_count += 1
 
             logger.debug(f"--- AIコメント作成完了。{updated_count}件のコメントを更新しました。 ---")
-            if updated_count > 0:
-                summary_message = f"{updated_count}件のコメントを生成しました。"
-                #logger.info(f"[Action Summary] name=返信コメント生成, count={updated_count}, message='{summary_message}'")
-            return True
+
+            # フローの最終成果として、エンゲージメント対象の件数を計算して返す
+            try:
+                users_for_engagement = get_users_for_commenting(limit=200)
+                like_only_count = sum(1 for u in users_for_engagement if u.get('engagement_type') == 'like_only')
+                comment_target_count = sum(1 for u in users_for_engagement if u.get('engagement_type') == 'comment')
+                return f"いいね待ち: {like_only_count}件, コメント待ち: {comment_target_count}件"
+            except Exception as summary_error:
+                logger.error(f"エンゲージメントサマリーの取得中にエラーが発生しました: {summary_error}")
+                return "サマリーの取得に失敗しました。"
+
 
         except Exception as e:
             logger.error(f"AIコメント作成タスクの実行中にエラーが発生しました: {e}", exc_info=True)
-            return False
+            return 0, 1 # 失敗件数を返す
 
 def run_generate_engagement_comments():
     """ラッパー関数"""
     task = GenerateEngagementCommentsTask()
-    return task.run()
+    result = task.run()
+    return result # 文字列またはタプルをそのまま返す

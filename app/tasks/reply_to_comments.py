@@ -19,7 +19,8 @@ def reply_to_comments(replies: list[dict], dry_run: bool = False):
     :param dry_run: Trueの場合、実際の投稿は行わずスクリーンショットを撮るだけ。
     """
     task = ReplyToCommentsTask(replies=replies, dry_run=dry_run)
-    return task.run()
+    result = task.run()
+    return result if isinstance(result, tuple) else (0, 0)
 
 class ReplyToCommentsTask(BaseTask):
     def __init__(self, replies: list[dict], dry_run: bool = False):
@@ -101,11 +102,12 @@ class ReplyToCommentsTask(BaseTask):
 
         logger.debug("すべてのコメント返信タスクが完了しました。")
 
-        # 処理結果のサマリーをログに出力
+        # --- 最終サマリーログの出力 ---
         if success_count > 0 or error_count > 0:
             logger.info(f"[Action Summary] name=マイコメ返信, count={success_count}, errors={error_count}")
 
-        return True
+        # 処理結果のサマリーをログに出力
+        return success_count, error_count
 
 if __name__ == '__main__':
     # テスト用の設定

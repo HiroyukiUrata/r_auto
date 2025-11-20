@@ -42,24 +42,25 @@ class CreateProductCaptionTask(BaseTask):
             client = genai.Client(api_key=api_key)
             total_products_count = get_products_count_for_caption_creation()
             if total_products_count == 0:
-                logging.info("投稿文作成対象の商品はありません。")
-                return True
+                logging.debug("投稿文作成対象の商品はありません。")
+                return 0, 0
 
             MAX_PRODUCTS_PER_BATCH = 10 # 一度に処理する件数
             max_batches = math.ceil(total_products_count / MAX_PRODUCTS_PER_BATCH)
-            logging.info(f"投稿文作成対象の全商品: {total_products_count}件。バッチ処理を開始します（{max_batches}回）。")
+            logging.debug(f"投稿文作成対象の全商品: {total_products_count}件。バッチ処理を開始します（{max_batches}回）。")
 
             with open(PROMPT_FILE, "r", encoding="utf-8") as f:
                 prompt_template = f.read()
 
             total_updated_count = 0
+            total_error_count = 0
             for batch_num in range(1, max_batches + 1):
                 products = get_products_for_caption_creation(limit=MAX_PRODUCTS_PER_BATCH)
                 if not products:
-                    logging.info("投稿文作成対象の商品がなくなったため、処理を終了します。")
+                    logging.debug("投稿文作成対象の商品がなくなったため、処理を終了します。")
                     break
 
-                logging.info(f"--- バッチ {batch_num}/{max_batches} を開始します。処理件数: {len(products)}件 ---")
+                logging.debug(f"--- バッチ {batch_num}/{max_batches} を開始します。処理件数: {len(products)}件 ---")
 
                 items_data = [{"id": p["id"], "page_url": p["url"], "item_description": p["name"], "image_url": p["image_url"], "ai_caption": ""} for p in products]
                 json_string = json.dumps(items_data, indent=2, ensure_ascii=False)
@@ -69,6 +70,7 @@ class CreateProductCaptionTask(BaseTask):
 
                 if not response_text:
                     logging.error(f"バッチ {batch_num}: AIからの応答がありませんでした。このバッチをスキップします。")
+                    total_error_count += len(products)
                     continue
 
                 generated_items = parse_json_with_rescue(response_text)
@@ -81,10 +83,11 @@ class CreateProductCaptionTask(BaseTask):
                         if caption:
                             update_ai_caption(product['id'], caption)
                             batch_updated_count += 1
-                    logging.info(f"バッチ {batch_num}: {batch_updated_count}件の投稿文をデータベースに保存しました。")
+                    logging.debug(f"バッチ {batch_num}: {batch_updated_count}件の投稿文をデータベースに保存しました。")
                     total_updated_count += batch_updated_count
                 else:
                     logging.error(f"バッチ {batch_num}: AIの応答から有効なJSONデータを抽出できませんでした。")
+                    total_error_count += len(products)
                     logging.debug(f"AIからの生応答: {response_text}")
                     continue
 
@@ -92,14 +95,15 @@ class CreateProductCaptionTask(BaseTask):
                 if batch_num < max_batches:
                     time.sleep(random.uniform(1, 3))
             
-            logging.info(f"--- 全バッチ処理完了。合計 {total_updated_count} 件の投稿文を更新しました。 ---")
-            return True
+            logging.debug(f"--- 全バッチ処理完了。合計 {total_updated_count} 件の投稿文を更新しました。 ---")
+            return total_updated_count, total_error_count
 
         except Exception as e:
             logging.error(f"Gemini APIの呼び出し中にエラーが発生しました: {e}", exc_info=True)
-            return False
+            return 0, get_products_count_for_caption_creation() # 残っている件数をエラーとして返す
 
 def generate_product_caption(count: int = 5):
     """ラッパー関数"""
     task = CreateProductCaptionTask(count=count)
-    return task.run()
+    result = task.run()
+    return result if isinstance(result, tuple) else (0, 0)

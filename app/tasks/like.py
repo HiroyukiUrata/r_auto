@@ -120,9 +120,12 @@ class LikeTask(BaseTask):
                 page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
                 time.sleep(3) # スクロール後の読み込みを待つ
 
-        logger.info(f"[Action Summary] name=いいね, count={liked_count}")
+        # --- 最終サマリーログの出力 ---
+        logger.info(f"[Action Summary] name=いいね, count={liked_count}, errors=0")
+
+        return liked_count
 
 def run_like_action(count: int = 10, max_duration_seconds: int = 600):
     """ラッパー関数"""
     task = LikeTask(count=count, max_duration_seconds=max_duration_seconds)
-    return task.run()
+    return task.run() or 0 # 失敗時は 0 を返す

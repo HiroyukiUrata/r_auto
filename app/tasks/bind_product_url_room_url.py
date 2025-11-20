@@ -23,6 +23,9 @@ class BindProductUrlRoomUrlTask(BaseTask):
         logger.debug(f"処理目標件数: {self.target_count}件")
 
         page = self.page
+        # --- 成功/失敗件数をカウントする変数を追加 ---
+        success_count = 0
+        error_count = 0
         
         try:
             # 1. トップページにアクセス
@@ -164,22 +167,26 @@ class BindProductUrlRoomUrlTask(BaseTask):
                 if rakuten_url and detail_page_url:
                     logger.debug(f"  -> DBのroom_urlを更新します (キー: {rakuten_url[:40]}...)")
                     update_room_url_by_rakuten_url(rakuten_url, detail_page_url)
+                    success_count += 1
+                else:
+                    error_count += 1
                 
                 processed_count += 1
 
         except Exception as e:
             logger.error(f"タスクの実行中にエラーが発生しました: {e}", exc_info=True)
-            return False
+            return success_count, error_count + 1 # タスク自体がエラーになった場合もエラーとしてカウント
         finally:
             logger.info(f"合計 {processed_count} 件のカードを処理しました。")
             logger.info(f"--- {self.action_name}を終了します ---")
         
-        return True
+        # --- 成功件数と失敗件数をタプルで返す ---
+        return success_count, error_count
 
 def run_bind_product_url_room_url(count: int = 2, **kwargs):
     """
     BindProductUrlRoomUrlTask のラッパー関数。
     """
-    # __init__からsource_urlを削除したため、引数も削除
     task = BindProductUrlRoomUrlTask(count=count)
-    return task.run()
+    result = task.run()
+    return result if isinstance(result, tuple) else (0, 0)

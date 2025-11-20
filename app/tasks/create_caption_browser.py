@@ -33,20 +33,23 @@ class CreateCaptionTask(BaseTask):
         # 最初に総件数を取得
         total_products_count = get_products_count_for_caption_creation()
         if total_products_count == 0:
-            logging.info("投稿文作成対象の商品はありません。")
-            return
-        logging.info(f"投稿文作成対象の全商品: {total_products_count}件")
+            logging.debug("投稿文作成対象の商品はありません。")
+            return 0, 0
+        logging.debug(f"投稿文作成対象の全商品: {total_products_count}件")
 
         max_batches = math.ceil(total_products_count / MAX_PRODUCTS_PER_BATCH)
         logging.debug(f"最大バッチ処理回数: {max_batches}回")
 
+        total_updated_count = 0
+        total_error_count = 0
+
         for batch_num in range(1, max_batches + 1):
             products = get_products_for_caption_creation(limit=MAX_PRODUCTS_PER_BATCH)
             if not products:
-                logging.info("投稿文作成対象の商品がなくなったため、処理を終了します。")
+                logging.debug("投稿文作成対象の商品がなくなったため、処理を終了します。")
                 break
 
-            logging.info(f"--- バッチ {batch_num}/{max_batches} を開始します。処理件数: {len(products)}件 ---")
+            logging.debug(f"--- バッチ {batch_num}/{max_batches} を開始します。処理件数: {len(products)}件 ---")
 
             items_data = [{"page_url": p["url"], "item_description": p["name"], "image_url": p["image_url"], "ai_caption": ""} for p in products]
             
@@ -82,6 +85,7 @@ class CreateCaptionTask(BaseTask):
                     logging.error(f"バッチ {batch_num}: Geminiの応答待機中にタイムアウトしました。")
                     self._save_debug_info(full_prompt, "gemini_response_timeout")
                     for product in products: update_product_status(product['id'], 'エラー')
+                    total_error_count += len(products)
                     continue
 
                 try:
@@ -107,16 +111,21 @@ class CreateCaptionTask(BaseTask):
                         if caption:
                             update_ai_caption(product['id'], caption)
                             updated_count += 1
-                    logging.info(f"バッチ {batch_num}: {updated_count}件の投稿文をデータベースに保存しました。")
+                    total_updated_count += updated_count
+                    logging.debug(f"バッチ {batch_num}: {updated_count}件の投稿文をデータベースに保存しました。")
+                else:
+                    logging.error(f"バッチ {batch_num}: AIの応答から有効なJSONデータを抽出できませんでした。")
+                    total_error_count += len(products)
 
             except Exception as e:
                 # 本番環境(simple)ではトレースバックを抑制し、開発環境(detailed)では表示する
                 is_detailed_log = os.getenv('LOG_FORMAT', 'detailed').lower() == 'detailed' # この行は既に修正済みですが、念のため記載
                 logging.error(f"プロンプトの生成またはコピー中にエラーが発生しました: {e}", exc_info=is_detailed_log)
                 self._save_debug_info(full_prompt, "general_error")
-                for product in products: update_product_status(product['id'], 'エラー')
-                # BaseTaskのエラーハンドリングに任せるため、例外を再送出
-                raise
+                for product in products: update_product_status(product['id'], 'エラー', error_message=str(e))
+                total_error_count += len(products)
+        
+        return total_updated_count, total_error_count
 
     def _save_debug_info(self, prompt_text: str, error_type: str):
         """エラー発生時のデバッグ情報（プロンプトとスクリーンショット）を保存する"""
@@ -130,11 +139,12 @@ class CreateCaptionTask(BaseTask):
                 prompt_filename = os.path.join(DEBUG_DIR, f"error_prompt_{error_type}_{timestamp}.txt")
                 with open(prompt_filename, "w", encoding="utf-8") as f:
                     f.write(prompt_text)
-                logging.info(f"エラー発生時のプロンプトを {prompt_filename} に保存しました。")
+                logging.debug(f"エラー発生時のプロンプトを {prompt_filename} に保存しました。")
         except Exception as e:
             logging.error(f"デバッグ情報の保存中にエラーが発生しました: {e}")
 
 def create_caption_prompt(count: int = 0):
     """ラッパー関数"""
     task = CreateCaptionTask(count=count)
-    return task.run()
+    result = task.run()
+    return result if isinstance(result, tuple) else (0, 0)

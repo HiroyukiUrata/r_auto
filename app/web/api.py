@@ -1361,19 +1361,6 @@ def _run_task_internal(tag: str, is_part_of_flow: bool, **kwargs):
 
     definition = TASK_DEFINITIONS.get(tag)
 
-    # --- 商品調達フローの動的切り替え ---
-    if tag == "_procure-wrapper": # ラッパータスクが呼び出されたら差し替え
-        config = get_config()
-        method = config.get("procurement_method", "rakuten_search") # デフォルトは楽天検索
-        if method == "user_page_crawl":
-            actual_tag = "procure-from-user-page"
-        elif method == "rakuten_api":
-            actual_tag = "rakuten-api-procure"
-        else: # "rakuten_search" がデフォルト
-            actual_tag = "rakuten-search-procure"
-        logging.info(f"商品調達メソッド: {method} を使用します。実行タスク: {actual_tag}")
-        definition = TASK_DEFINITIONS.get(actual_tag)
-
     # --- 投稿文作成フローの動的切り替え ---
     if tag == "create-caption-flow":
         config = get_config()
@@ -1396,10 +1383,32 @@ def _run_task_internal(tag: str, is_part_of_flow: bool, **kwargs):
         # 2. スケジュール実行などから渡された引数で上書き
         flow_kwargs.update(flow_run_kwargs)
 
+        # --- フロー内容の動的書き換え ---
+        if tag == "procure-products-flow":
+            config = get_config()
+            method = config.get("procurement_method", "rakuten_search")
+            if method == "user_page_crawl":
+                procure_task = "procure-from-user-page"
+            elif method == "rakuten_api":
+                procure_task = "rakuten-api-procure"
+            else: # "rakuten_search" がデフォルト
+                procure_task = "search-and-procure-from-rakuten"
+            
+            logging.debug(f"商品調達メソッド '{method}' を使用します。実行タスク: {procure_task}")
+            # フローの先頭に、解決した調達タスクを挿入
+            flow_definition.insert(0, (procure_task, {"count": "flow_count"}))
+
         logging.info(f"--- フロー実行: 「{definition['name_ja']}」を開始します。 ---")
 
         def run_flow():
+            # --- 集計変数を run_flow の中で初期化 ---
+            main_success_count = 0
+            total_error_count = 0
+            summary_message = None # ★★★ 追加: message形式のサマリーを保持する変数
+            # ---
+
             flow_succeeded = True # フローが成功したかどうかを追跡するフラグ
+
             import inspect
             # flow_definitionが文字列かリストか判定
             if isinstance(flow_definition, str):
@@ -1407,77 +1416,96 @@ def _run_task_internal(tag: str, is_part_of_flow: bool, **kwargs):
             else: # リスト形式の場合
                 tasks_in_flow = flow_definition
 
+            try:
+                for i, (sub_task_id, sub_task_args) in enumerate(tasks_in_flow):
+                    original_sub_task_id = sub_task_id # 動的解決前のIDを保持
+                    if sub_task_id in TASK_DEFINITIONS:
+                        # --- フロー内の動的切り替えロジック ---
+                        if sub_task_id == "_create-caption-wrapper":
+                            config = get_config()
+                            method = config.get("caption_creation_method", "api")
+                            if method == "browser":
+                                sub_task_id = "create-caption-browser"
+                            else: # api
+                                sub_task_id = "create-caption-gemini"
+                            logging.debug(f"フロー内タスクを動的に解決: {sub_task_id}")
+                        sub_task_def = TASK_DEFINITIONS[original_sub_task_id]
+                        logging.debug(f"  フロー実行中 ({i+1}/{len(tasks_in_flow)}): 「{sub_task_def['name_ja']}」")
+                        
+                        # 動的に解決されたタスク名を使って、実行すべき関数を直接取得する
+                        sub_task_func = TASK_DEFINITIONS.get(sub_task_id, {}).get("function")
+                        if not sub_task_func:
+                            logging.error(f"フロー内のタスク '{sub_task_id}' に実行可能な関数が定義されていません。")
+                            break
+                        
+                        # 引数を解決
+                        final_kwargs = sub_task_def.get("default_kwargs", {}).copy()
+                        for key, value in sub_task_args.items():
+                            if value == "flow_count":
+                                final_kwargs[key] = flow_kwargs.get('count')
+                            elif value == "flow_hours_ago":
+                                final_kwargs[key] = flow_kwargs.get('hours_ago')
+    
+                        final_kwargs.update(flow_kwargs)
+                        
+                        try:
+                            sig = inspect.signature(sub_task_func)
+                            valid_args = { k: v for k, v in final_kwargs.items() if k in sig.parameters }
+                            task_result = sub_task_func(**valid_args)
 
-            for i, (sub_task_id, sub_task_args) in enumerate(tasks_in_flow):
-                if sub_task_id in TASK_DEFINITIONS:
-                    # --- フロー内の動的切り替えロジック ---
-                    if sub_task_id == "_procure-wrapper":
-                        config = get_config()
-                        method = config.get("procurement_method", "rakuten_search")
-                        if method == "user_page_crawl":
-                            sub_task_id = "procure-from-user-page"
-                        elif method == "rakuten_api":
-                            sub_task_id = "rakuten-api-procure"
-                        else: # "rakuten_search"
-                            sub_task_id = "rakuten-search-procure"
-                        logging.info(f"フロー内タスクを動的に解決: {sub_task_id}")
-                    
-                    if sub_task_id == "create-caption-flow":
-                        config = get_config()
-                        method = config.get("caption_creation_method", "api")
-                        if method == "browser":
-                            sub_task_id = "create-caption-browser"
-                        else: # api
-                            sub_task_id = "create-caption-gemini"
-                        logging.info(f"フロー内タスクを動的に解決: {sub_task_id}")
+                            # ★★★ デバッグログ追加 ★★★
+                            logging.debug(f"      -> タスク '{sub_task_id}' の戻り値: {task_result} (型: {type(task_result)})")
 
-                    sub_task_def = TASK_DEFINITIONS[sub_task_id]
-                    logging.debug(f"  フロー実行中 ({i+1}/{len(tasks_in_flow)}): 「{sub_task_def['name_ja']}」")
-                    # --- ★★★ 修正点 ★★★ ---
-                    # フロー内のサブタスクIDから直接関数を取得する
-                    sub_task_func = TASK_DEFINITIONS.get(sub_task_id, {}).get("function")
-                    if not sub_task_func:
-                        logging.error(f"フロー内のタスク '{sub_task_id}' に実行可能な関数が定義されていません。")
-                        break
-                    
-                    # 引数を解決
-                    final_kwargs = sub_task_def.get("default_kwargs", {}).copy()
-                    for key, value in sub_task_args.items():
-                        if value == "flow_count":
-                            final_kwargs[key] = flow_kwargs.get('count')
-                        elif value == "flow_hours_ago":
-                            final_kwargs[key] = flow_kwargs.get('hours_ago')
+                            # --- ★★★ 追加: message形式のサマリーをハンドリング ---
+                            if isinstance(task_result, str):
+                                summary_message = task_result
+                                logging.debug(f"      -> [集計] summary_message を設定しました: '{summary_message}'")
 
-                    # フロー全体に渡された引数で、個別のタスクの引数を上書きする
-                    final_kwargs.update(flow_kwargs)
-                    
-                    try:
-                        # タスク関数が実際に受け取れる引数のみを渡す
-                        sig = inspect.signature(sub_task_func)
-                        valid_args = {
-                            k: v for k, v in final_kwargs.items() 
-                            if k in sig.parameters
-                        }
-                        task_result = sub_task_func(**valid_args)
-                    except Exception as e:
-                        # 本番環境(simple)ではトレースバックを抑制し、開発環境(detailed)では表示する
-                        logging.error(f"フロー内のタスク「{sub_task_def['name_ja']}」実行中に予期せぬエラーが発生しました: {e}", exc_info=os.getenv('LOG_FORMAT', 'detailed').lower() == 'detailed')
-                        task_result = False
+                            # --- 戻り値を解析して集計 ---
+                            # boolはintのサブクラスなので、boolを除外するチェックを追加
+                            if isinstance(task_result, int) and not isinstance(task_result, bool):
+                                # 最初に返された0より大きいintを主たる成功件数とする
+                                if main_success_count == 0:
+                                    if task_result > 0:
+                                        main_success_count = task_result
+                                        logging.debug(f"      -> [集計] main_success_count を {main_success_count} に設定しました。")
+                            elif isinstance(task_result, tuple) and len(task_result) >= 2 and all(isinstance(n, int) for n in task_result):
+                                # (成功件数, エラー件数, ...) のタプルを想定
+                                # postingタスクのように、主たる成果をタプルで返す場合を考慮
+                                if main_success_count == 0 and task_result[0] > 0:
+                                    main_success_count = task_result[0]
+                                    logging.debug(f"      -> [集計] main_success_count を {main_success_count} に設定しました。(from tuple)")
+                                # 補助タスクのエラー件数のみ加算
+                                total_error_count += task_result[1]
+                                logging.debug(f"      -> [集計] total_error_count を {task_result[1]} 加算しました。 (現在値: {total_error_count})")
+                            # ---
 
-                    if task_result is False: # 明示的にFalseの場合のみ失敗とみなす
-                        logging.error(f"フロー内のタスク「{sub_task_def['name_ja']}」が失敗しました。フローを中断します。")
+                        except Exception as e:
+                            logging.error(f"フロー内のタスク「{sub_task_def['name_ja']}」実行中に予期せぬエラーが発生しました: {e}", exc_info=os.getenv('LOG_FORMAT', 'detailed').lower() == 'detailed')
+                            task_result = False
+    
+                        if task_result is False:
+                            logging.error(f"フロー内のタスク「{sub_task_def['name_ja']}」が失敗しました。フローを中断します。")
+                            flow_succeeded = False
+                            break
+                    else:
+                        logging.error(f"フロー内のタスク「{sub_task_id}」が見つかりません。フローを中断します。")
                         flow_succeeded = False
-                        break # forループを抜ける
+                        break
+            finally:
+                # フロー全体の最終結果をログに出力
+                if flow_succeeded:
+                    logging.info(f"--- フロー完了: 「{definition['name_ja']}」が正常に完了しました。 ---")
                 else:
-                    logging.error(f"フロー内のタスク「{sub_task_id}」が見つかりません。フローを中断します。")
-                    flow_succeeded = False
-                    break
-            
-            # フロー全体の最終結果をログに出力
-            if flow_succeeded:
-                logging.info(f"--- フロー完了: 「{definition['name_ja']}」が正常に完了しました。 ---")
-            else:
-                logging.error(f"--- フロー中断: 「{definition['name_ja']}」は途中で失敗しました。 ---")
+                    total_error_count += 1 # フロー自体が失敗したことをエラーとしてカウント
+                    logging.error(f"--- フロー中断: 「{definition['name_ja']}」は途中で失敗しました。 ---")
+                
+                # --- フローの最後に必ずサマリーを出力 ---
+                if summary_message: # ★★★ 修正: messageが設定されていれば優先的に出力
+                    logging.info(f"[Action Summary] name={definition['name_ja']}, message='{summary_message}'")
+                elif main_success_count > 0 or total_error_count > 0:
+                    logging.info(f"[Action Summary] name={definition['name_ja']}, count={main_success_count}, errors={total_error_count}")
+                # ---
         
         run_threaded(run_flow)
         return {"status": "success", "message": f"タスクフロー「{definition['name_ja']}」(件数: {flow_kwargs.get('count')})の実行を開始しました。"}

@@ -338,7 +338,7 @@
                                     ${isCountableTask ? `
                                     <input type="number" class="form-control" id="count-input-${job.tag}" placeholder="件数" value="1" min="1" style="flex-grow: 1; text-align: right;">
                                     ` : ''}
-                                    <button class="btn btn-primary" type="button" onclick="addTime(this, '${job.tag}', ${isCountableTask})"><i class="bi bi-plus-lg"></i><span class="d-none d-sm-inline ms-1">追加</span></button>
+                                    <button class="btn btn-primary" type="button" onclick="addTime(this, '${job.tag}', ${isCountableTask}, event)"><i class="bi bi-plus-lg"></i><span class="d-none d-sm-inline ms-1">追加</span></button>
                                 </div>
                             </div>
                         </div>
@@ -349,15 +349,30 @@
             });
         }
         
-        function addTime(button, tag, hasCount) {
+        function addTime(button, tag, hasCount, event) {
             const cardBody = button.closest('.card-body');
             const timeInput = cardBody.querySelector(`#time-input-${tag}`);
             let newTime = timeInput.value;
+            let isShiftAdd = false; // Shiftキーでの追加かどうかを判定するフラグ
+
+            // Shiftキーが押されていたら、現在時刻+1分をセット
+            if (event && event.shiftKey) {
+                isShiftAdd = true;
+                const now = new Date();
+                // 秒を切り捨ててから1分加算
+                now.setSeconds(0, 0); 
+                now.setMinutes(now.getMinutes() + 1); 
+                const hours = now.getHours().toString().padStart(2, '0');
+                const minutes = now.getMinutes().toString().padStart(2, '0');
+                newTime = `${hours}:${minutes}`;
+                // 隠しコマンド使用時は、入力欄をクリアしないでおくと連続追加に便利
+            } else {
+                // 通常時は入力欄をクリア
+                timeInput.value = '';
+            }
 
             const card = button.closest('.card');
             markCardAsDirty(button); // UIを「要保存」に変更
-
-            // ★変更点: 先に値のチェックを行い、空なら何もせずに終了
             if (!newTime) return;
 
             // ★★★ 修正点: 重複チェックと調整ロジックを追加 ★★★
@@ -376,8 +391,10 @@
             // 既存の時刻をタイムスタンプに変換
             const existingTimestamps = existingTimeElements.map(s => timeToTimestamp(s.childNodes[0].nodeValue.trim()));
             let proposedTimestamp = timeToTimestamp(newTime);
-            const fiveMinutes = 5 * 60 * 1000;
-            proposedTimestamp = Math.round(proposedTimestamp / fiveMinutes) * fiveMinutes; // 5分刻みに丸める
+            if (!isShiftAdd) { // Shiftキーでの追加でなければ、5分刻みに丸める
+                const fiveMinutes = 5 * 60 * 1000;
+                proposedTimestamp = Math.round(proposedTimestamp / fiveMinutes) * fiveMinutes;
+            }
 
             // 厳密な重複チェック (5分刻みに丸めた後)
             const snappedNewTime = timestampToTime(proposedTimestamp);
@@ -397,7 +414,6 @@
                 <button type="button" class="btn btn-sm btn-danger py-0 px-1" aria-label="削除" onclick="removeTime(this)"><i class="bi bi-x-lg"></i></button>
             `;
             timesContainer.appendChild(timeEntry);
-            timeInput.value = '';
         }
 
         function removeTime(button) {

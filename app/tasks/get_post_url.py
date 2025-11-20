@@ -18,11 +18,11 @@ class GetPostUrlTask(BaseTask):
     def _execute_main_logic(self):
         products = get_products_for_post_url_acquisition()
         if not products:
-            logging.info("投稿URL取得対象の商品はありません。")
-            return
+            logging.debug("投稿URL取得対象の商品はありません。")
+            return 0, 0
 
         total_count = len(products)
-        logging.info(f"{total_count}件の商品を対象に投稿URL取得処理を開始します。")
+        logging.debug(f"{total_count}件の商品を対象に投稿URL取得処理を開始します。")
 
         success_count = 0
         error_count = 0
@@ -45,7 +45,7 @@ class GetPostUrlTask(BaseTask):
                     # DBのURLと異なれば、更新対象として設定
                     new_main_url = final_url if final_url != product['url'] else None
                     if new_main_url:
-                        logging.info(f"  -> URLがリダイレクトされました。DBのURLを更新します: {new_main_url}")
+                        logging.debug(f"  -> URLがリダイレクトされました。DBのURLを更新します: {new_main_url}")
 
                     # <title>からショップ名を取得
                     shop_name = ""
@@ -84,8 +84,10 @@ class GetPostUrlTask(BaseTask):
                     page.close()
         
         logging.info(f"投稿URL取得処理が完了しました。成功: {success_count}件, 失敗: {error_count}件 (対象: {total_count}件)")
+        return success_count, error_count
 
 def run_get_post_url():
     """ラッパー関数"""
     task = GetPostUrlTask()
-    return task.run()
+    result = task.run()
+    return result if isinstance(result, tuple) else (0, 0)

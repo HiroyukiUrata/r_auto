@@ -105,13 +105,19 @@ def run_delete_room_post(products: list[dict], action: str):
         if action == 'recollect':
             from app.core.database import bulk_recollect_products
             bulk_recollect_products(successful_ids)
-            logging.info(f"[Action Summary] name=再コレ, count={len(successful_ids)}, errors={len(failed_ids)}")
         elif action == 'delete':
             from app.core.database import delete_multiple_products
             delete_multiple_products(successful_ids)
-            logging.info(f"[Action Summary] name=投稿削除, count={len(successful_ids)}, errors={len(failed_ids)}")
-    elif failed_ids:
-        logging.info(f"[Action Summary] name={'再コレ' if action == 'recollect' else '投稿削除'}, count=0, errors={len(failed_ids)}")
 
     if failed_ids:
         logging.warning(f"Playwrightでの処理に失敗した商品が {len(failed_ids)}件ありました。これらのDB操作はスキップされました。")
+
+    # --- 最終サマリーログの出力 ---
+    # scheduler_utils.py の集計キーに合わせて name を設定する
+    summary_name = "再コレ" if action == 'recollect' else "投稿削除"
+    success_count = len(successful_ids)
+    error_count = len(failed_ids)
+    logger.info(f"[Action Summary] name={summary_name}, count={success_count}, errors={error_count}")
+
+    # フロー側で集計するために、成功件数と失敗件数を返す
+    return len(successful_ids), len(failed_ids)
