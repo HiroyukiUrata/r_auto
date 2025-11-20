@@ -32,6 +32,7 @@ class NewLikeBackTask(BaseTask):
             user_name = user.get('name')
             profile_page_url = user.get('profile_page_url')
             
+            logger.info(f"ユーザー「{user_name}」へのいいね返しを開始します。")
             # 先にこのユーザーに対するいいね目標数を計算しておく
             target_like_count = 0
             if self.like_count is not None:
