@@ -2,7 +2,7 @@ import logging
 from app.core.base_task import BaseTask
 from app.core.database import recollect_product, delete_product
 from playwright.sync_api import Error
-
+logger = logging.getLogger(__name__)
 class DeleteRoomPostTask(BaseTask):
     """
     Playwrightを使用してROOMの投稿を削除するタスク。
@@ -117,7 +117,6 @@ def run_delete_room_post(products: list[dict], action: str):
     summary_name = "再コレ" if action == 'recollect' else "投稿削除"
     success_count = len(successful_ids)
     error_count = len(failed_ids)
-    logger.info(f"[Action Summary] name={summary_name}, count={success_count}, errors={error_count}")
-
+  
     # フロー側で集計するために、成功件数と失敗件数を返す
     return len(successful_ids), len(failed_ids)

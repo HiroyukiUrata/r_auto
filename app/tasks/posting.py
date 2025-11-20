@@ -2,7 +2,7 @@ import logging
 import os
 from app.core.base_task import BaseTask
 from app.core.database import get_all_ready_to_post_products, update_product_status, get_product_by_id
-
+logger = logging.getLogger(__name__)
 TRACE_DIR = "db/error_trace"
 
 class PostingTask(BaseTask):
