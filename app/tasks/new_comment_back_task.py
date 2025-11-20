@@ -153,8 +153,8 @@ class NewCommentBackTask(BaseTask):
                         logger.info(f"  -> {reason_type}コメント条件を満たしたため、投稿を実行します。({reason_detail})")
                     else:
                         reasons = []
-                        if not is_after_3_days:
-                            reasons.append("最終コメントから3日経過していない")
+                        # このブロックは can_comment_today が True の場合にのみ実行されるため、
+                        # is_after_3_days のチェックは不要。いいね数/フォロー条件のみをチェックする。
                         if not (is_like_based_target or is_follow_based_target):
                             reasons.append(f"いいね数またはフォロー条件未達 (いいね:{recent_likes}, フォローバック:{recent_follows})")
                         logger.info(f"  -> 再コメント条件を満たさないため、コメントはスキップします。({', '.join(reasons)})")
