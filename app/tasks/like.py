@@ -38,6 +38,7 @@ class LikeTask(BaseTask):
 
         # --- 「いいね」処理のループ ---
         liked_count = 0
+        error_count = 0
         start_time = time.time()
         last_liked_user = None # 最後に「いいね」したユーザー名を記録
         user_like_counts = {} # ユーザーごとの「いいね」回数を記録
@@ -111,6 +112,7 @@ class LikeTask(BaseTask):
                     continue 
                 except Exception:
                     logger.error("「いいね」クリック中にエラーが発生しました。", exc_info=True)
+                    error_count += 1
                     # エラーが発生しても処理を継続するため、ループを抜ける
                     break
 
@@ -120,12 +122,11 @@ class LikeTask(BaseTask):
                 page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
                 time.sleep(3) # スクロール後の読み込みを待つ
 
-        # --- 最終サマリーログの出力 ---
-        logger.info(f"[Action Summary] name=いいね, count={liked_count}, errors=0")
-
-        return liked_count
+        return liked_count, error_count
 
 def run_like_action(count: int = 10, max_duration_seconds: int = 600):
     """ラッパー関数"""
     task = LikeTask(count=count, max_duration_seconds=max_duration_seconds)
-    return task.run() or 0 # 失敗時は 0 を返す
+    result = task.run()
+    # 確実に (成功数, エラー数) のタプルを返すようにする
+    return result if isinstance(result, tuple) and len(result) >= 2 else (0, 1 if result is False else 0)

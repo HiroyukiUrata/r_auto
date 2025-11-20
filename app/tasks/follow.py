@@ -131,7 +131,7 @@ class FollowTask(BaseTask):
         except Exception:
             user_name = "（ユーザー名取得失敗）"
         
-        logger.info(f"ユーザー「{user_name}」のルームに遷移します。")
+        logger.debug(f"ユーザー「{user_name}」のルームに遷移します。")
         first_user_profile_link.click()
         page.wait_for_load_state("domcontentloaded", timeout=15000)
         #time.sleep(3) # 遷移先の描画待ち
@@ -226,6 +226,7 @@ class FollowTask(BaseTask):
         time.sleep(1) # 描画待ち
 
         followed_count = 0
+        error_count = 0
         start_time = time.time()
         
         for user_name_to_follow in self.target_users:
@@ -303,16 +304,16 @@ class FollowTask(BaseTask):
                 # log_message = f"ユーザー「{user_name_to_follow}」のフォローに成功し、状態遷移を確認しました。(実行: {followed_count}/{len(self.target_users)}件)"
                 log_message = f"{user_name_to_follow}をフォローしました。({followed_count}/{len(self.target_users)})"
                 logger.debug(log_message)
+            else:
+                error_count += 1
             
             #time.sleep(random.uniform(2, 3)) # フォロー間隔
 
-        # logging.info(f"合計{followed_count}件のフォローを実行しました。")
-        # --- 最終サマリーログの出力 ---
-        logger.info(f"[Action Summary] name=フォロー, count={followed_count}, errors=0")
-
-        return followed_count
+        return followed_count, error_count
 
 def run_follow_action(count: int = 10):
     """ラッパー関数"""
     task = FollowTask(count=count)
-    return task.run() or 0 # 失敗時は 0 を返す
+    result = task.run()
+    # 確実に (成功数, エラー数) のタプルを返すようにする
+    return result if isinstance(result, tuple) and len(result) >= 2 else (0, 1 if result is False else 0)

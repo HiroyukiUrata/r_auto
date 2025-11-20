@@ -77,10 +77,6 @@ class PostingTask(BaseTask):
                 if page and not page.is_closed():
                     page.close()
         
-        # --- 最終サマリーログの出力 ---
-        if posted_count > 0 or error_count > 0:
-            logger.info(f"[Action Summary] name=投稿, count={posted_count}, errors={error_count}")
-
         return posted_count, error_count
 
 def run_posting(count: int = 10, product_id: int = None):
