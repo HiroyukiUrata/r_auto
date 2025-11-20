@@ -1407,6 +1407,23 @@ def _run_task_internal(tag: str, is_part_of_flow: bool, **kwargs):
             summary_message = None # ★★★ 追加: message形式のサマリーを保持する変数
             # ---
 
+            def format_duration(seconds: float) -> str:
+                """実行時間を分かりやすい形式に変換する"""
+                if seconds < 60:
+                    return f"{seconds:.2f}秒"
+                
+                seconds_int = int(seconds)
+                if seconds_int < 3600:
+                    minutes, remaining_seconds = divmod(seconds_int, 60)
+                    return f"{minutes}分{remaining_seconds}秒"
+                else:
+                    hours, remainder = divmod(seconds_int, 3600)
+                    minutes, _ = divmod(remainder, 60)
+                    return f"{hours}時間{minutes}分"
+
+            import time
+            start_time = time.time()
+
             flow_succeeded = True # フローが成功したかどうかを追跡するフラグ
 
             import inspect
@@ -1493,12 +1510,14 @@ def _run_task_internal(tag: str, is_part_of_flow: bool, **kwargs):
                         flow_succeeded = False
                         break
             finally:
+                elapsed_time = time.time() - start_time
+                duration_str = format_duration(elapsed_time)
                 # フロー全体の最終結果をログに出力
                 if flow_succeeded:
-                    logging.info(f"--- フロー完了: 「{definition['name_ja']}」が正常に完了しました。 ---")
+                    logging.info(f"--- フロー完了: 「{definition['name_ja']}」が正常に完了しました。(実行時間: {duration_str}) ---")
                 else:
                     total_error_count += 1 # フロー自体が失敗したことをエラーとしてカウント
-                    logging.error(f"--- フロー中断: 「{definition['name_ja']}」は途中で失敗しました。 ---")
+                    logging.error(f"--- フロー中断: 「{definition['name_ja']}」は途中で失敗しました。(実行時間: {duration_str}) ---")
                 
                 # --- フローの最後に必ずサマリーを出力 ---
                 if summary_message: # ★★★ 修正: messageが設定されていれば優先的に出力
