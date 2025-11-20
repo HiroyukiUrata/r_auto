@@ -129,27 +129,40 @@ class NewCommentBackTask(BaseTask):
             # コメント実行可否を判定
             can_comment = False
             if comment_text:
-                if not last_commented_at_str:
-                    can_comment = True
-                    logger.info(f"  -> 新規ユーザーのため、コメント投稿を実行します。")
-                else:
-                    three_days_ago = datetime.now() - timedelta(days=3)
-                    last_commented_at = datetime.fromisoformat(last_commented_at_str)
-                    is_after_3_days = last_commented_at < three_days_ago
-                    recent_likes = user.get("recent_like_count", 0)
-                    is_enough_likes = recent_likes >= 5
+                # --- database.py の _add_engagement_type_to_users とロジックを完全に一致させる ---
+                three_days_ago = datetime.now() - timedelta(days=3)
+                last_commented_at = datetime.fromisoformat(last_commented_at_str) if last_commented_at_str else None
+                
+                # 1. 共通の前提条件: 3日間の再コメント期間をクリアしているか (新規ユーザーは常にTrue)
+                can_comment_today = not last_commented_at or last_commented_at < three_days_ago
 
-                    if is_after_3_days and is_enough_likes:
+                if can_comment_today:
+                    # 2. 個別の条件: 条件Aまたは条件Bを満たすか
+                    recent_likes = user.get("recent_like_count", 0)
+                    recent_follows = user.get("recent_follow_count", 0)
+                    is_following = user.get("is_following", 0) == 1
+                    # 条件A: いいね5件以上
+                    is_like_based_target = (recent_likes >= 5)
+                    # 条件B: フォロー済み & 新規フォローバック & いいね1件以上
+                    is_follow_based_target = (is_following and recent_follows > 0 and recent_likes >= 1)
+
+                    if is_like_based_target or is_follow_based_target:
                         can_comment = True
-                        logger.info(f"  -> 再コメント条件を満たしたため、コメント投稿を実行します。(最終コメントから3日以上経過 & いいね{recent_likes}件)")
+                        reason_type = "新規" if not last_commented_at else "再コメント"
+                        reason_detail = f"いいね{recent_likes}件" if is_like_based_target else f"フォローバック&いいね{recent_likes}件"
+                        logger.info(f"  -> {reason_type}コメント条件を満たしたため、投稿を実行します。({reason_detail})")
                     else:
                         reasons = []
                         if not is_after_3_days:
                             reasons.append("最終コメントから3日経過していない")
-                        if not is_enough_likes:
-                            reasons.append(f"いいねが5件未満({recent_likes}件)")
+                        if not (is_like_based_target or is_follow_based_target):
+                            reasons.append(f"いいね数またはフォロー条件未達 (いいね:{recent_likes}, フォローバック:{recent_follows})")
                         logger.info(f"  -> 再コメント条件を満たさないため、コメントはスキップします。({', '.join(reasons)})")
-
+                else: # can_comment_today が False の場合
+                    reasons = []
+                    if not can_comment_today:
+                        reasons.append("最終コメントから3日経過していない")
+                    logger.info(f"  -> 再コメント条件を満たさないため、コメントはスキップします。({', '.join(reasons)})")
             if not can_comment:
                 # can_commentがFalseになる理由は、上記のロジックで既にINFOレベルでログ出力されているため、
                 # ここでの追加のログは不要。
