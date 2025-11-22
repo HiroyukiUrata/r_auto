@@ -22,6 +22,9 @@ POSTS_PER_DAY = 30
 CARDS_PER_SCROLL = 20
 # 出力ファイル名
 OUTPUT_JSON_FILE = "test_scripts/output/deleted_products.json"
+# Trueにすると、スピナーの表示を待たずに指定された回数だけ高速でスクロールします。
+# ネットワークが遅い環境や、スピナーの挙動が不安定な場合に有効です。
+FAST_SCROLL_WITHOUT_SPINNER = False
 
 logger = logging.getLogger(__name__)
 
@@ -234,29 +237,35 @@ def run_test(page: Page):
                     logger.info("スクロール回数の計算結果が0以下です。スクロールせずに探索します。")
                 else:
                     # 2. 毎回、計算された回数の高速スクロールを実行
-                    logger.info(f"目的の日付 ({TARGET_DATE_STR}) まで、推定 {required_scrolls} 回の高速スクロールを実行します...")
-                    for i in range(required_scrolls):
-                        # まず1回スクロール
-                        page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                        try:
-                            # スピナーの表示を短時間待つ
-                            page.locator(spinner_selector).wait_for(state="visible", timeout=1500)
-                            # スピナーが消えるのを待つ
-                            page.locator(spinner_selector).wait_for(state="hidden", timeout=15000)
-                        except Error:
-                            # スピナーが出なかった場合、追加のアクションを試みる
-                            logger.debug(f"  -> スピナーが表示されませんでした。追加のスクロールを試みます。({i + 1}/{required_scrolls})")
+                    logger.info(f"目的の日付 ({TARGET_DATE_STR}) まで、推定 {required_scrolls} 回のスクロールを実行します...")
+                    
+                    if FAST_SCROLL_WITHOUT_SPINNER:
+                        # --- スピナー監視なしモード ---
+                        logger.info("  -> スピナー監視なしの高速スクロールモードで実行します。")
+                        for i in range(required_scrolls):
+                            page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                            time.sleep(1) # 1秒待機
+                            logger.debug(f"    -> 高速スクロール {i + 1}/{required_scrolls}")
+                    else:
+                        # --- スピナー監視ありモード (デフォルト) ---
+                        logger.info("  -> スピナーを監視しながらスクロールします。")
+                        for i in range(required_scrolls):
+                            page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
                             try:
-                                # 少し上にスクロールしてから再度下にスクロール
-                                page.evaluate("window.scrollBy(0, -500)") # 500px上にスクロール
-                                page.wait_for_timeout(200)
-                                page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                                # 追加アクション後、スピナーの表示・非表示を待つ
-                                page.locator(spinner_selector).wait_for(state="visible", timeout=3000)
+                                page.locator(spinner_selector).wait_for(state="visible", timeout=1500)
                                 page.locator(spinner_selector).wait_for(state="hidden", timeout=15000)
                             except Error:
-                                logger.warning(f"  -> 追加スクロール後もスピナーが表示されませんでした。ページの終端か、読み込みが遅い可能性があります。")
-                                time.sleep(1.5) # 念のため待機
+                                logger.debug(f"  -> スピナーが表示されませんでした。追加のスクロールを試みます。({i + 1}/{required_scrolls})")
+                                try:
+                                    page.evaluate("window.scrollBy(0, -500)")
+                                    page.wait_for_timeout(200)
+                                    page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                                    page.locator(spinner_selector).wait_for(state="visible", timeout=3000)
+                                    page.locator(spinner_selector).wait_for(state="hidden", timeout=15000)
+                                except Error:
+                                    logger.warning(f"  -> 追加スクロール後もスピナーが表示されませんでした。ページの終端か、読み込みが遅い可能性があります。")
+                                    break # これ以上スクロールしても無駄なので抜ける
+
                     logger.info("高速スクロールが完了しました。")
 
                 # 3. 画面上の最初の「未処理」カードを探す

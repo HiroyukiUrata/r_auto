@@ -38,6 +38,10 @@ def main():
                 kwargs[key] = True
             elif value.lower() == 'false':
                 kwargs[key] = False
+            # --- ★★★ 修正: 'script'引数のパスを正規化 ★★★ ---
+            # OS間のパス区切り文字の違い（\ と /）を吸収する
+            elif key == 'script':
+                kwargs[key] = os.path.normpath(value)
             else:
                 kwargs[key] = value
             i += 2
