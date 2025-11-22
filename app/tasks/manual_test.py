@@ -7,9 +7,12 @@ from app.core.base_task import BaseTask
 logger = logging.getLogger(__name__)
 
 # --- ★★★ ローカルPCのChromeプロファイルパスを設定 ★★★ ---
-# Seleniumで使用していたプロファイルパスを設定します。
-# r"..." (raw文字列) を使うと、パス区切り文字 `\` をエスケープする必要がなく便利です。
-LOCAL_CHROME_PROFILE_PATH = r"C:\Users\Admin\AppData\Local\Google\Chrome\SeleniumProfile"
+# 環境変数 'LOCAL_CHROME_PROFILE_PATH' からプロファイルパスを読み込みます。
+# 設定されていない場合は、Windows用のデフォルトパスを使用します。
+# Raspbianなどで実行する場合は、事前にこの環境変数を設定してください。
+# 例: export LOCAL_CHROME_PROFILE_PATH="/home/pi/.config/chromium/Default"
+DEFAULT_WINDOWS_PROFILE_PATH = r"C:\Users\Admin\AppData\Local\Google\Chrome\SeleniumProfile"
+LOCAL_CHROME_PROFILE_PATH = os.getenv("LOCAL_CHROME_PROFILE_PATH", DEFAULT_WINDOWS_PROFILE_PATH)
 
 
 class ManualTestTask(BaseTask):

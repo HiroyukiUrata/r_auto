@@ -13,7 +13,7 @@ from app.core.database import init_db, add_recollection_product
 # テスト対象のユーザーページURL
 TARGET_URL = "https://room.rakuten.co.jp/room_79a45994e0/items"
 # 探したい日付の文字列（例: "10月29日", "3日前" など、ページに表示されるままの形式）
-TARGET_DATE_STR = "11月15日"
+TARGET_DATE_STR = "11月01日"
 # 取得する最大件数
 MAX_FETCH_COUNT = 5 #ここは手動で設定するから変更しないで！！
 # 1日あたりの平均投稿数（スクロール計算用）
