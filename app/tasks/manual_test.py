@@ -1,5 +1,6 @@
 import logging
 import os
+import sys
 import time
 from app.core.base_task import BaseTask
 
@@ -51,16 +52,29 @@ class ManualTestTask(BaseTask):
                 logger.warning(f"古いロックファイル {lockfile_path} が見つかったため、削除します。")
                 os.remove(lockfile_path)
             
+            # --- ★★★ OSに応じてブラウザの起動方法を切り替える ★★★ ---
+            launch_options = {
+                "user_data_dir": LOCAL_CHROME_PROFILE_PATH,
+                "headless": self.headless_mode,
+                "slow_mo": 500,
+                "args": ["--disable-blink-features=AutomationControlled"]
+            }
+
+            if sys.platform == "linux":
+                # Raspbian (Linux) の場合、Chromiumブラウザの実行パスを指定
+                chromium_path = "/usr/bin/chromium-browser"
+                if os.path.exists(chromium_path):
+                    launch_options["executable_path"] = chromium_path
+                else:
+                    # パスが見つからない場合は channel="chromium" でフォールバック
+                    logger.warning(f"Chromiumの実行ファイルが {chromium_path} に見つかりません。channel='chromium'で起動を試みます。")
+                    launch_options["channel"] = "chromium"
+            else:
+                # Windowsやその他のOSでは、インストール済みのChromeを直接利用
+                launch_options["channel"] = "chrome"
+
             # 安定性とプロセスの完全終了のため、launch_persistent_context を使用します。
-            # channel="chrome" を指定することで、PCにインストール済みのChromeを直接利用し、
-            # プロファイルの競合によるハングアップを防ぎます。
-            self.context = self.playwright.chromium.launch_persistent_context(
-                user_data_dir=LOCAL_CHROME_PROFILE_PATH,
-                headless=self.headless_mode,
-                slow_mo=500,
-                channel="chrome", # ★★★ この引数が重要 ★★★
-                args=["--disable-blink-features=AutomationControlled"]
-            )
+            self.context = self.playwright.chromium.launch_persistent_context(**launch_options)
         else:
             logger.info("認証情報を使用せずに、新しいブラウザセッションで起動します。")
             browser = self.playwright.chromium.launch(
