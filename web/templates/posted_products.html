@@ -115,6 +115,10 @@
             <option value="50">50件</option>
             <option value="100">100件</option>
         </select>
+        <!-- 総件数表示エリア -->
+        <div class="ms-3 text-muted small" id="total-items-container" style="display: none;">
+            <span id="total-items-count">0</span> 件
+        </div>
     </div>
     <!-- 一括操作ボタン -->
     <div class="d-flex gap-2">
@@ -139,13 +143,13 @@
 
 <!-- 検索フィルター -->
 <div class="row g-2 mb-3 align-items-end collapse" id="search-filters">
-    <div class="col-lg-5 col-md-12">
+    <div class="col-lg-4 col-md-12">
         <label for="search-input" class="form-label small mb-1 d-none d-md-block">キーワード</label>
         <div class="input-group input-group-sm">
             <input type="search" id="search-input" class="form-control" placeholder="商品名、キーワードで検索...">
         </div>
     </div>
-    <div class="col-lg-5 col-md-8">
+    <div class="col-lg-4 col-md-8">
         <label for="start-date-input" class="form-label small mb-1 d-none d-md-block">投稿期間</label>
         <div class="input-group input-group-sm">
             <input type="date" id="start-date-input" class="form-control">
@@ -153,7 +157,13 @@
             <input type="date" id="end-date-input" class="form-control">
         </div>
     </div>
-    <div class="col-lg-2 col-md-4 d-flex gap-2 mt-2 mt-md-0">
+    <div class="col-lg-2 col-md-4 d-flex align-items-end">
+        <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" role="switch" id="room-url-unlinked-switch">
+            <label class="form-check-label small" for="room-url-unlinked-switch">ROOM URL未設定</label>
+        </div>
+    </div>
+    <div class="col-lg-2 col-md-12 d-flex gap-2 mt-2 mt-lg-0">
         <button class="btn btn-primary btn-sm w-100" type="button" id="search-btn"><i class="bi bi-search"></i> 検索</button>
         <button class="btn btn-outline-secondary btn-sm" type="button" id="clear-btn" title="条件をクリア"><i class="bi bi-x-lg"></i></button>
     </div>
@@ -242,7 +252,7 @@
 <script>
     let currentPage = 1;
 
-    async function fetchPostedProducts(page = 1, searchTerm = '', startDate = '', endDate = '') {
+    async function fetchPostedProducts(page = 1, searchTerm = '', startDate = '', endDate = '', roomUrlUnlinked = false) {
         const tableBody = document.getElementById('posted-products-table-body');
         tableBody.innerHTML = `<tr><td colspan="5" class="text-center"><div class="spinner-border spinner-border-sm" role="status"><span class="visually-hidden">Loading...</span></div></td></tr>`;
         
@@ -251,7 +261,8 @@
             const params = new URLSearchParams({
                 page: page,
                 per_page: itemsPerPage,
-                search_term: searchTerm
+                search_term: searchTerm,
+                room_url_unlinked: roomUrlUnlinked
             });
             if (startDate) params.append('start_date', startDate);
             if (endDate) params.append('end_date', endDate);
@@ -264,6 +275,7 @@
             
             tableBody.innerHTML = '';
             if (data.products.length === 0) {
+                document.getElementById('total-items-container').style.display = 'none';
                 tableBody.innerHTML = '<tr><td colspan="5" class="text-center">該当する商品はありません。</td></tr>';
             } else {
                 data.products.forEach(product => {
@@ -294,7 +306,19 @@
                                             <img src="${product.image_url || 'https://via.placeholder.com/60'}" alt="${product.name}" class="img-thumbnail product-thumbnail">
                                          </a>`;
                     } else {
-                        thumbnailHtml = `<img src="${product.image_url || 'https://via.placeholder.com/60'}" alt="${product.name}" class="img-thumbnail product-thumbnail grayscale" title="ROOM投稿URL未取得">`;
+                        // room_urlがない場合は、アイコンをオーバーレイ表示
+                        thumbnailHtml = `
+                            <div style="position: relative; display: inline-block;">
+                                <img src="${product.image_url || 'https://via.placeholder.com/60'}" alt="${product.name}" class="img-thumbnail product-thumbnail">
+                                <i class="bi bi-exclamation-circle-fill" 
+                                   style="position: absolute; 
+                                          top: 2px; 
+                                          right: 2px; 
+                                          font-size: 1.2rem;
+                                          color: orange;
+                                          text-shadow: 0 0 3px white, 0 0 2px white;"
+                                   title="ROOM投稿URLが紐付けられていません"></i>
+                            </div>`;
                     }
 
                     const escapedProductJson = JSON.stringify(product).replace(/'/g, '&apos;').replace(/"/g, '&quot;');
@@ -322,6 +346,10 @@
             }
             
             renderPagination(data.total_pages, page);
+            // 総件数を更新
+            const totalItemsContainer = document.getElementById('total-items-container');
+            document.getElementById('total-items-count').textContent = data.total_items;
+            totalItemsContainer.style.display = 'inline-block';
             
         } catch (error) {
             console.error('Error:', error);
@@ -402,7 +430,8 @@
         const searchTerm = document.getElementById('search-input').value;
         const startDate = document.getElementById('start-date-input').value;
         const endDate = document.getElementById('end-date-input').value;
-        fetchPostedProducts(currentPage, searchTerm, startDate, endDate);
+        const isRoomUrlUnlinked = document.getElementById('room-url-unlinked-switch').checked;
+        fetchPostedProducts(currentPage, searchTerm, startDate, endDate, isRoomUrlUnlinked);
     }
 
     function updateBulkActionButtons() {
@@ -586,6 +615,7 @@
             searchInput.value = '';
             startDateInput.value = '';
             endDateInput.value = '';
+            document.getElementById('room-url-unlinked-switch').checked = false;
             triggerSearch();
         });
 

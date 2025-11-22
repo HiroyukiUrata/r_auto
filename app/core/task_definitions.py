@@ -391,7 +391,6 @@ TASK_DEFINITIONS = {
         "function": reply_to_comments,
         "name_ja": "コメントへの返信投稿",
         "description": "「リピーター育成」ページで選択されたコメントに返信を投稿します。",
-        "is_debug": True,
         "show_in_schedule": False,
     },
     "bind-product-url-room-url": {
@@ -420,7 +419,7 @@ TASK_DEFINITIONS.update({
         "function": run_new_like_back,
         "name_ja": "【新】いいね返し実行",
         "description": "新しい「いいね返し」専門タスクを実行します。",
-        "is_debug": True, # テスト中はデバッグ画面に表示
+        "is_debug": False, # config.htmlには表示しない
         "show_in_schedule": False,
         "summary_name": "いいね返し", # フロー集計用の名前
         "order": 101,
@@ -429,7 +428,7 @@ TASK_DEFINITIONS.update({
         "function": run_new_comment_back,
         "name_ja": "【新】コメント返し実行",
         "description": "新しい「コメント返し」専門タスクを実行します。",
-        "is_debug": True, # テスト中はデバッグ画面に表示
+        "is_debug": False, # config.htmlには表示しない
         "show_in_schedule": False,
         "summary_name": "コメント返し", # フロー集計用の名前
         "order": 102,
@@ -437,8 +436,8 @@ TASK_DEFINITIONS.update({
     "new-engage-flow-all": {
         "name_ja": "【新】お返しフロー（いいね＆コメント）",
         "function": None,
-        "is_debug": True, # テスト中はデバッグ画面に表示
         "show_in_schedule": False,
+        "is_debug": False, # config.htmlには表示しない
         "description": "「いいね返し」と「コメント返し」を連続で実行します。",
         "flow": "check-login-status | new-like-back | new-comment-back",
         "aggregate_results": False, # 個別集計を行う
@@ -447,8 +446,8 @@ TASK_DEFINITIONS.update({
     "new-engage-flow-like-only": {
         "name_ja": "【新】お返しフロー（いいねのみ）",
         "function": None,
-        "is_debug": True,
         "show_in_schedule": False,
+        "is_debug": False, # config.htmlには表示しない
         "description": "「いいね返し」のみを実行します。",
         "flow": "check-login-status | new-like-back",
         "aggregate_results": False,
@@ -457,8 +456,8 @@ TASK_DEFINITIONS.update({
     "new-engage-flow-comment-only": {
         "name_ja": "【新】お返しフロー（コメントのみ）",
         "function": None,
-        "is_debug": True,
         "show_in_schedule": False,
+        "is_debug": False, # config.htmlには表示しない
         "description": "「コメント返し」のみを実行します。",
         "flow": "check-login-status | new-comment-back",
         "aggregate_results": False,

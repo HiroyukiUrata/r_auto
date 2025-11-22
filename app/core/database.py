@@ -221,22 +221,16 @@ def init_db():
         logging.debug("データベースが正常に初期化されました。")
     except sqlite3.Error as e:
         logging.error(f"データベース初期化エラー: {e}")
-def get_error_products_in_last_24h():
-    """過去24時間以内に作成され、かつステータスが「エラー」の商品を取得する"""
+def get_all_error_products():
+    """ステータスが「エラー」の商品をすべて取得する"""
     conn = get_db_connection()
     cur = conn.cursor()
-    # created_atが24時間前より新しい、かつstatusが'エラー'のものを取得
-    twenty_four_hours_ago = datetime.now() - timedelta(hours=24)
-
-    query = "SELECT * FROM products WHERE status = 'エラー' AND created_at >= ? ORDER BY created_at DESC"
-    params = (twenty_four_hours_ago,)
-
-    # logging.info(f"エラー商品取得クエリ実行: query='{query}', params={params}")
-
-    cur.execute(query, params)
+    
+    # ステータスが'エラー'のものをすべて取得し、作成日が新しい順にソート
+    query = "SELECT * FROM products WHERE status = 'エラー' ORDER BY created_at DESC"
+    cur.execute(query)
     products = [dict(row) for row in cur.fetchall()]
     conn.close()
-    # logging.info(f"クエリ結果: {len(products)}件のエラー商品を取得しました。")
     return products
 
 def get_all_ready_to_post_products(limit=None):
@@ -280,7 +274,7 @@ def get_all_inventory_products():
     conn.close()
     return products
 
-def get_posted_products(page: int = 1, per_page: int = 30, search_term: str = None, start_date: datetime.date = None, end_date: datetime.date = None):
+def get_posted_products(page: int = 1, per_page: int = 30, search_term: str = None, start_date: datetime.date = None, end_date: datetime.date = None, room_url_unlinked: bool = False):
     """
     投稿済の商品をページネーションと検索機能付きで取得する。
     """
@@ -304,6 +298,9 @@ def get_posted_products(page: int = 1, per_page: int = 30, search_term: str = No
         where_clauses.append("posted_at <= ?")
         params.append(end_datetime)
 
+    if room_url_unlinked:
+        where_clauses.append("(room_url IS NULL OR room_url = '')")
+
     where_sql = ""
     if where_clauses:
         where_sql = "WHERE " + " AND ".join(where_clauses)
@@ -323,14 +320,20 @@ def get_posted_products(page: int = 1, per_page: int = 30, search_term: str = No
     products = [dict(row) for row in cursor.fetchall()]
     
     conn.close()
-    return products, total_pages
+    return products, total_pages, total_items
 
 def get_reusable_products():
-    """procurement_keywordが「再コレ再利用」の商品をすべて取得する"""
+    """
+    再利用可能な商品をすべて取得する。
+    対象:
+    1. procurement_keyword が '再コレ再利用' の商品
+    2. post_url があり、room_url がない商品 (投稿失敗の救済)
+    """
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM products WHERE procurement_keyword = '再コレ再利用'")
+        cursor.execute("""SELECT * FROM products WHERE procurement_keyword = '再コレ再利用'
+           AND post_url IS NOT NULL AND post_url != '' AND (room_url IS NULL OR room_url = '')""")
         # sqlite3.Rowオブジェクトのリストを返す
         products = cursor.fetchall()
         return products

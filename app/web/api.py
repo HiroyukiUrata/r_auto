@@ -15,8 +15,8 @@ from fastapi import BackgroundTasks
 from app.core.task_manager import TaskManager
 from app.core.task_definitions import TASK_DEFINITIONS
 from app.core.database import (get_all_inventory_products, update_product_status, delete_all_products, init_db, get_product_by_id,
-                               delete_product, update_status_for_multiple_products, delete_multiple_products, get_product_count_by_status, get_reusable_products, recollect_product, bulk_recollect_products, update_product_post_url, update_product_room_url,
-                               get_error_products_in_last_24h, get_posted_products, update_product_priority, update_product_order, bulk_update_products_from_data, commit_user_actions, get_all_user_engagements, get_users_for_commenting,
+                               delete_product, update_status_for_multiple_products, delete_multiple_products, get_product_count_by_status, get_reusable_products, recollect_product, bulk_recollect_products, update_product_post_url, update_product_room_url, get_all_error_products,
+                               get_posted_products, update_product_priority, update_product_order, bulk_update_products_from_data, commit_user_actions, get_all_user_engagements, get_users_for_commenting,
                                update_user_comment, get_generated_replies, update_reply_text, ignore_reply, get_commenting_users_summary,
                                get_table_names, export_tables_as_sql, execute_sql_script)
 from app.tasks.posting import run_posting
@@ -499,19 +499,21 @@ async def api_get_posted_products(
     per_page: int = 30,
     search_term: Optional[str] = None,
     start_date: Optional[date] = None,
-    end_date: Optional[date] = None
+    end_date: Optional[date] = None,
+    room_url_unlinked: bool = False
 ):
     """投稿済商品をページネーション付きで取得する"""
     try:
-        products, total_pages = get_posted_products(
-            page=page, 
-            per_page=per_page, 
+        products, total_pages, total_items = get_posted_products(
+            page=page,
+            per_page=per_page,
             search_term=search_term,
             start_date=start_date,
-            end_date=end_date
+            end_date=end_date,
+            room_url_unlinked=room_url_unlinked
         )
         
-        return JSONResponse(content={"products": products, "total_pages": total_pages, "current_page": page})
+        return JSONResponse(content={"products": products, "total_pages": total_pages, "current_page": page, "total_items": total_items})
     except Exception as e:
         logging.error(f"投稿済商品の取得中にエラー: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="商品の取得に失敗しました。")
@@ -616,7 +618,7 @@ async def api_update_posted_product_room_url(product_id: int, request: RoomUrlUp
 @router.get("/api/errors")
 async def get_error_products():
     """エラー商品（過去24時間）のリストをJSONで返す"""
-    products = get_error_products_in_last_24h()
+    products = get_all_error_products()
     # get_error_products_in_last_24h は既に辞書のリストを返す
     return JSONResponse(content=products)
 
@@ -625,7 +627,7 @@ async def get_errors_summary():
     """エラー商品数とスクリーンショット数の合計を返す"""
     try:
         # エラー商品数を取得
-        error_products = get_error_products_in_last_24h()
+        error_products = get_all_error_products()
         error_product_count = len(error_products)
 
         # スクリーンショット数を取得
@@ -666,8 +668,8 @@ async def get_dashboard_summary(request: Request):
         log_summary = get_log_summary(period=period)
 
         # 24時間以内のエラー商品数を取得
-        error_products_24h = get_error_products_in_last_24h()
-        error_product_count_24h = len(error_products_24h)
+        all_error_products = get_all_error_products()
+        total_error_product_count = len(all_error_products)
 
         # 次のスケジュール情報を最大3件取得
         all_jobs = schedule.get_jobs()
@@ -712,7 +714,7 @@ async def get_dashboard_summary(request: Request):
         summary = {
             **log_summary,
             "next_schedules": next_schedules_info,
-            "error_product_count_24h": error_product_count_24h
+            "error_product_count": total_error_product_count
         }
         # logging.debug(f"[DASHBOARD_API] 処理成功。フロントエンドに返すデータ: {summary}")
         return JSONResponse(content=summary)
@@ -1387,7 +1389,7 @@ def _run_task_internal(tag: str, is_part_of_flow: bool, **kwargs):
             # フローの先頭に、解決した調達タスクを挿入
             flow_definition.insert(0, (procure_task, {"count": "flow_count"}))
 
-        logging.info(f"--- フロー実行: 「{definition['name_ja']}」を開始します。 ---")
+        logging.info(f"フロー実行: 「{definition['name_ja']}」を開始します。")
 
         def run_flow():
             # フローの集計方法を決定
@@ -1505,9 +1507,9 @@ def _run_task_internal(tag: str, is_part_of_flow: bool, **kwargs):
                 duration_str = format_duration(elapsed_time)
                 # フロー全体の最終結果をログに出力
                 if flow_succeeded:
-                    logging.info(f"--- フロー完了: 「{definition['name_ja']}」が正常に完了しました。(実行時間: {duration_str}) ---")
+                    logging.info(f"フロー完了: 「{definition['name_ja']}」が正常に完了しました。(実行時間: {duration_str})")
                 else:
-                    logging.error(f"--- フロー中断: 「{definition['name_ja']}」は途中で失敗しました。(実行時間: {duration_str}) ---")
+                    logging.error(f"フロー中断: 「{definition['name_ja']}」は途中で失敗しました。(実行時間: {duration_str})")
 
                 # 合算モードの場合のみ、フロー全体のサマリーを出力
                 if should_aggregate:

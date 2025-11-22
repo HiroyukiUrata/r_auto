@@ -321,7 +321,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 inventoryContainer.innerHTML += createCard(status, count, 0);
             }
             // 24時間以内のエラー件数を先頭に表示
-            const errorCardHtml = createCard('エラー商品', summaryData.error_product_count_24h, 0);
+            const errorCardHtml = createCard('エラー商品', summaryData.error_product_count, 0);
             inventoryContainer.insertAdjacentHTML('afterbegin', errorCardHtml);
 
             // エンゲージメントサマリーカードを在庫状況セクションに追加
