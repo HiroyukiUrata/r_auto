@@ -23,6 +23,17 @@
             padding-left: 0.7rem !important;
             font-size: 0.9rem; /* フォントサイズを少し小さくする */
         }
+        /* フロー実行中警告バーのスタイル */
+        #flow-running-warning {
+            position: sticky;
+            top: 56px; /* ナビゲーションバーの高さに合わせる */
+            z-index: 1021; /* ナビゲーションバー(1020)より手前に表示 */
+        }
+        #next-schedule-info {
+            position: sticky;
+            top: 56px; /* フロー警告がない場合はナビバーの高さ */
+            z-index: 1020; /* フロー警告よりは奥 */
+        }
     </style>
 </head>
 <body>
@@ -87,6 +98,16 @@
         </div>
     </nav>
 
+    <!-- フロー実行中の警告バー -->
+    <div id="flow-running-warning" class="alert alert-warning rounded-0 mb-0 text-center fw-bold" role="alert" style="display: none;">
+        <!-- メッセージはJavaScriptで挿入されます -->
+    </div>
+
+    <!-- 次のスケジュール情報バー -->
+    <div id="next-schedule-info" class="alert alert-info rounded-0 mb-0 text-center" role="alert" style="display: none;">
+        <!-- メッセージはJavaScriptで挿入されます -->
+    </div>
+
     <main class="container mt-4">
         {% block content %}{% endblock %}
     </main>
@@ -120,6 +141,56 @@
 
             const toast = new bootstrap.Toast(toastEl);
             toast.show();
+        }
+
+        // 実行中のフローをチェックして警告バーを表示/非表示する関数
+        function checkRunningFlows() {
+            fetch('/api/flows/status')
+                .then(response => response.json())
+                .then(data => {
+                    const warningBar = document.getElementById('flow-running-warning');
+                    if (data.running_flows && data.running_flows.length > 0) {
+                        // APIから日本語名を取得し、重複を除外して表示
+                        const flowNamesJa = [...new Set(data.running_flows.map(flow => flow.name))];
+                        warningBar.innerHTML = `<i class="bi bi-hourglass-split me-2"></i>フロー実行中: <strong>${flowNamesJa.join(', ')}</strong>`;
+                        warningBar.style.display = 'block';
+                    } else {
+                        warningBar.style.display = 'none';
+                    }
+
+                    // フロー実行中バーの表示状態に応じて、次のスケジュールバーの位置を調整
+                    const nextScheduleBar = document.getElementById('next-schedule-info');
+                    if (warningBar.style.display === 'block') {
+                        nextScheduleBar.style.top = (56 + warningBar.offsetHeight) + 'px';
+                    } else {
+                        nextScheduleBar.style.top = '56px';
+                    }
+                })
+                .catch(error => console.error('フロー状態の取得に失敗:', error));
+        }
+
+        // 次のスケジュールをチェックして情報バーを表示/非表示する関数
+        function checkNextSchedule() {
+            fetch('/api/schedules/next')
+                .then(response => response.json())
+                .then(data => {
+                    const infoBar = document.getElementById('next-schedule-info');
+                    if (data && data.next_run) {
+                        const nextRunDate = new Date(data.next_run);
+                        const now = new Date();
+                        const diffMinutes = Math.round((nextRunDate - now) / 60000);
+
+                        if (diffMinutes >= 0 && diffMinutes <= 30) { // 30分前になったら表示
+                            infoBar.innerHTML = `<i class="bi bi-alarm me-2"></i>次のスケジュール: <strong>${data.name}</strong> (約${diffMinutes}分後)`;
+                            infoBar.style.display = 'block';
+                        } else {
+                            infoBar.style.display = 'none';
+                        }
+                    } else {
+                        infoBar.style.display = 'none';
+                    }
+                })
+                .catch(error => console.error('次のスケジュールの取得に失敗:', error));
         }
 
         document.addEventListener('DOMContentLoaded', function () {
@@ -199,11 +270,15 @@
             updateEngagementBadge(); // 初回実行
             updateRepeaterBadge(); // 初回実行
             updateErrorBadge(); // 初回実行
+            checkRunningFlows(); // 初回実行
+            checkNextSchedule(); // 初回実行
             
             setInterval(updateInventoryBadge, 60000); // 1分ごとに更新
             setInterval(updateEngagementBadge, 60000); // 1分ごとに更新
             setInterval(updateRepeaterBadge, 60000); // 1分ごとに更新
             setInterval(updateErrorBadge, 60000); // 1分ごとに更新
+            setInterval(checkRunningFlows, 7000); // 7秒ごとにフロー状態をチェック
+            setInterval(checkNextSchedule, 15000); // 15秒ごとに次のスケジュールをチェック
         });
     </script>
     {% block scripts %}{% endblock %}

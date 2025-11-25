@@ -328,7 +328,7 @@ async def get_schedules():
                 current_next_run = datetime.strptime(current_next_run, "%Y-%m-%d %H:%M:%S")
 
             if not current_next_run or job.next_run < current_next_run:
-                 all_tasks[tag]["next_run"] = job.next_run
+                all_tasks[tag]["next_run"] = job.next_run
 
     # next_runを文字列に変換し、時刻をソート
     for task in all_tasks.values():
@@ -347,6 +347,28 @@ async def get_schedules():
         task["times"].sort(key=lambda x: x['time'])
 
     return JSONResponse(content=list(all_tasks.values()))
+
+@router.get("/api/schedules/next")
+async def get_next_schedule():
+    """直近のスケジュールを1件だけ返す"""
+    all_jobs = schedule.get_jobs()
+    # 実行予定時刻があり、有効なタグを持つジョブのみを抽出
+    scheduled_jobs = [job for job in all_jobs if job.next_run and job.tags]
+    
+    if not scheduled_jobs:
+        return JSONResponse(content={})
+
+    # 最も実行時刻が近いジョブを見つける
+    next_job = min(scheduled_jobs, key=lambda j: j.next_run)
+    
+    tag = list(next_job.tags)[0]
+    definition = TASK_DEFINITIONS.get(tag, {})
+    
+    return JSONResponse(content={
+        "name": definition.get("name_ja", "不明なタスク"),
+        "next_run": next_job.next_run.isoformat() # JavaScriptで扱いやすいISO形式で返す
+    })
+
 
 def _load_schedules_from_file():
     """スケジュールファイルを読み込む内部関数"""
