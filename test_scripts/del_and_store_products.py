@@ -13,7 +13,7 @@ from app.core.database import init_db, add_recollection_product
 # テスト対象のユーザーページURL
 TARGET_URL = "https://room.rakuten.co.jp/room_79a45994e0/items"
 # 探したい日付の文字列（例: "10月29日", "3日前" など、ページに表示されるままの形式）
-TARGET_DATE_STR = "11月01日"
+TARGET_DATE_STR = "11月14日"
 # 取得する最大件数
 MAX_FETCH_COUNT = 100 #ここは手動で設定するから変更しないで！！
 # 1日あたりの平均投稿数（スクロール計算用）
@@ -121,8 +121,8 @@ def process_and_delete_if_needed(page: Page, image_src: str) -> dict | None:
         logger.debug(f"    -> ハッシュタグを {len(hashtags)} 件取得しました: {hashtags}")
 
         # --- ★★★ 投稿日のチェックを追加 ★★★ ---
-        if post_date_text and "10月" not in post_date_text:
-            logger.info(f"    -> 投稿日が10月ではないため、スキップします。 ({post_date_text})")
+        if post_date_text and ("9月" not in post_date_text and "10月" not in post_date_text):
+            logger.info(f"    -> 投稿日が9月または10月ではないため、スキップします。 ({post_date_text})")
             return None
 
         # --- ★★★ 削除ロジック ★★★ ---
