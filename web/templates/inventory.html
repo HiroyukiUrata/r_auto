@@ -33,6 +33,25 @@
     </div>
 </div>
 
+<!-- スマホ表示用の検索フィルター開閉ボタン -->
+<div class="d-grid d-md-none mb-3">
+    <button class="btn btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#search-filters" aria-expanded="false" aria-controls="search-filters">
+        <i class="bi bi-funnel-fill me-2"></i>検索条件
+    </button>
+</div>
+
+<!-- 検索フィルター -->
+<div class="row g-2 mb-3 align-items-end collapse" id="search-filters">
+    <div class="col-lg-6 col-md-12">
+        <label for="search-input" class="form-label small mb-1 d-none d-md-block">キーワード / ショップ名</label>
+        <input type="search" id="search-input" class="form-control form-control-sm" placeholder="商品名、ショップ名、AIキャプションで検索...">
+    </div>
+    <div class="col-lg-6 col-md-12 d-flex gap-2 mt-2 mt-lg-0">
+        <button class="btn btn-primary btn-sm w-100" type="button" id="search-btn"><i class="bi bi-search"></i> 検索</button>
+        <button class="btn btn-outline-secondary btn-sm" type="button" id="clear-btn" title="条件をクリア"><i class="bi bi-x-lg"></i></button>
+    </div>
+</div>
+
 <div class="accordion mb-4" id="importAccordion">
     <div class="accordion-item">
         <h2 class="accordion-header" id="headingOne">
@@ -106,6 +125,27 @@
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">閉じる</button>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- Shop Name Search Modal (posted_products.htmlから移植) -->
+<div class="modal fade" id="shopSearchModal" tabindex="-1" aria-labelledby="shopSearchModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-scrollable">
+      <div class="modal-content">
+          <div class="modal-header">
+              <h5 class="modal-title" id="shopSearchModalLabel"><i class="bi bi-shop me-2"></i>ショップ名で検索</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+              <div class="mb-3">
+                  <input type="search" id="shop-filter-input" class="form-control" placeholder="ショップ名を絞り込み...">
+              </div>
+              <div id="shop-list-container" class="list-group"></div>
+          </div>
+          <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">閉じる</button>
+          </div>
+      </div>
   </div>
 </div>
 {% endblock %}
@@ -214,6 +254,20 @@
         font-weight: normal;
         text-align: left;
     }
+    /* posted_products.htmlから移植 */
+    @media (min-width: 768px) {
+        #search-filters.collapse {
+            display: flex;
+        }
+    }
+    /* posted_products.htmlから移植 */
+    .shop-name-badge {
+        flex-shrink: 0;
+        width: 120px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
     /* スマホ表示では幅を狭くする */
     @media (max-width: 767.98px) {
         .shop-name-badge { width: 80px; }
@@ -231,6 +285,7 @@
     let isLoading = false;    // 読み込み中フラグ
     let sortableInstance = null; // SortableJSのインスタンス
     let infoModalInstance = null;
+    let currentFilters = { searchTerm: '' }; // 検索条件を保持
 
     // ステータスアイコンを判定する関数 (error_management.htmlから移植)
     function getStatusIcon(product) {
@@ -456,17 +511,29 @@
 
     function renderProducts(startIndex, count) {
         const tableBody = document.getElementById('inventory-table-body');
-        const productsToRender = allProductsData.slice(startIndex, startIndex + count);
+        
+        // フィルタリングされた商品リストを取得
+        const filteredProducts = allProductsData.filter(product => {
+            const searchTerm = currentFilters.searchTerm.toLowerCase();
+            if (!searchTerm) return true; // 検索語がなければすべて表示
+            return (
+                (product.name && product.name.toLowerCase().includes(searchTerm)) ||
+                (product.shop_name && product.shop_name.toLowerCase().includes(searchTerm)) ||
+                (product.ai_caption && product.ai_caption.toLowerCase().includes(searchTerm))
+            );
+        });
 
-        if (startIndex === 0 && productsToRender.length === 0) {
+        if (startIndex === 0 && filteredProducts.length === 0) {
             tableBody.innerHTML = '<tr><td colspan="6" class="text-center">在庫商品はありません。</td></tr>';
             return;
         }
 
+        const productsToRender = filteredProducts.slice(startIndex, startIndex + count);
+
         let inconsistentCount = 0;
         let rowsHtml = '';
         productsToRender.forEach(product => {
-            const statusHtml = getStatusIcon(product);
+            const statusHtml = getStatusIcon(product); // この行は変更ありませんが、周辺のコンテキストとして表示しています
 
             const createdAt = product.created_at ? new Date(product.created_at).toLocaleDateString('ja-JP') : 'N/A';
             rowsHtml += `
@@ -489,8 +556,9 @@
             `;
         });
 
-        tableBody.innerHTML += rowsHtml;
-        displayedCount += productsToRender.length;
+        if (startIndex === 0) tableBody.innerHTML = rowsHtml;
+        else tableBody.innerHTML += rowsHtml;
+        displayedCount = tableBody.children.length;
 
     }
 
@@ -522,6 +590,15 @@
         const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]');
         [...tooltipTriggerList].map(tooltipTriggerEl => new bootstrap.Tooltip(tooltipTriggerEl));
         infoModalInstance = new bootstrap.Modal(document.getElementById('infoModal'));
+        const shopSearchModal = new bootstrap.Modal(document.getElementById('shopSearchModal'));
+
+        // 検索ボタンのイベントリスナー
+        document.getElementById('search-btn').addEventListener('click', applyFiltersAndRender);
+        document.getElementById('search-input').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') applyFiltersAndRender();
+        });
+        // クリアボタンのイベントリスナー
+        document.getElementById('clear-btn').addEventListener('click', clearFiltersAndRender);
 
         fetch('/api/inventory/summary').then(response => response.json()).then(renderStatusSummary);
 
@@ -530,7 +607,7 @@
             .then(data => {
                 allProductsData = data;
                 const tableBody = document.getElementById('inventory-table-body');
-                tableBody.innerHTML = ''; // 既存の内容をクリア
+                tableBody.innerHTML = '';
                 renderProducts(0, ITEMS_PER_LOAD); // 最初のN件を描画
 
                 if (sortableInstance) sortableInstance.destroy();
@@ -736,6 +813,63 @@
             window.scrollTo(0, 0); // 一番上にスクロール
             showToast('ソート完了', 'ショップの商品数が多い順に並び替えました。', 'success');
         });
+
+        // --- 検索関連の関数 ---
+        function applyFiltersAndRender() {
+            currentFilters.searchTerm = document.getElementById('search-input').value;
+            
+            const tableBody = document.getElementById('inventory-table-body');
+            tableBody.innerHTML = ''; // テーブルをクリア
+            displayedCount = 0; // 表示件数をリセット
+            renderProducts(0, ITEMS_PER_LOAD); // フィルタリングして再描画
+            window.scrollTo(0, 0); // 一番上にスクロール
+        }
+
+        function clearFiltersAndRender() {
+            document.getElementById('search-input').value = '';
+            applyFiltersAndRender();
+        }
+
+        // --- ショップ名ソートボタンのイベントリスナーを検索モーダルを開くように変更 ---
+        document.getElementById('sort-by-shop-btn').addEventListener('click', async () => {
+            const shopListContainer = document.getElementById('shop-list-container');
+            shopListContainer.innerHTML = '<div class="text-center"><div class="spinner-border spinner-border-sm"></div></div>';
+            shopSearchModal.show();
+
+            // ショップリストを生成
+            const shopCounts = allProductsData.reduce((acc, product) => {
+                const shopName = product.shop_name || '（ショップ名なし）';
+                acc[shopName] = (acc[shopName] || 0) + 1;
+                return acc;
+            }, {});
+
+            const sortedShops = Object.entries(shopCounts)
+                .map(([shop_name, product_count]) => ({ shop_name, product_count }))
+                .sort((a, b) => b.product_count - a.product_count);
+
+            renderShopList(sortedShops);
+        });
+
+        function renderShopList(shops) {
+            const shopListContainer = document.getElementById('shop-list-container');
+            shopListContainer.innerHTML = '';
+            if (shops.length === 0) {
+                shopListContainer.innerHTML = '<p class="text-muted text-center">ショップが見つかりません。</p>';
+                return;
+            }
+            shops.forEach(shopInfo => {
+                const item = document.createElement('button');
+                item.type = 'button';
+                item.className = 'list-group-item list-group-item-action d-flex justify-content-between align-items-center';
+                item.innerHTML = `<span>${shopInfo.shop_name}</span><span class="badge bg-primary rounded-pill">${shopInfo.product_count}</span>`;
+                item.onclick = () => {
+                    document.getElementById('search-input').value = shopInfo.shop_name;
+                    applyFiltersAndRender();
+                    shopSearchModal.hide();
+                };
+                shopListContainer.appendChild(item);
+            });
+        }
     });
 </script>
 {% endblock %}
