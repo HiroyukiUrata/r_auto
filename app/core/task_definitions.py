@@ -387,11 +387,22 @@ TASK_DEFINITIONS = {
         "aggregate_results": True, # フロー全体で結果を合算する
         "order": 9999,
     },
-    "reply-to-comment": {
+    "_internal-reply-to-comment": {
         "function": reply_to_comments,
+        "name_ja": "（内部処理）コメントへの返信投稿",
+        "description": "「リピーター育成」ページで選択されたコメントに返信を投稿します。",
+        "is_debug": False,
+        "show_in_schedule": False,
+        "summary_name": "マイコメ返信", # ダッシュボード集計用
+        "order": 9999,
+    },
+    "reply-to-comment": {
+        "function": None,
         "name_ja": "コメントへの返信投稿",
         "description": "「リピーター育成」ページで選択されたコメントに返信を投稿します。",
         "show_in_schedule": False,
+        "flow": "check-login-status | _internal-reply-to-comment",
+        "aggregate_results": True,
     },
     "bind-product-url-room-url": {
         "name_ja": "商品URLとROOM URLの紐付け",

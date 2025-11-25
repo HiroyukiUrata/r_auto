@@ -1065,13 +1065,14 @@ async def api_get_generated_replies(request: Request):
 
 @router.patch("/api/generated-replies/{representative_id}")
 async def api_update_reply(comment_id: int, request: ReplyUpdateRequest):
-    """特定のコメントの返信テキストを更新する"""
+    """特定のコメントグループの返信テキストを一括で更新する"""
     try:
-        update_reply_text(comment_id, request.reply_text)
+        # データベース関数を正しい引数で呼び出す
+        update_reply_text(comment_id=comment_id, new_text=request.reply_text)
         return JSONResponse(content={"status": "success"})
     except Exception as e:
-        logging.error(f"コメント(ID: {comment_id})の更新中にエラー: {e}", exc_info=True)
-        return JSONResponse(status_code=500, content={"status": "error", "message": "更新に失敗しました。"})
+        logging.error(f"コメントグループ(代表ID: {comment_id})の更新中にエラー: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"コメントの更新に失敗しました: {str(e)}")
 
 @router.delete("/api/generated-replies/{comment_id}")
 async def api_ignore_reply(comment_id: int):

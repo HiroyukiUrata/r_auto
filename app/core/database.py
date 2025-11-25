@@ -1067,14 +1067,35 @@ def get_generated_replies(hours_ago: int = 24) -> list[dict]:
 
 def update_reply_text(comment_id: int, new_text: str):
     """
-    指定されたコメントIDの返信テキストを更新する。
+    指定されたコメントIDが属するグループ全体の返信テキストを一括で更新する。
+    グループは post_detail_url と元の reply_text によって定義される。
     """
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
-        cursor.execute("UPDATE my_post_comments SET reply_text = ? WHERE id = ?", (new_text, comment_id))
+
+        # 1. 代表コメントIDから、グループを特定するための情報を取得
+        cursor.execute("SELECT post_detail_url, reply_text FROM my_post_comments WHERE id = ?", (comment_id,))
+        representative_comment = cursor.fetchone()
+
+        if not representative_comment:
+            logging.warning(f"コメント(ID: {comment_id})が見つからないため、更新できませんでした。")
+            return
+
+        original_post_url = representative_comment['post_detail_url']
+        original_reply_text = representative_comment['reply_text']
+
+        # 2. 同じグループに属するすべてのコメントの返信テキストを一括で更新
+        cursor.execute("""
+            UPDATE my_post_comments 
+            SET reply_text = ? 
+            WHERE post_detail_url = ? AND reply_text = ?
+        """, (new_text, original_post_url, original_reply_text))
+
         conn.commit()
-        logging.debug(f"コメント(ID: {comment_id})の返信テキストを更新しました。")
+        updated_count = cursor.rowcount
+        logging.info(f"コメントグループ（代表ID: {comment_id}）の返信テキストを更新しました。対象件数: {updated_count}件")
+
     finally:
         conn.close()
 

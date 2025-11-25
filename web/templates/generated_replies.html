@@ -619,23 +619,10 @@ function updateReply(buttonElement, representativeId) {
     .then(response => response.json())
     .then(data => {
         if (data.status === 'success') {
-            showToast('成功', '返信コメントを更新しました。');
-            
-            // モーダルを開いたボタンを起点にDOMを更新
-            const listItem = buttonElement.closest('.list-group-item');
-            const textElement = listItem.querySelector('.card-text');
-
-            // 1. 表示されているテキストを更新
-            if (textElement) {
-                textElement.textContent = newText;
-            }
-            // 2. モーダルを開くためのonclick属性を更新
-            const originalOnClick = buttonElement.getAttribute('onclick');
-            const commentsJsonString = originalOnClick.substring(originalOnClick.indexOf(',', originalOnClick.indexOf(',') + 1) + 1); // 2番目のカンマ以降を取得
-            const updatedOnClick = `openDetailModal(this, ${JSON.stringify(newText)}, ${commentsJsonString}`;
-            buttonElement.setAttribute('onclick', updatedOnClick);
-
+            showToast('成功', '返信コメントを更新しました。リストを再読み込みします。');
             replyDetailModal.hide();
+            // ★★★ 修正点: リスト全体を再描画してデータの整合性を保つ ★★★
+            fetchGeneratedReplies();
         } else {
             showToast('エラー', '更新に失敗しました: ' + data.message, 'error');
         }
