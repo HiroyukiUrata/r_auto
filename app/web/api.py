@@ -19,7 +19,7 @@ from app.core.task_manager import TaskManager
 from app.core.task_definitions import TASK_DEFINITIONS
 from app.core.database import (get_all_inventory_products, update_product_status, delete_all_products, init_db, get_product_by_id,
                                delete_product, update_status_for_multiple_products, delete_multiple_products, get_product_count_by_status, get_reusable_products, recollect_product, bulk_recollect_products, update_product_post_url, update_product_room_url, get_all_error_products,
-                               get_posted_products, update_product_priority, update_product_order, bulk_update_products_from_data, commit_user_actions, get_all_user_engagements, get_users_for_commenting,
+                               get_posted_products, get_posted_product_shop_summary, update_product_priority, update_product_order, bulk_update_products_from_data, commit_user_actions, get_all_user_engagements, get_users_for_commenting,
                                update_user_comment, get_generated_replies, update_reply_text, ignore_reply, get_commenting_users_summary,
                                get_table_names, export_tables_as_sql, execute_sql_script)
 from app.tasks.posting import run_posting
@@ -530,7 +530,8 @@ async def api_get_posted_products(
     search_term: Optional[str] = None,
     start_date: Optional[date] = None,
     end_date: Optional[date] = None,
-    room_url_unlinked: bool = False
+    room_url_unlinked: bool = False,
+    shop_name: Optional[str] = None
 ):
     """投稿済商品をページネーション付きで取得する"""
     try:
@@ -540,13 +541,25 @@ async def api_get_posted_products(
             search_term=search_term,
             start_date=start_date,
             end_date=end_date,
-            room_url_unlinked=room_url_unlinked
+            room_url_unlinked=room_url_unlinked,
+            shop_name=shop_name
         )
         
         return JSONResponse(content={"products": products, "total_pages": total_pages, "current_page": page, "total_items": total_items})
     except Exception as e:
         logging.error(f"投稿済商品の取得中にエラー: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="商品の取得に失敗しました。")
+
+@router.get("/api/posted-products/shops")
+async def api_get_distinct_shop_names():
+    """投稿済商品に含まれるショップ名の一覧を返す"""
+    try:
+        shops_summary = get_posted_product_shop_summary()
+        return JSONResponse(content={"shops": shops_summary})
+    except Exception as e:
+        logging.error(f"ショップ名一覧の取得中にエラー: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="ショップ名一覧の取得に失敗しました。")
+
 
 @router.post("/api/posted-products/{product_id}/recollect")
 async def api_recollect_posted_product(product_id: int, background_tasks: BackgroundTasks):

@@ -37,6 +37,21 @@
             font-size: 0.875rem; /* フォントサイズを少し小さくする */
         }
     }
+    /* inventory.htmlからショップ名バッジのスタイルを移植 */
+    .shop-name-badge {
+        flex-shrink: 0;
+        width: 120px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        font-weight: normal;
+        text-align: left;
+    }
+    @media (max-width: 767.98px) {
+        .shop-name-badge {
+            width: 80px;
+        }
+    }
     /* スマートフォンなどの小さい画面向けのスタイル */
     @media (max-width: 767.98px) {
         thead { display: none; }
@@ -146,6 +161,9 @@
     <div class="col-lg-4 col-md-12">
         <label for="search-input" class="form-label small mb-1 d-none d-md-block">キーワード</label>
         <div class="input-group input-group-sm">
+            <button class="btn btn-outline-secondary" type="button" id="shop-search-btn" title="ショップ名で検索">
+                <i class="bi bi-shop"></i>
+            </button>
             <input type="search" id="search-input" class="form-control" placeholder="商品名、キーワードで検索...">
         </div>
     </div>
@@ -190,6 +208,30 @@
         <!-- ページネーションはここに挿入されます -->
     </ul>
 </nav>
+
+<!-- Shop Name Search Modal -->
+<div class="modal fade" id="shopSearchModal" tabindex="-1" aria-labelledby="shopSearchModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="shopSearchModalLabel"><i class="bi bi-shop me-2"></i>ショップ名で検索</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <input type="search" id="shop-filter-input" class="form-control" placeholder="ショップ名を絞り込み...">
+                </div>
+                <div id="shop-list-container" class="list-group">
+                    <!-- ショップリストはここに挿入されます -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" id="clear-shop-filter-btn">絞り込みを解除</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">閉じる</button>
+            </div>
+        </div>
+    </div>
+</div>
 
 <!-- Info Modal -->
 <div class="modal fade" id="infoModal" tabindex="-1" aria-labelledby="infoModalLabel" aria-hidden="true">
@@ -251,8 +293,9 @@
 {% block scripts %}
 <script>
     let currentPage = 1;
+    let currentShopName = ''; // 現在選択されているショップ名を保持
 
-    async function fetchPostedProducts(page = 1, searchTerm = '', startDate = '', endDate = '', roomUrlUnlinked = false) {
+    async function fetchPostedProducts(page = 1, searchTerm = '', startDate = '', endDate = '', roomUrlUnlinked = false, shopName = '') {
         const tableBody = document.getElementById('posted-products-table-body');
         tableBody.innerHTML = `<tr><td colspan="5" class="text-center"><div class="spinner-border spinner-border-sm" role="status"><span class="visually-hidden">Loading...</span></div></td></tr>`;
         
@@ -266,6 +309,7 @@
             });
             if (startDate) params.append('start_date', startDate);
             if (endDate) params.append('end_date', endDate);
+            if (shopName) params.append('shop_name', shopName);
             const url = `/api/posted-products?${params.toString()}`;
             const response = await fetch(url);
             if (!response.ok) {
@@ -329,8 +373,13 @@
                                 ${thumbnailHtml}
                             </td>
                             <td data-label="商品情報" class="text-start">
-                                <div class="fw-bold truncate-cell" title="${product.name || ''}">${product.name || ''}</div>
-                                <div class="text-muted small truncate-cell" title="${product.ai_caption || ''}">${product.ai_caption || ''}</div>
+                                <div class="d-flex align-items-baseline">
+                                    <span class="shop-name-badge badge bg-light text-dark border me-2" title="${product.shop_name || ''}">
+                                        ${product.shop_name || ''}
+                                    </span>
+                                    <div class="fw-bold truncate-cell" title="${product.name || ''}">${product.name || ''}</div>
+                                </div>
+                                <div class="text-muted small truncate-cell mt-1" title="${product.ai_caption || ''}">${product.ai_caption || ''}</div>
                             </td>
                             <td data-label="投稿日時" class="small text-muted">${postedAt}</td>
                             <td data-label="i" class="text-center">
@@ -431,7 +480,7 @@
         const startDate = document.getElementById('start-date-input').value;
         const endDate = document.getElementById('end-date-input').value;
         const isRoomUrlUnlinked = document.getElementById('room-url-unlinked-switch').checked;
-        fetchPostedProducts(currentPage, searchTerm, startDate, endDate, isRoomUrlUnlinked);
+        fetchPostedProducts(currentPage, searchTerm, startDate, endDate, isRoomUrlUnlinked, currentShopName);
     }
 
     function updateBulkActionButtons() {
@@ -616,6 +665,7 @@
             startDateInput.value = '';
             endDateInput.value = '';
             document.getElementById('room-url-unlinked-switch').checked = false;
+            currentShopName = ''; // ショップ名フィルターもクリア
             triggerSearch();
         });
 
@@ -710,6 +760,63 @@
             updateBulkActionButtons();
         });
 
+        // --- Shop Search Modal Logic ---
+        const shopSearchModal = new bootstrap.Modal(document.getElementById('shopSearchModal'));
+        const shopSearchBtn = document.getElementById('shop-search-btn');
+        const shopListContainer = document.getElementById('shop-list-container');
+        const shopFilterInput = document.getElementById('shop-filter-input');
+        const clearShopFilterBtn = document.getElementById('clear-shop-filter-btn');
+        let allShops = [];
+
+        shopSearchBtn.addEventListener('click', async () => {
+            shopListContainer.innerHTML = '<div class="text-center"><div class="spinner-border spinner-border-sm"></div></div>';
+            shopSearchModal.show();
+            try {
+                const response = await fetch('/api/posted-products/shops');
+                const data = await response.json();
+                allShops = data.shops || [];
+                renderShopList(allShops);
+            } catch (error) {
+                shopListContainer.innerHTML = '<div class="alert alert-danger">ショップ一覧の取得に失敗しました。</div>';
+            }
+        });
+
+        function renderShopList(shops) {
+            shopListContainer.innerHTML = '';
+            if (shops.length === 0) {
+                shopListContainer.innerHTML = '<p class="text-muted text-center">ショップが見つかりません。</p>';
+                return;
+            }
+            shops.forEach(shopInfo => {
+                const item = document.createElement('button');
+                item.type = 'button';
+                item.className = 'list-group-item list-group-item-action d-flex justify-content-between align-items-center';
+                item.innerHTML = `
+                    <span>${shopInfo.shop_name}</span>
+                    <span class="badge bg-primary rounded-pill">${shopInfo.product_count}</span>
+                `;
+                item.onclick = () => {
+                    currentShopName = shopInfo.shop_name;
+                    currentPage = 1;
+                    triggerSearch();
+                    shopSearchModal.hide();
+                };
+                shopListContainer.appendChild(item);
+            });
+        }
+
+        shopFilterInput.addEventListener('input', () => {
+            const filterText = shopFilterInput.value.toLowerCase();
+            const filteredShops = allShops.filter(shopInfo => shopInfo.shop_name.toLowerCase().includes(filterText));
+            renderShopList(filteredShops);
+        });
+
+        clearShopFilterBtn.addEventListener('click', () => {
+            currentShopName = '';
+            currentPage = 1;
+            triggerSearch();
+            shopSearchModal.hide();
+        });
     });
 </script>
 

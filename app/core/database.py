@@ -274,7 +274,7 @@ def get_all_inventory_products():
     conn.close()
     return products
 
-def get_posted_products(page: int = 1, per_page: int = 30, search_term: str = None, start_date: datetime.date = None, end_date: datetime.date = None, room_url_unlinked: bool = False):
+def get_posted_products(page: int = 1, per_page: int = 30, search_term: str = None, start_date: datetime.date = None, end_date: datetime.date = None, room_url_unlinked: bool = False, shop_name: str = None):
     """
     投稿済の商品をページネーションと検索機能付きで取得する。
     """
@@ -301,6 +301,10 @@ def get_posted_products(page: int = 1, per_page: int = 30, search_term: str = No
     if room_url_unlinked:
         where_clauses.append("(room_url IS NULL OR room_url = '')")
 
+    if shop_name:
+        where_clauses.append("shop_name = ?")
+        params.append(shop_name)
+
     where_sql = ""
     if where_clauses:
         where_sql = "WHERE " + " AND ".join(where_clauses)
@@ -321,6 +325,28 @@ def get_posted_products(page: int = 1, per_page: int = 30, search_term: str = No
     
     conn.close()
     return products, total_pages, total_items
+
+def get_posted_product_shop_summary() -> list[dict]:
+    """
+    投稿済商品からショップごとの商品数を取得する。
+    商品数が多い順にソートして返す。
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT shop_name, COUNT(*) as product_count 
+            FROM products 
+            WHERE status = '投稿済' AND shop_name IS NOT NULL AND shop_name != '' 
+            GROUP BY shop_name 
+            ORDER BY product_count DESC, shop_name ASC
+        """)
+        return [dict(row) for row in cursor.fetchall()]
+    except sqlite3.Error as e:
+        logging.error(f"ショップ別商品数の取得中にエラー: {e}")
+        return []
+    finally:
+        conn.close()
 
 def get_reusable_products():
     """
