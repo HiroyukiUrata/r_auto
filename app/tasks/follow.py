@@ -309,11 +309,14 @@ class FollowTask(BaseTask):
             
             #time.sleep(random.uniform(2, 3)) # フォロー間隔
 
-        return followed_count, error_count
+        # 目標数と成功数の差をエラー件数として返す
+        final_error_count = self.target_count - followed_count
+        return followed_count, final_error_count
 
 def run_follow_action(count: int = 10):
     """ラッパー関数"""
     task = FollowTask(count=count)
     result = task.run()
     # 確実に (成功数, エラー数) のタプルを返すようにする
-    return result if isinstance(result, tuple) and len(result) >= 2 else (0, 1 if result is False else 0)
+    # タスクが異常終了した場合は、目標件数すべてをエラーとして扱う
+    return result if isinstance(result, tuple) and len(result) >= 2 else (0, count)

@@ -243,39 +243,6 @@ def get_log_summary(period='24h', max_lines_to_scan=20000):
                     elif log_name in actions:
                         actions[log_name]["count"] += count
                         actions[log_name]["errors"] += errors
-                    continue
-
-                # エラーの集計
-                error_match = generic_error_pattern.search(line)
-                if error_match:
-                    action_name_from_log = error_match.group('name')
-                    # "投稿文作成 (Gemini)" のような詳細名を "投稿文作成" に丸める
-                    # ★★★ 修正点: action_name_from_logがNoneの場合はスキップ ★★★
-                    if not action_name_from_log:
-                        logger.warning(f"エラーログ行からアクション名を取得できませんでした。スキップします: {line.strip()}")
-                        continue
-
-                    action_name_from_log = action_name_from_log.strip()
-                    simple_action_name = action_name_from_log.split('(')[0].strip()
-                    
-                    # マッピングを元にUI表示名を取得
-                    ui_name = log_name_to_ui_name.get(simple_action_name)
-                    # ★★★ 修正点: ui_nameがNoneでないことを確認 ★★★
-                    if ui_name:
-                        actions[ui_name]["errors"] += 1
-                    # 「返信コメント生成」フローに含まれるタスクのエラーを集約
-                    elif simple_action_name in ["通知分析", "AIコメント作成"] and "返信コメント生成" in actions:
-                        actions["返信コメント生成"]["errors"] += 1
-                    elif simple_action_name in actions: # マッピングにないが直接一致する場合
-                        actions[ui_name]["errors"] += 1
-                    elif simple_action_name in actions: # マッピングにないが直接一致する場合
-                        actions[simple_action_name]["errors"] += 1
-                # 「投稿処理中にエラー」は「記事投稿」のエラーとしてカウント
-                elif "投稿処理中にエラー" in line and "記事投稿" in actions:
-                    actions["記事投稿"]["errors"] += 1
-                # 「投稿URL取得」中のエラーは「商品調達」のエラーとしてカウント
-                elif "の処理中に予期せぬ例外が発生しました" in line and "商品調達" in actions:
-                    actions["商品調達"]["errors"] += 1
 
     except FileNotFoundError:
         logger.warning(f"ログファイルが見つかりません: {LOG_FILE}")

@@ -28,6 +28,7 @@ from app.tasks.reply_to_comments import reply_to_comments
 from app.tasks.new_like_back_task import run_new_like_back
 from app.tasks.new_comment_back_task import run_new_comment_back
 
+from app.tasks.dummy_log_task import run_dummy_log_reproducer
 """
 システム内の全タスクの定義を一元管理する。
 キー: プログラム内部で使われる一意の識別子（タグ）
@@ -402,6 +403,7 @@ TASK_DEFINITIONS = {
         "function": None,
         "name_ja": "コメントへの返信投稿",
         "description": "「リピーター育成」ページで選択されたコメントに返信を投稿します。",
+        "is_debug": False,
         "show_in_schedule": False,
         "flow": "check-login-status | _internal-reply-to-comment",
         "aggregate_results": True,
@@ -495,5 +497,16 @@ TASK_DEFINITIONS.update({
         "flow": "check-login-status | new-comment-back",
         "aggregate_results": False,
         "order": 105,
+    },
+})
+
+# --- デバッグ用の特別なタスク ---
+TASK_DEFINITIONS.update({
+    "dummy-log-reproducer": {
+        "name_ja": "（デバッグ用）ログ再現タスク",
+        "function": run_dummy_log_reproducer,
+        "is_debug": True,
+        "description": "ダッシュボードのエラー件数問題を再現するためのログを生成します。",
+        "order": 1, # デバッグタスクの一番上に表示
     },
 })

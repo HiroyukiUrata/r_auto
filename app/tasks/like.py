@@ -122,11 +122,13 @@ class LikeTask(BaseTask):
                 page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
                 time.sleep(3) # スクロール後の読み込みを待つ
 
-        return liked_count, error_count
+        # 目標数と成功数の差をエラー件数として返す
+        final_error_count = self.target_count - liked_count
+        return liked_count, final_error_count
 
 def run_like_action(count: int = 10, max_duration_seconds: int = 600):
     """ラッパー関数"""
     task = LikeTask(count=count, max_duration_seconds=max_duration_seconds)
     result = task.run()
     # 確実に (成功数, エラー数) のタプルを返すようにする
-    return result if isinstance(result, tuple) and len(result) >= 2 else (0, 1 if result is False else 0)
+    return result if isinstance(result, tuple) and len(result) >= 2 else (0, count)
