@@ -55,41 +55,60 @@
     </h1>
     <!-- コントロール類をまとめるコンテナ -->
     <div class="w-100 w-md-auto d-flex justify-content-end align-items-center gap-3">
-        <div id="bulk-actions-wrapper" class="d-flex align-items-center me-auto me-md-0">
-            <div class="d-flex flex-wrap gap-2" id="bulk-action-buttons">
+        <div id="bulk-actions-wrapper" class="d-flex align-items-center me-auto me-md-0 gap-2">
+            <!-- ★★★ 修正: このdivにIDを追加 ★★★ -->
+            <div id="bulk-action-buttons" class="d-flex flex-wrap gap-2">
                 <button type="button" class="btn btn-sm btn-outline-secondary" id="select-all-toggle-btn" onclick="toggleSelectAll()" title="すべて選択/解除">
                     <i class="bi bi-check-square"></i><span class="d-none d-md-inline ms-1">全選択</span>
                 </button>
-                <button type="button" class="btn btn-sm btn-outline-secondary" id="bulk-skip-btn" onclick="bulkSkip()" disabled title="選択したユーザーをスキップ">
-                    <i class="bi bi-skip-forward-fill"></i><span class="d-none d-md-inline ms-1">スキップ</span>
-                </button>
-                <!-- 「投稿予行」ボタンをドロップダウン付き分割ボタンに変更 -->
-                <div class="btn-group">
-                    <button type="button" class="btn btn-sm btn-outline-info" id="bulk-dryrun-btn" onclick="bulkDryRun('all')" disabled title="投稿予行（いいね＆コメント）">
-                        <i class="bi bi-send-slash-fill"></i><span class="d-none d-md-inline ms-1">予行</span>
+                <!-- コメント投稿関連のアクションボタン -->
+                <div id="comment-action-buttons" class="d-flex flex-wrap gap-2">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="bulk-skip-btn" onclick="bulkSkip()" disabled title="選択したユーザーをスキップ">
+                        <i class="bi bi-skip-forward-fill"></i><span class="d-none d-md-inline ms-1">スキップ</span>
                     </button>
-                    <button type="button" class="btn btn-sm btn-outline-info dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-expanded="false" id="bulk-dryrun-dropdown-btn" disabled>
-                        <span class="visually-hidden">Toggle Dropdown</span>
-                    </button>
-                    <ul class="dropdown-menu">
-                        <li><a class="dropdown-item" href="#" onclick="event.preventDefault(); bulkDryRun('all')"><i class="bi bi-send-slash-fill me-2"></i>いいね＆コメント (予行)</a></li>
-                        <li><a class="dropdown-item" href="#" onclick="event.preventDefault(); bulkDryRun('like_only')"><i class="bi bi-heart-fill me-2"></i>いいねのみ (予行)</a></li>
-                        <li><a class="dropdown-item" href="#" onclick="event.preventDefault(); bulkDryRun('comment_only')"><i class="bi bi-chat-dots-fill me-2"></i>コメントのみ (予行)</a></li>
-                    </ul>
+                    <div class="btn-group">
+                        <button type="button" class="btn btn-sm btn-outline-info" id="bulk-dryrun-btn" onclick="bulkDryRun('all')" disabled title="投稿予行（いいね＆コメント）">
+                            <i class="bi bi-send-slash-fill"></i><span class="d-none d-md-inline ms-1">予行</span>
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-info dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-expanded="false" id="bulk-dryrun-dropdown-btn" disabled>
+                            <span class="visually-hidden">Toggle Dropdown</span>
+                        </button>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="#" onclick="event.preventDefault(); bulkDryRun('all')"><i class="bi bi-send-slash-fill me-2"></i>いいね＆コメント (予行)</a></li>
+                            <li><a class="dropdown-item" href="#" onclick="event.preventDefault(); bulkDryRun('like_only')"><i class="bi bi-heart-fill me-2"></i>いいねのみ (予行)</a></li>
+                            <li><a class="dropdown-item" href="#" onclick="event.preventDefault(); bulkDryRun('comment_only')"><i class="bi bi-chat-dots-fill me-2"></i>コメントのみ (予行)</a></li>
+                        </ul>
+                    </div>
+                    <div class="btn-group">
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="bulk-execute-btn" onclick="bulkExecute('all')" disabled title="選択したユーザーにいいね＆コメントを投稿">
+                            <i class="bi bi-send-fill"></i><span class="d-none d-md-inline ms-1">投稿</span>
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-primary dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-expanded="false" id="bulk-execute-dropdown-btn" disabled>
+                            <span class="visually-hidden">Toggle Dropdown</span>
+                        </button>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="#" onclick="event.preventDefault(); bulkExecute('all')"><i class="bi bi-send-fill me-2"></i>いいね＆コメント</a></li>
+                            <li><a class="dropdown-item" href="#" onclick="event.preventDefault(); bulkExecute('like_only')"><i class="bi bi-heart-fill me-2"></i>いいねのみ</a></li>
+                            <li><a class="dropdown-item" href="#" onclick="event.preventDefault(); bulkExecute('comment_only')"><i class="bi bi-chat-dots-fill me-2"></i>コメントのみ</a></li>
+                        </ul>
+                    </div>
                 </div>
-                <!-- 「投稿」ボタンをドロップダウン付き分割ボタンに変更 -->
-                <div class="btn-group">
-                    <button type="button" class="btn btn-sm btn-outline-primary" id="bulk-execute-btn" onclick="bulkExecute('all')" disabled title="選択したユーザーにいいね＆コメントを投稿">
-                        <i class="bi bi-send-fill"></i><span class="d-none d-md-inline ms-1">投稿</span>
-                    </button>
-                    <button type="button" class="btn btn-sm btn-outline-primary dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-expanded="false" id="bulk-execute-dropdown-btn" disabled>
-                        <span class="visually-hidden">Toggle Dropdown</span>
-                    </button>
-                    <ul class="dropdown-menu">
-                        <li><a class="dropdown-item" href="#" onclick="event.preventDefault(); bulkExecute('all')"><i class="bi bi-send-fill me-2"></i>いいね＆コメント</a></li>
-                        <li><a class="dropdown-item" href="#" onclick="event.preventDefault(); bulkExecute('like_only')"><i class="bi bi-heart-fill me-2"></i>いいねのみ</a></li>
-                        <li><a class="dropdown-item" href="#" onclick="event.preventDefault(); bulkExecute('comment_only')"><i class="bi bi-chat-dots-fill me-2"></i>コメントのみ</a></li>
-                    </ul>
+                <!-- いいね返し機能 -->
+                <div class="input-group input-group-sm" style="width: auto;">
+                    <span class="input-group-text">いいね数</span>
+                    <input type="number" class="form-control" id="like-back-count-input" value="3" min="1" style="width: 60px;">
+                    <div class="btn-group">
+                        <button class="btn btn-sm btn-danger" id="bulk-like-back-btn" onclick="bulkLikeBack(false)" disabled>
+                            <i class="bi bi-heart-fill"></i><span class="d-none d-md-inline ms-1">いいね返し</span>
+                        </button>
+                        <button type="button" class="btn btn-sm btn-danger dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-expanded="false" id="bulk-like-back-dropdown-btn" disabled>
+                            <span class="visually-hidden">Toggle Dropdown</span>
+                        </button>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="#" onclick="event.preventDefault(); bulkLikeBack(true)"><i class="bi bi-send-slash-fill me-2"></i>いいね返し (予行)</a></li>
+                            <li><a class="dropdown-item" href="#" onclick="event.preventDefault(); bulkLikeBack(false)"><i class="bi bi-send-fill me-2"></i>いいね返し (本実行)</a></li>
+                        </ul>
+                    </div>
                 </div>
             </div>
             <!-- スマホ表示時のみ凡例アイコンを表示 -->
@@ -121,31 +140,6 @@
                 <option value="commented_at_desc">💬新しい順</option>
                 <option value="commented_at_asc">💬古い順</option>
             </select>
-        </div>
-    </div>
-</div>
-
-<!-- いいね返し用アクションバー (全員表示時のみ) -->
-<div id="like-back-actions-container" class="mb-3" style="display: none;">
-    <div class="d-flex justify-content-end align-items-center gap-2 flex-wrap">
-        <button type="button" class="btn btn-sm btn-outline-secondary" id="select-all-toggle-btn-for-like-back" onclick="toggleSelectAll()" title="すべて選択/解除">
-            <i class="bi bi-check-square"></i><span class="d-none d-md-inline ms-1">全選択</span>
-        </button>
-        <div class="input-group input-group-sm" style="width: auto;">
-            <span class="input-group-text">いいね数</span>
-            <input type="number" class="form-control" id="like-back-count-input" value="3" min="1" style="width: 60px;">
-            <div class="btn-group">
-                <button class="btn btn-sm btn-danger" id="bulk-like-back-btn" onclick="bulkLikeBack(false)" disabled>
-                    <i class="bi bi-heart-fill"></i><span class="d-none d-md-inline ms-1">いいね返し</span>
-                </button>
-                <button type="button" class="btn btn-sm btn-danger dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-expanded="false" id="bulk-like-back-dropdown-btn" disabled>
-                    <span class="visually-hidden">Toggle Dropdown</span>
-                </button>
-                <ul class="dropdown-menu">
-                    <li><a class="dropdown-item" href="#" onclick="event.preventDefault(); bulkLikeBack(true)"><i class="bi bi-send-slash-fill me-2"></i>いいね返し (予行)</a></li>
-                    <li><a class="dropdown-item" href="#" onclick="event.preventDefault(); bulkLikeBack(false)"><i class="bi bi-send-fill me-2"></i>いいね返し (本実行)</a></li>
-                </ul>
-            </div>
         </div>
     </div>
 </div>
@@ -543,21 +537,15 @@
     function updateViewOptions() {
         const showAll = document.getElementById('show-all-users-switch').checked;
         const filterContainer = document.getElementById('filter-container');
-        const likeBackActionsContainer = document.getElementById('like-back-actions-container');
-        const bulkActionsWrapper = document.getElementById('bulk-actions-wrapper');
+        const commentActionButtons = document.getElementById('comment-action-buttons');
         const sortBy = document.getElementById('sort-select').value;
 
         filterContainer.style.display = showAll ? 'block' : 'none';
 
-        // 「全員表示」がONの時だけ、いいね返し用のアクションバーを表示
-        if (showAll) {
-            likeBackActionsContainer.style.display = 'flex';
-        } else {
-            likeBackActionsContainer.style.display = 'none';
+        // 「全員表示」がONのときは、コメント投稿関連のボタンを非表示にする
+        if (commentActionButtons) {
+            commentActionButtons.classList.toggle('d-none', showAll);
         }
-
-        // Bootstrapのクラスを使って表示/非表示を切り替える
-        bulkActionsWrapper.classList.toggle('d-none', showAll);
     }
 
     function fetchUsers() {
@@ -748,7 +736,7 @@
             li.appendChild(a);
             templateList.appendChild(li);
         });
-
+        // ページ読み込み時に、スイッチの初期状態に基づいてボタンの表示を更新
         updateViewOptions(); // 初期表示時のUI状態を設定
         fetchUsers();
         const tableBody = document.getElementById('user-table-body');
