@@ -99,12 +99,12 @@
     </nav>
 
     <!-- フロー実行中の警告バー -->
-    <div id="flow-running-warning" class="alert alert-warning rounded-0 mb-0 text-center fw-bold" role="alert" style="display: none;">
+    <div id="flow-running-warning" class="alert alert-warning rounded-0 mb-0 text-center fw-bold py-1" role="alert" style="display: none; font-size: 0.85rem;">
         <!-- メッセージはJavaScriptで挿入されます -->
     </div>
 
     <!-- 次のスケジュール情報バー -->
-    <div id="next-schedule-info" class="alert alert-info rounded-0 mb-0 text-center" role="alert" style="display: none;">
+    <div id="next-schedule-info" class="alert alert-info rounded-0 mb-0 text-center py-1" role="alert" style="display: none; font-size: 0.85rem;">
         <!-- メッセージはJavaScriptで挿入されます -->
     </div>
 
@@ -277,8 +277,8 @@
             setInterval(updateEngagementBadge, 60000); // 1分ごとに更新
             setInterval(updateRepeaterBadge, 60000); // 1分ごとに更新
             setInterval(updateErrorBadge, 60000); // 1分ごとに更新
-            setInterval(checkRunningFlows, 7000); // 7秒ごとにフロー状態をチェック
-            setInterval(checkNextSchedule, 15000); // 15秒ごとに次のスケジュールをチェック
+            setInterval(checkRunningFlows, 30000); // 30秒ごとにフロー状態をチェック
+            setInterval(checkNextSchedule, 30000); // 30秒ごとに次のスケジュールをチェック
         });
     </script>
     {% block scripts %}{% endblock %}

@@ -1998,8 +1998,19 @@ async def get_log_flows():
 
 @router.get("/api/flows/status", response_class=JSONResponse)
 async def get_running_flows_status():
-    """現在実行中のフローのIDリストを返す。"""
+    """現在実行中のフローのIDと名前のリストを返す。"""
+    running_flows_details = []
     with _flow_lock:
-        # Setは直接JSONシリアライズできないためリストに変換
-        running_ids = list(RUNNING_FLOWS)
-    return JSONResponse(content={"running_flows": running_ids})
+        for flow_id in RUNNING_FLOWS:
+            # flow_id (例: "run-follow-action-1020u5") からタスクタグを抽出
+            # 末尾の "-HHMMxx" 形式の部分を除外する
+            tag_parts = flow_id.split('-')
+            tag = '-'.join(tag_parts[:-1]) if len(tag_parts) > 2 else flow_id
+            
+            definition = TASK_DEFINITIONS.get(tag, {})
+            running_flows_details.append({
+                "id": flow_id,
+                "name": definition.get("name_ja", tag) # 定義から日本語名を取得
+            })
+            
+    return JSONResponse(content={"running_flows": running_flows_details})
