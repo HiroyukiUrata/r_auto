@@ -1622,6 +1622,14 @@ def _run_task_internal(tag: str, is_part_of_flow: bool, **kwargs):
                 with _flow_lock:
                     RUNNING_FLOWS.remove(flow_id)
 
+                # 合算モードの場合のみ、フロー全体のサマリーを出力
+                if should_aggregate:
+                    summary_name = definition.get("summary_name", definition['name_ja'])
+                    if summary_message is not None:
+                        logging.info(f"[Action Summary] name={summary_name}, message='{summary_message}' [flow_id:{flow_id}]")
+                    elif main_success_count is not None and total_error_count is not None and (main_success_count > 0 or total_error_count > 0):
+                        logging.info(f"[Action Summary] name={summary_name}, count={main_success_count}, errors={total_error_count} [flow_id:{flow_id}]")
+                
                 elapsed_time = time.time() - start_time
                 duration_str = format_duration(elapsed_time)
                 # フロー全体の最終結果をログに出力
@@ -1629,16 +1637,6 @@ def _run_task_internal(tag: str, is_part_of_flow: bool, **kwargs):
                     logging.info(f"フロー完了: 「{definition['name_ja']}」が正常に完了しました。(実行時間: {duration_str}) [flow_id:{flow_id}]")
                 else:
                     logging.error(f"フロー中断: 「{definition['name_ja']}」は途中で失敗しました。(実行時間: {duration_str}) [flow_id:{flow_id}]")
-
-                # 合算モードの場合のみ、フロー全体のサマリーを出力
-                if should_aggregate:
-                    summary_name = definition.get("summary_name", definition['name_ja'])
-                    if summary_message:
-                        logging.info(f"[Action Summary] name={summary_name}, message='{summary_message}'")
-                        logging.info(f"[Action Summary] name={summary_name}, message='{summary_message}' [flow_id:{flow_id}]")
-                    elif main_success_count > 0 or total_error_count > 0:
-                        logging.info(f"[Action Summary] name={summary_name}, count={main_success_count}, errors={total_error_count}")
-                        logging.info(f"[Action Summary] name={summary_name}, count={main_success_count}, errors={total_error_count} [flow_id:{flow_id}]")
         
         run_threaded(run_flow)
         return {"status": "success", "message": f"タスクフロー「{definition['name_ja']}」の実行を開始しました。"}
@@ -2025,10 +2023,8 @@ async def get_logs(
 @router.get("/api/logs/flows", response_class=JSONResponse)
 async def get_log_flows():
     """ログファイルを解析し、実行されたフローの履歴を返す。"""
-    logging.debug("[get_log_flows] フロー履歴の取得処理を開始します。")
     try:
         if not os.path.exists(LOG_FILE):
-            logging.warning("[get_log_flows] ログファイルが見つかりません。")
             return JSONResponse(content=[])
 
         # detailed形式とsimple形式の両方に対応する正規表現
@@ -2036,14 +2032,11 @@ async def get_log_flows():
 
         flows = []
         now = datetime.now()
-        line_count = 0
 
         with open(LOG_FILE, "r", encoding="utf-8", errors="ignore") as f:
             for line in f:
-                line_count += 1
                 match = start_log_pattern.search(line)
                 if match:
-                    logging.debug(f"[get_log_flows] L{line_count}: フロー開始ログにマッチしました。 Line: {line.strip()}")
                     data = match.groupdict()
                     timestamp_str, flow_name, flow_id = data['timestamp'], data['name'], data['id']
                     try:
@@ -2051,13 +2044,11 @@ async def get_log_flows():
                         if re.match(r'^\d{4}-\d{2}-\d{2}', timestamp_str):
                             # detailed形式: 'YYYY-MM-DD HH:MM:SS,ms'
                             dt_obj = datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S,%f')
-                            logging.debug(f"[get_log_flows] L{line_count}: 'detail'形式のタイムスタンプとしてパース成功。")
                         else: # simple形式
                             # simple形式: 'MM-DD HH:MM:SS'
                             dt_obj = datetime.strptime(timestamp_str, '%m-%d %H:%M:%S').replace(year=now.year)
                             if dt_obj > now: # 年をまたぐ場合の補正
                                 dt_obj = dt_obj.replace(year=now.year - 1)
-                            logging.debug(f"[get_log_flows] L{line_count}: 'simple'形式のタイムスタンプとしてパース成功。")
 
                         formatted_ts = dt_obj.strftime('%m-%d %H:%M')
                         flows.append({
@@ -2067,17 +2058,12 @@ async def get_log_flows():
                             "sort_key": dt_obj
                         })
                     except (ValueError, IndexError):
-                        logging.warning(f"[get_log_flows] L{line_count}: タイムスタンプのパースに失敗しました。 Timestamp: '{timestamp_str}'")
                         continue
-                # else:
-                #     logging.debug(f"[get_log_flows] L{line_count}: フロー開始ログにマッチしませんでした。 Line: {line.strip()}")
 
         sorted_flows = sorted(flows, key=lambda x: x['sort_key'], reverse=True)
-        logging.debug(f"[get_log_flows] 処理完了。合計 {len(sorted_flows)} 件のフロー履歴を返します。")
         return JSONResponse(content=[{k: v for k, v in flow.items() if k != 'sort_key'} for flow in sorted_flows])
 
     except Exception as e:
-        logging.error(f"[get_log_flows] フローログの解析中に予期せぬエラーが発生しました。", exc_info=True)
         raise HTTPException(status_code=500, detail=f"フローログの解析中にエラーが発生しました: {e}")
 
 @router.get("/api/flows/status", response_class=JSONResponse)
