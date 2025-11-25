@@ -43,36 +43,61 @@
 {% block content %}
 <div id="log-header">
     <div class="container-fluid">
-        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 gap-md-3">
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 gap-md-3 mb-2">
+            <h1 class="h4 mb-0">ログ確認</h1>
             <div class="d-flex align-items-center gap-3">
-                <h1 class="h4 mb-0">ログ確認</h1>
                 <div class="form-check form-switch d-inline-block align-middle">
                     <input class="form-check-input" type="checkbox" role="switch" id="auto-scroll-switch">
                     <label class="form-check-label" for="auto-scroll-switch">自動スクロール</label>
                 </div>
                 <button type="button" class="btn btn-sm btn-outline-secondary rounded-circle" id="manual-refresh-btn" title="手動で更新" style="width: 32px; height: 32px; line-height: 1;"><i class="bi bi-arrow-clockwise"></i></button>
             </div>
-            <div class="d-flex flex-wrap align-items-center gap-2 gap-md-3">
-                <div class="d-flex align-items-center gap-2">
-                    <input type="datetime-local" id="start-datetime" class="form-control form-control-sm" style="width: auto;">
-                    <span class="text-muted d-none d-md-inline">～</span>
-                    <input type="datetime-local" id="end-datetime" class="form-control form-control-sm" style="width: auto;">
-                </div>
-                <div class="btn-group btn-group-sm" role="group" aria-label="Time shift buttons">
-                    <button type="button" class="btn btn-outline-secondary" id="prev-day-btn" title="1日前に移動">«</button>
-                    <button type="button" class="btn btn-outline-secondary" id="prev-hour-btn" title="1時間前に移動">-1h</button>
-                    <button type="button" class="btn btn-outline-secondary" id="next-hour-btn" title="1時間後に移動">+1h</button>
-                    <button type="button" class="btn btn-outline-secondary" id="next-day-btn" title="1日後に移動">»</button>
-                </div>
-                <div class="d-flex align-items-center gap-2">
-                    <select id="level-select" class="form-select form-select-sm" style="width: auto;">
-                        <option value="all" selected>すべて</option>
-                        <option value="INFO">INFO</option>
-                        <option value="WARN">WARN</option>
-                        <option value="ERROR">ERROR</option>
-                    </select>
-                    <button class="btn btn-sm btn-primary" id="filter-btn" title="表示"><i class="bi bi-funnel"></i></button>
-                    <button class="btn btn-sm btn-outline-secondary" id="reset-btn" title="リセット"><i class="bi bi-arrow-counterclockwise"></i></button>
+        </div>
+        <div class="accordion" id="filterAccordion">
+            <div class="accordion-item">
+                <h2 class="accordion-header" id="headingFilter">
+                    <button class="accordion-button collapsed py-2" type="button" data-bs-toggle="collapse" data-bs-target="#collapseFilter" aria-expanded="false" aria-controls="collapseFilter">
+                        <i class="bi bi-funnel-fill me-2"></i>フィルター
+                    </button>
+                </h2>
+                <div id="collapseFilter" class="accordion-collapse collapse" aria-labelledby="headingFilter">
+                    <div class="accordion-body p-2">
+                        <div class="d-flex flex-wrap align-items-center justify-content-start gap-2">
+                            <!-- 1行目: 日時入力 -->
+                            <div class="d-flex align-items-center gap-2">
+                                <input type="datetime-local" id="start-datetime" class="form-control form-control-sm" style="width: auto;">
+                                <span class="text-muted d-none d-md-inline">～</span>
+                                <input type="datetime-local" id="end-datetime" class="form-control form-control-sm" style="width: auto;">
+                            </div>
+                            <!-- 2行目: 日時シフトとレベルフィルターを1行にまとめる -->
+                            <div class="d-flex gap-2" style="flex-shrink: 0;">
+                                <div class="btn-group btn-group-sm" role="group" aria-label="Time shift buttons">
+                                    <button type="button" class="btn btn-outline-secondary" id="prev-day-btn" title="1日前に移動">«</button>
+                                    <button type="button" class="btn btn-outline-secondary" id="prev-hour-btn" title="1時間前に移動">-1h</button>
+                                    <button type="button" class="btn btn-outline-secondary" id="next-hour-btn" title="1時間後に移動">+1h</button>
+                                    <button type="button" class="btn btn-outline-secondary" id="next-day-btn" title="1日後に移動">»</button>
+                                </div>
+                                <div class="input-group input-group-sm" style="width: auto;">
+                                    <select id="level-select" class="form-select" style="width: auto;">
+                                        <option value="all" selected>すべて</option>
+                                        <option value="INFO">INFO</option>
+                                        <option value="WARN">WARN</option>
+                                        <option value="ERROR">ERROR</option>
+                                    </select>
+                                    <button class="btn btn-primary" id="filter-btn" title="表示"><i class="bi bi-funnel"></i></button>
+                                    <button class="btn btn-outline-secondary" id="reset-btn" title="リセット"><i class="bi bi-arrow-counterclockwise"></i></button>
+                                </div>
+                            </div>
+                            <!-- 3行目: フローフィルター -->
+                            <div class="input-group input-group-sm" style="width: auto;">
+                                <button class="btn btn-outline-secondary" id="prev-flow-btn" title="前のフローへ"><i class="bi bi-chevron-left"></i></button>
+                                <select id="flow-select" class="form-select" style="min-width: 150px;">
+                                    <option value="all" selected>フローで絞り込み...</option>
+                                </select>
+                                <button class="btn btn-outline-secondary" id="next-flow-btn" title="次のフローへ"><i class="bi bi-chevron-right"></i></button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -104,6 +129,11 @@
         const prevHourBtn = document.getElementById('prev-hour-btn');
         const nextHourBtn = document.getElementById('next-hour-btn');
         const levelSelect = document.getElementById('level-select');
+        const flowSelect = document.getElementById('flow-select');
+        const prevFlowBtn = document.getElementById('prev-flow-btn');
+        const nextFlowBtn = document.getElementById('next-flow-btn');
+        let flowHistory = [];
+        let currentFlowIndex = -1;
         let refreshIntervalId = null;
 
         function setDefaultDateTimes() {
@@ -119,12 +149,38 @@
             endDatetimeInput.value = todayEnd;
         }
 
+        async function fetchFlows() {
+            try {
+                const response = await fetch('/api/logs/flows');
+                if (!response.ok) throw new Error('フロー履歴の取得に失敗');
+                flowHistory = await response.json();
+
+                flowSelect.innerHTML = '<option value="all" selected>フローで絞り込み...</option>'; // Reset
+                flowHistory.forEach((flow, index) => {
+                    const option = document.createElement('option');
+                    option.value = flow.id;
+                    option.dataset.index = index;
+                    option.textContent = `(${flow.timestamp}) ${flow.name}`;
+                    flowSelect.appendChild(option);
+                });
+                updateFlowNavButtons();
+            } catch (error) {
+                console.error("フロー履歴の取得に失敗しました:", error);
+            }
+        }
+
+        function updateFlowNavButtons() {
+            prevFlowBtn.disabled = currentFlowIndex <= 0;
+            nextFlowBtn.disabled = currentFlowIndex === -1 || currentFlowIndex >= flowHistory.length - 1;
+        }
+
         async function fetchLogs(applyFilter = true) {
             try {
                 const start = startDatetimeInput.value;
                 const end = endDatetimeInput.value;
                 let url = '/api/logs';
 
+                const selectedFlowId = flowSelect.value;
                 const selectedLevel = levelSelect.value;
 
                 const params = new URLSearchParams();
@@ -134,10 +190,15 @@
                 if (end) {
                     params.append('end', end);
                 }
+                if (selectedFlowId && selectedFlowId !== 'all') {
+                    // フローが選択されている場合は、他のフィルターをクリアしてflow_idのみを使用
+                    params.forEach((value, key) => params.delete(key));
+                    params.append('flow_id', selectedFlowId);
+                }
                 if (selectedLevel && selectedLevel !== 'all') {
                     params.append('level', selectedLevel);
                 }
-                if (applyFilter && params.toString()) {
+                if (params.toString()) {
                     url += `?${params.toString()}`;
                 }
 
@@ -201,6 +262,8 @@
             setDefaultDateTimes();
             // ログレベルを「すべて」に戻す
             levelSelect.value = 'all';
+            // フロー選択をリセット
+            flowSelect.value = 'all';
             // リセット時はフィルターを適用せず、全ログを表示
             fetchLogs(false);
         });
@@ -258,6 +321,36 @@
             fetchLogs(true);
         });
 
+        // フロー選択の変更イベント
+        flowSelect.addEventListener('change', () => {
+            if (autoScrollSwitch.checked) autoScrollSwitch.click();
+            const selectedOption = flowSelect.options[flowSelect.selectedIndex];
+            currentFlowIndex = selectedOption.dataset.index ? parseInt(selectedOption.dataset.index, 10) : -1;
+            updateFlowNavButtons();
+            fetchLogs(true).then(() => {
+                // フロー絞り込み時は、ログ表示を一番上にスクロールする
+                logContainer.scrollTop = 0;
+            });
+        });
+
+        // フロー送り・戻しボタンのイベント
+        function navigateFlow(direction) {
+            if (currentFlowIndex === -1 && flowHistory.length > 0) {
+                currentFlowIndex = 0; // 未選択状態からなら最初のフローへ
+            } else {
+                currentFlowIndex += direction;
+            }
+
+            if (currentFlowIndex >= 0 && currentFlowIndex < flowHistory.length) {
+                const flowId = flowHistory[currentFlowIndex].id;
+                flowSelect.value = flowId;
+                // changeイベントを手動で発火させてログを更新
+                flowSelect.dispatchEvent(new Event('change'));
+            }
+        }
+        prevFlowBtn.addEventListener('click', () => navigateFlow(-1)); // 新しい方へ
+        nextFlowBtn.addEventListener('click', () => navigateFlow(1));  // 古い方へ
+
         // 自動スクロールスイッチのイベント
         autoScrollSwitch.addEventListener('change', function() {
             if (this.checked) {
@@ -268,6 +361,9 @@
                 filterBtn.disabled = true;
                 document.querySelectorAll('.btn-group .btn').forEach(b => b.disabled = true);
                 levelSelect.disabled = true;
+                flowSelect.disabled = true;
+                prevFlowBtn.disabled = true;
+                nextFlowBtn.disabled = true;
                 startAutoRefresh(); // 自動更新を開始
             } else {
                 // フィルター関連のUIを有効化
@@ -276,6 +372,9 @@
                 filterBtn.disabled = false;
                 document.querySelectorAll('.btn-group .btn').forEach(b => b.disabled = false);
                 levelSelect.disabled = false;
+                flowSelect.disabled = false;
+                prevFlowBtn.disabled = false;
+                nextFlowBtn.disabled = false;
                 stopAutoRefresh(); // 自動更新を停止
             }
         });
@@ -306,6 +405,7 @@
         // ページ読み込み時に一度だけログを取得し、一番下にスクロールする
         (async () => {
             setDefaultDateTimes(); // デフォルトの日時を設定
+            await fetchFlows(); // フロー履歴を取得
             // 初回はフィルターを適用せずに全ログを取得
             await fetchLogs(false);
             // 初回読み込み時のみ、一番下までスクロール

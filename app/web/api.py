@@ -10,6 +10,9 @@ from pydantic import BaseModel
 from typing import Optional, List
 from pathlib import Path
 from fastapi import BackgroundTasks
+import random
+import string
+import threading
 
 # タスク定義を一元的にインポート
 from app.core.task_manager import TaskManager
@@ -30,6 +33,11 @@ from app.core.config_manager import get_config, save_config, SCREENSHOT_DIR, cle
 from app.tasks.prompt_test_task import PromptTestTask
 from app.core.scheduler_utils import run_threaded, run_task_with_random_delay, get_log_summary
 from datetime import date, timedelta, datetime
+
+# --- 実行中フローの追跡用 ---
+RUNNING_FLOWS = set()
+_flow_lock = threading.Lock()
+# --------------------------
 
 
 KEYWORDS_FILE = "db/keywords.json"
@@ -1389,7 +1397,16 @@ def _run_task_internal(tag: str, is_part_of_flow: bool, **kwargs):
             # フローの先頭に、解決した調達タスクを挿入
             flow_definition.insert(0, (procure_task, {"count": "flow_count"}))
 
-        logging.info(f"フロー実行: 「{definition['name_ja']}」を開始します。")
+        # --- フローID生成ロジック ---
+        def generate_short_flow_id():
+            """HHMMxx形式の短いフローIDを生成する (例: 1504a9)"""
+            timestamp_part = datetime.now().strftime("%H%M")
+            random_part = ''.join(random.choices(string.ascii_lowercase + string.digits, k=2))
+            return f"{timestamp_part}{random_part}"
+
+        flow_id = f"{tag}-{generate_short_flow_id()}"
+
+        logging.info(f"フロー実行: 「{definition['name_ja']}」を開始します。 [flow_id:{flow_id}]")
 
         def run_flow():
             # フローの集計方法を決定
@@ -1397,6 +1414,9 @@ def _run_task_internal(tag: str, is_part_of_flow: bool, **kwargs):
             main_success_count = 0 if should_aggregate else None
             total_error_count = 0 if should_aggregate else None
             summary_message = None if should_aggregate else None
+
+            with _flow_lock:
+                RUNNING_FLOWS.add(flow_id)
 
             def format_duration(seconds: float) -> str:
                 """実行時間を分かりやすい形式に変換する"""
@@ -1437,7 +1457,7 @@ def _run_task_internal(tag: str, is_part_of_flow: bool, **kwargs):
                             else: # api
                                 sub_task_id = "create-caption-gemini"
                             logging.debug(f"フロー内タスクを動的に解決: {sub_task_id}")
-                        sub_task_def = TASK_DEFINITIONS[original_sub_task_id]
+                        sub_task_def = TASK_DEFINITIONS.get(original_sub_task_id, {})
                         logging.debug(f"  フロー実行中 ({i+1}/{len(tasks_in_flow)}): 「{sub_task_def['name_ja']}」")
                         
                         # 動的に解決されたタスク名を使って、実行すべき関数を直接取得する
@@ -1494,22 +1514,25 @@ def _run_task_internal(tag: str, is_part_of_flow: bool, **kwargs):
                             logging.error(f"フロー内のタスク「{sub_task_def['name_ja']}」実行中に予期せぬエラーが発生しました: {e}", exc_info=os.getenv('LOG_FORMAT', 'detailed').lower() == 'detailed')
                             task_result = False
     
-                        if task_result is False:
-                            logging.error(f"フロー内のタスク「{sub_task_def['name_ja']}」が失敗しました。フローを中断します。")
+                        if task_result is False: # タスクが明示的にFalseを返した場合
+                            logging.error(f"フロー内のタスク「{sub_task_def.get('name_ja', sub_task_id)}」が失敗しました。フローを中断します。 [flow_id:{flow_id}]")
                             flow_succeeded = False
                             break
                     else:
-                        logging.error(f"フロー内のタスク「{sub_task_id}」が見つかりません。フローを中断します。")
+                        logging.error(f"フロー内のタスク定義「{sub_task_id}」が見つかりません。フローを中断します。 [flow_id:{flow_id}]")
                         flow_succeeded = False
                         break
             finally:
+                with _flow_lock:
+                    RUNNING_FLOWS.remove(flow_id)
+
                 elapsed_time = time.time() - start_time
                 duration_str = format_duration(elapsed_time)
                 # フロー全体の最終結果をログに出力
                 if flow_succeeded:
-                    logging.info(f"フロー完了: 「{definition['name_ja']}」が正常に完了しました。(実行時間: {duration_str})")
+                    logging.info(f"フロー完了: 「{definition['name_ja']}」が正常に完了しました。(実行時間: {duration_str}) [flow_id:{flow_id}]")
                 else:
-                    logging.error(f"フロー中断: 「{definition['name_ja']}」は途中で失敗しました。(実行時間: {duration_str})")
+                    logging.error(f"フロー中断: 「{definition['name_ja']}」は途中で失敗しました。(実行時間: {duration_str}) [flow_id:{flow_id}]")
 
                 # 合算モードの場合のみ、フロー全体のサマリーを出力
                 if should_aggregate:
@@ -1520,7 +1543,7 @@ def _run_task_internal(tag: str, is_part_of_flow: bool, **kwargs):
                         logging.info(f"[Action Summary] name={summary_name}, count={main_success_count}, errors={total_error_count}")
         
         run_threaded(run_flow)
-        return {"status": "success", "message": f"タスクフロー「{definition['name_ja']}」(件数: {flow_kwargs.get('count')})の実行を開始しました。"}
+        return {"status": "success", "message": f"タスクフロー「{definition['name_ja']}」の実行を開始しました。"}
 
     def task_wrapper(**kwargs):
         """タスク実行後に後続タスクを呼び出すラッパー関数"""
@@ -1800,11 +1823,54 @@ async def get_logs(
     start: str | None = None,
     end: str | None = None,
     level: str | None = None,
+    flow_id: str | None = None, # ★フローIDでのフィルタリングを追加
 ):
     """
     ログファイルの内容を取得する。
     startとendクエリパラメータで期間を指定してフィルタリング可能。
+    flow_idクエリパラメータで特定のフローに関連するログのみを抽出可能。
     """
+    # フローIDをログメッセージから抽出するための正規表現
+    flow_id_pattern = re.compile(r"\[flow_id:([^\]]+)\]")
+
+    def get_flow_id_from_line(line: str) -> str | None:
+        """ログの1行から 'flow_id' を抽出する。"""
+        match = flow_id_pattern.search(line)
+        return match.group(1) if match else None
+
+    def remove_extra_from_line(line: str) -> str:
+        """ログの1行から [flow_id:...] の部分を削除して返す。"""
+        return flow_id_pattern.sub("", line)
+
+    # flow_idが指定された場合、他のフィルター（期間、レベル）は無視する
+    if flow_id:
+        try:
+            with open(LOG_FILE, "r", encoding="utf-8", errors="ignore") as f:
+                lines = f.readlines()
+            
+            filtered_lines = []
+            in_flow_block = False
+            for line in lines:
+                line_flow_id = get_flow_id_from_line(line)
+
+                if not in_flow_block and line_flow_id == flow_id and "フロー実行" in line:
+                    # フローの開始行を見つけたら、ブロックを開始
+                    in_flow_block = True
+                
+                if in_flow_block:
+                    # ブロック内に入ったら、すべての行を追加
+                    filtered_lines.append(remove_extra_from_line(line))
+
+                if in_flow_block and line_flow_id == flow_id and ("フロー完了" in line or "フロー中断" in line):
+                    # フローの完了/中断行を見つけたら、ブロックを終了
+                    break # このフローIDの処理は完了なのでループを抜ける
+            
+            return "".join(filtered_lines)
+        except Exception as e:
+            logging.error(f"フローID '{flow_id}' のログフィルタリング中にエラー: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail=f"フローログのフィルタリング中にエラーが発生しました: {e}")
+
+
     try:
         if not os.path.exists(LOG_FILE): # LOG_FILEはモジュール上部でインポート済み
             return "ログファイルが見つかりません。"
@@ -1812,7 +1878,7 @@ async def get_logs(
         with open(LOG_FILE, "r", encoding="utf-8", errors="ignore") as f:
             lines = f.readlines()
 
-        if not start and not end and not level:
+        if not start and not end and not level and not flow_id:
             return "".join(lines[-1000:]) # フィルターなしの場合は末尾1000行に制限
 
         filtered_lines = []
@@ -1847,7 +1913,9 @@ async def get_logs(
                     short_form = f"[{level_upper[0]}]"
                     if level_upper not in line_upper and short_form not in line_upper:
                         continue
-                filtered_lines.append(line)
+                
+                # ★ extra情報を削除して表示
+                filtered_lines.append(remove_extra_from_line(line))
             except (ValueError, IndexError):
                 # タイムスタンプが期待する形式でない行はスキップ
                 continue
@@ -1855,3 +1923,60 @@ async def get_logs(
         return "".join(filtered_lines)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"ログの読み込み中にサーバーエラーが発生しました: {e}")
+
+@router.get("/api/logs/flows", response_class=JSONResponse)
+async def get_log_flows():
+    """ログファイルを解析し、実行されたフローの履歴を返す。"""
+    try:
+        if not os.path.exists(LOG_FILE):
+            return JSONResponse(content=[])
+
+        # detailed形式とsimple形式の両方に対応する正規表現
+        # タイムスタンプ部分を柔軟にキャプチャする
+        start_log_pattern = re.compile(r"^([\d\s,:-]+?)\s-.*?フロー実行: 「(.*?)」を開始します。.*?\[flow_id:([^\]]+)\]")
+
+        flows = []
+        now = datetime.now()
+
+        with open(LOG_FILE, "r", encoding="utf-8", errors="ignore") as f:
+            for line in f:
+                match = start_log_pattern.search(line)
+                if match:
+                    timestamp_str, flow_name, flow_id = match.groups()
+                    timestamp_str = timestamp_str.strip()
+                    try:
+                        # タイムスタンプの形式を判定してパース
+                        if re.match(r'^\d{4}-\d{2}-\d{2}', timestamp_str):
+                            # detailed形式: 'YYYY-MM-DD HH:MM:SS,ms'
+                            dt_obj = datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S,%f')
+                        elif re.match(r'^\d{2}-\d{2}', timestamp_str):
+                            # simple形式: 'MM-DD HH:MM:SS'
+                            dt_obj = datetime.strptime(timestamp_str, '%m-%d %H:%M:%S').replace(year=now.year)
+                            if dt_obj > now: # 年をまたぐ場合の補正
+                                dt_obj = dt_obj.replace(year=now.year - 1)
+                        else:
+                            continue # 不明な形式はスキップ
+
+                        formatted_ts = dt_obj.strftime('%m-%d %H:%M')
+                        flows.append({
+                            "id": flow_id,
+                            "name": flow_name,
+                            "timestamp": formatted_ts,
+                            "sort_key": dt_obj
+                        })
+                    except (ValueError, IndexError):
+                        continue
+
+        sorted_flows = sorted(flows, key=lambda x: x['sort_key'], reverse=True)
+        return JSONResponse(content=[{k: v for k, v in flow.items() if k != 'sort_key'} for flow in sorted_flows])
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"フローログの解析中にエラーが発生しました: {e}")
+
+@router.get("/api/flows/status", response_class=JSONResponse)
+async def get_running_flows_status():
+    """現在実行中のフローのIDリストを返す。"""
+    with _flow_lock:
+        # Setは直接JSONシリアライズできないためリストに変換
+        running_ids = list(RUNNING_FLOWS)
+    return JSONResponse(content={"running_flows": running_ids})
