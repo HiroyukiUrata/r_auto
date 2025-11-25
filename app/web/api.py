@@ -897,6 +897,28 @@ async def api_update_inventory_caption(product_id: int, request: AiCaptionUpdate
         logging.error(f"商品ID {product_id} の投稿文更新中にエラー: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"サーバーエラーにより投稿文の更新に失敗しました: {str(e)}")
 
+@router.post("/api/inventory/bulk-regenerate-caption")
+async def bulk_regenerate_inventory_caption(request: BulkUpdateRequest, background_tasks: BackgroundTasks):
+    """
+    複数の在庫商品の投稿文を再生成するフローを開始する。
+    1. DBのステータスを「URL取得済」に戻し、AIキャプション関連の情報をクリアする。
+    2. 「投稿文作成」フロータスクを実行する。
+    """
+    product_ids = request.product_ids
+    if not product_ids:
+        raise HTTPException(status_code=400, detail="商品IDが指定されていません。")
+    
+    try:
+        task_manager = TaskManager()
+        # 新しく定義したフローを呼び出す。引数としてproduct_idsを渡す。
+        background_tasks.add_task(
+            task_manager.run_task_by_tag, "bulk-regenerate-caption-flow", product_ids=product_ids
+        )
+        
+        return JSONResponse(content={"status": "success", "message": f"{len(product_ids)}件の商品の投稿文再生成タスクを開始しました。"})
+    except Exception as e:
+        logging.error(f"投稿文の一括再生成処理中にエラー: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="サーバーエラーにより処理を開始できませんでした。")
 
 @router.post("/api/inventory/bulk-complete")
 async def bulk_complete_inventory_items(request: BulkUpdateRequest):
@@ -1502,6 +1524,15 @@ def _run_task_internal(tag: str, is_part_of_flow: bool, **kwargs):
             try:
                 for i, (sub_task_id, sub_task_args) in enumerate(tasks_in_flow):
                     original_sub_task_id = sub_task_id # 動的解決前のIDを保持
+
+                    # --- create-caption-flow の動的解決 ---
+                    if sub_task_id == "create-caption-flow":
+                        config = get_config()
+                        method = config.get("caption_creation_method", "api")
+                        sub_task_id = "create-caption-browser" if method == "browser" else "create-caption-gemini"
+                        logging.info(f"フロー内の 'create-caption-flow' を '{sub_task_id}' に解決しました。")
+                    # -----------------------------------------
+
                     if sub_task_id in TASK_DEFINITIONS:
                         # --- フロー内の動的切り替えロジック ---
                         if sub_task_id == "_create-caption-wrapper":
@@ -1515,10 +1546,14 @@ def _run_task_internal(tag: str, is_part_of_flow: bool, **kwargs):
                         sub_task_def = TASK_DEFINITIONS.get(original_sub_task_id, {})
                         logging.debug(f"  フロー実行中 ({i+1}/{len(tasks_in_flow)}): 「{sub_task_def['name_ja']}」")
                         
-                        # 動的に解決されたタスク名を使って、実行すべき関数を直接取得する
-                        sub_task_func = TASK_DEFINITIONS.get(sub_task_id, {}).get("function")
-                        if not sub_task_func:
-                            logging.error(f"フロー内のタスク '{sub_task_id}' に実行可能な関数が定義されていません。")
+                        # --- ネストされたフローのハンドリング ---
+                        resolved_sub_task_def = TASK_DEFINITIONS.get(sub_task_id, {})
+                        sub_task_func = resolved_sub_task_def.get("function")
+                        is_nested_flow = "flow" in resolved_sub_task_def and sub_task_func is None
+
+                        if not sub_task_func and not is_nested_flow:
+                            logging.error(f"フロー内のタスク '{sub_task_id}' に実行可能な関数またはフローが定義されていません。")
+                            flow_succeeded = False # ★★★ エラー時にフラグを立てる
                             break
                         
                         # 引数を解決
@@ -1532,9 +1567,15 @@ def _run_task_internal(tag: str, is_part_of_flow: bool, **kwargs):
                         final_kwargs.update(flow_kwargs)
                         
                         try:
-                            sig = inspect.signature(sub_task_func)
-                            valid_args = { k: v for k, v in final_kwargs.items() if k in sig.parameters }
-                            task_result = sub_task_func(**valid_args)
+                            if is_nested_flow:
+                                # ネストされたフローを実行
+                                logging.debug(f"  -> ネストされたフロー '{sub_task_id}' を実行します。")
+                                task_result = _run_task_internal(sub_task_id, is_part_of_flow=True, **final_kwargs)
+                            else:
+                                # 通常の関数を実行
+                                sig = inspect.signature(sub_task_func)
+                                valid_args = { k: v for k, v in final_kwargs.items() if k in sig.parameters }
+                                task_result = sub_task_func(**valid_args)
 
                             # ★★★ デバッグログ追加 ★★★
                             logging.debug(f"      -> タスク '{sub_task_id}' の戻り値: {task_result} (型: {type(task_result)})")

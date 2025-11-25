@@ -16,6 +16,9 @@
             <button type="button" class="btn btn-sm btn-outline-info" id="shuffle-btn" title="リストをシャッフル">
                 <i class="bi bi-shuffle"></i><span class="d-none d-md-inline ms-1">シャッフル</span>
             </button>
+            <button type="button" class="btn btn-sm btn-outline-primary" id="bulk-regenerate-btn" onclick="bulkRegenerateCaption()" disabled title="選択した商品の投稿文をAIで再生成する">
+                <i class="bi bi-robot"></i><span class="d-none d-md-inline ms-1">AI再生成</span>
+            </button>
             <button type="button" class="btn btn-sm btn-outline-warning" id="bulk-complete-btn" onclick="bulkComplete()" disabled title="選択した項目を強制的に投稿済みにする">
                 <i class="bi bi-check-circle-fill"></i><span class="d-none d-md-inline ms-1">強制済</span>
             </button>
@@ -28,7 +31,7 @@
            style="cursor: pointer; font-size: 1.2rem;"
            data-bs-toggle="tooltip" 
            data-bs-html="true"
-           data-bs-title="<div class='text-start'>・<i class='bi bi-check-square'></i>: 全選択<br>・<i class='bi bi-shop'></i>: ショップ別ソート<br>・<i class='bi bi-shuffle'></i>: シャッフル<br>・<i class='bi bi-check-circle-fill'></i>: 強制済<br>・<i class='bi bi-trash-fill'></i>: 削除</div>">
+           data-bs-title="<div class='text-start'>・<i class='bi bi-check-square'></i>: 全選択<br>・<i class='bi bi-shop'></i>: ショップ別ソート<br>・<i class='bi bi-shuffle'></i>: シャッフル<br>・<i class='bi bi-robot'></i>: AI再生成<br>・<i class='bi bi-check-circle-fill'></i>: 強制済<br>・<i class='bi bi-trash-fill'></i>: 削除</div>">
         </i>
     </div>
 </div>
@@ -474,6 +477,7 @@
     function updateBulkActionButtons() {
         const selectedIds = getSelectedProductIds();
         const disabled = selectedIds.length === 0;
+        document.getElementById('bulk-regenerate-btn').disabled = disabled;
         document.getElementById('bulk-complete-btn').disabled = disabled;
         document.getElementById('bulk-delete-btn').disabled = disabled;
     }
@@ -507,6 +511,29 @@
             updateBulkActionButtons();
         } catch (error) {
             alert(`一括更新に失敗しました: ${error.message}`);
+        }
+    }
+
+    async function bulkRegenerateCaption() {
+        const productIds = getSelectedProductIds();
+        if (productIds.length === 0) return;
+        if (!confirm(`${productIds.length}件の商品の投稿文をAIで再生成しますか？\n（ステータスが「URL取得済」に戻ります）`)) return;
+
+        try {
+            const response = await fetch('/api/inventory/bulk-regenerate-caption', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ product_ids: productIds })
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.message || result.detail);
+            
+            showToast('タスク開始', result.message, 'success');
+            // UIを更新するためにページをリロード
+            setTimeout(() => location.reload(), 1500);
+
+        } catch (error) {
+            showToast('エラー', `一括再生成に失敗しました: ${error.message}`, 'danger');
         }
     }
 

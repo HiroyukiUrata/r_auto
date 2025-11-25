@@ -1,6 +1,7 @@
 from app.tasks import (
     run_check_login_status,
     run_get_post_url,
+    run_get_post_url,
     run_posting,
     run_follow_action,
     run_like_action,
@@ -8,6 +9,7 @@ from app.tasks import (
     run_backup_database,
     run_restore_auth_state,
 )
+from app.core.database import reset_products_for_caption_regeneration
 from app.tasks import create_caption_browser
 from app.tasks.procure_from_user_page import run_procure_from_user_page
 from app.tasks.bind_product_url_room_url import run_bind_product_url_room_url
@@ -421,6 +423,26 @@ TASK_DEFINITIONS = {
         "description": "テストスクリプトの実行に必要です。",
         "order": 100,
         "default_kwargs": {"script": "test_scripts/example.py"},
+    },
+    "reset-products-for-regeneration": {
+        "name_ja": "（内部処理）投稿文再生成のための商品リセット",
+        "function": reset_products_for_caption_regeneration,
+        "is_debug": False,
+        "show_in_schedule": False,
+        "description": "指定された商品の投稿文とステータスをリセットします。",
+        "order": 9999,
+    },
+    "bulk-regenerate-caption-flow": {
+        "name_ja": "AI投稿文の再生成フロー",
+        "function": None,
+        "is_debug": False,
+        "show_in_schedule": False,
+        "description": "商品をリセットし、投稿文作成フローを呼び出します。",
+        "flow": [
+            ("reset-products-for-regeneration", {"product_ids": "flow_product_ids"}),
+            ("create-caption-flow", {})
+        ],
+        "order": 9999,
     },
 }
 

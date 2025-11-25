@@ -1719,6 +1719,32 @@ def update_user_comment(user_id: str, comment_text: str):
     finally:
         conn.close()
 
+def reset_products_for_caption_regeneration(product_ids: list[int]):
+    """
+    指定された複数の商品を、AI投稿文を再生成するためにリセットする。
+    - ai_caption と ai_caption_created_at を NULL にする
+    - status を 'URL取得済' にする
+    """
+    if not product_ids:
+        return 0
+    conn = get_db_connection()
+    try:
+        placeholders = ','.join('?' for _ in product_ids)
+        query = f"""
+            UPDATE products SET
+                ai_caption = NULL,
+                ai_caption_created_at = NULL,
+                status = 'URL取得済'
+            WHERE id IN ({placeholders})
+        """
+        cursor = conn.cursor()
+        cursor.execute(query, product_ids)
+        conn.commit()
+        logging.info(f"{cursor.rowcount}件の商品を投稿文再生成のためにリセットしました。")
+        return cursor.rowcount
+    finally:
+        conn.close()
+
 def get_table_names() -> list[str]:
     """データベース内のすべてのテーブル名を取得する。"""
     conn = get_db_connection()
