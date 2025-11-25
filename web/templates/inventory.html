@@ -10,6 +10,9 @@
             <button type="button" class="btn btn-sm btn-outline-secondary" id="select-all-toggle-btn" onclick="toggleSelectAll()" title="すべて選択/解除">
                 <i class="bi bi-check-square"></i><span class="d-none d-md-inline ms-1">全選択</span>
             </button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="sort-by-shop-btn" title="ショップ別（商品数が多い順）に並び替え">
+                <i class="bi bi-shop"></i><span class="d-none d-md-inline ms-1">ショップ別</span>
+            </button>
             <button type="button" class="btn btn-sm btn-outline-info" id="shuffle-btn" title="リストをシャッフル">
                 <i class="bi bi-shuffle"></i><span class="d-none d-md-inline ms-1">シャッフル</span>
             </button>
@@ -25,7 +28,7 @@
            style="cursor: pointer; font-size: 1.2rem;"
            data-bs-toggle="tooltip" 
            data-bs-html="true"
-           data-bs-title="<div class='text-start'>・<i class='bi bi-check-square'></i>: 全選択/解除<br>・<i class='bi bi-shuffle'></i>: シャッフル<br>・<i class='bi bi-check-circle-fill'></i>: 強制済<br>・<i class='bi bi-trash-fill'></i>: 削除</div>">
+           data-bs-title="<div class='text-start'>・<i class='bi bi-check-square'></i>: 全選択<br>・<i class='bi bi-shop'></i>: ショップ別ソート<br>・<i class='bi bi-shuffle'></i>: シャッフル<br>・<i class='bi bi-check-circle-fill'></i>: 強制済<br>・<i class='bi bi-trash-fill'></i>: 削除</div>">
         </i>
     </div>
 </div>
@@ -91,6 +94,8 @@
       <div class="modal-body">
         <h6 class="fw-bold">商品名</h6>
         <p id="modal-product-name" class="text-break"></p>
+        <h6 class="fw-bold mt-3">ショップ名</h6>
+        <p id="modal-shop-name"></p>
         <h6 class="fw-bold mt-3">投稿文</h6>
         <p id="modal-ai-caption" style="white-space: pre-wrap;"></p>
         <h6 class="fw-bold mt-3">調達キーワード</h6>
@@ -195,6 +200,24 @@
         cursor: grab;
         color: #adb5bd;
     }
+    .sort-active {
+        color: #fff;
+        background-color: #0d6efd;
+    }
+    /* ショップ名バッジの基本スタイル */
+    .shop-name-badge {
+        flex-shrink: 0;
+        width: 120px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        font-weight: normal;
+        text-align: left;
+    }
+    /* スマホ表示では幅を狭くする */
+    @media (max-width: 767.98px) {
+        .shop-name-badge { width: 80px; }
+    }
 </style>
 {% endblock %}
 
@@ -208,6 +231,37 @@
     let isLoading = false;    // 読み込み中フラグ
     let sortableInstance = null; // SortableJSのインスタンス
     let infoModalInstance = null;
+
+    // ステータスアイコンを判定する関数 (error_management.htmlから移植)
+    function getStatusIcon(product) {
+        const hasCreationTs = !!product.created_at;
+        const hasUrlTs = !!product.post_url_updated_at;
+        const hasCaptionTs = !!product.ai_caption_created_at;
+        const hasUrlData = !!product.post_url;
+        const hasCaptionData = !!product.ai_caption;
+
+        // データとタイムスタンプの不整合チェック
+        if (hasUrlTs !== hasUrlData) {
+            return `<span class="fs-5" title="データ不整合: 投稿URLの有無と日時の状態が一致しません">☔</span>`;
+        }
+        if (hasCaptionTs !== hasCaptionData) {
+            return `<span class="fs-5" title="データ不整合: AI文章の有無と日時の状態が一致しません">☔</span>`;
+        }
+        // タイムスタンプの順序が不正なケース
+        if (hasCaptionTs && !hasUrlTs) {
+            return '<span class="fs-5" title="タイムスタンプ順序不正: URL取得より先にAI文章が作成されています">☔</span>';
+        }
+
+        // 正常系の進捗を判定
+        if (hasCreationTs && hasUrlTs && hasCaptionData) { // 投稿文データがあれば晴れ
+            return '<span class="fs-5" title="投稿準備完了です">☀️</span>';
+        } else if (hasCreationTs && hasUrlTs) {
+            return '<span class="fs-5" title="URL取得まで完了しています">⛅️</span>';
+        } else if (hasCreationTs) {
+            return '<span class="fs-5" title="商品情報の取得のみ完了しています">☁️</span>';
+        }
+        return '<span class="fs-5" title="タイムスタンプが不足しています">☔</span>'; // 上記以外は雨
+    }
 
     async function importFromJson() {
         const textarea = document.getElementById('json-import-textarea');
@@ -243,11 +297,13 @@
         const name = element.dataset.name;
         const caption = element.dataset.caption;
         const procurementKeyword = element.dataset.procurementKeyword;
+        const shopName = element.dataset.shopName;
         const postUrl = element.dataset.postUrl;
 
         document.getElementById('modal-product-name').textContent = name;
         document.getElementById('modal-ai-caption').textContent = caption;
         document.getElementById('modal-procurement-keyword').textContent = procurementKeyword || 'N/A';
+        document.getElementById('modal-shop-name').textContent = shopName || 'N/A';
 
         const postLink = document.getElementById('modal-post-link');
         if (postUrl) {
@@ -410,25 +466,24 @@
         let inconsistentCount = 0;
         let rowsHtml = '';
         productsToRender.forEach(product => {
-            let statusInfo = statusMap[product.status] || { emoji: '❓', color: 'light' };
-            let statusTitle = product.status;
-            const isDataInconsistent = product.status === '投稿準備完了' && (!product.post_url || !product.ai_caption);
-            let statusHtml = `<span title="${statusTitle}" class="fs-5">${statusInfo.emoji}</span>`;
-
-            if (isDataInconsistent) {
-                statusTitle = 'データ不整合: 投稿準備完了ですが、URLまたは投稿文がありません。';
-                statusHtml = `<span title="${statusTitle}" class="fs-5 text-warning">☔</span>`;
-                inconsistentCount++;
-            }
+            const statusHtml = getStatusIcon(product);
 
             const createdAt = product.created_at ? new Date(product.created_at).toLocaleDateString('ja-JP') : 'N/A';
             rowsHtml += `
                 <tr id="product-row-${product.id}">
                     <td><input class="form-check-input product-checkbox" type="checkbox" value="${product.id}"></td>
-                    <td class="text-center drag-handle"><i class="bi bi-grip-vertical"></i></td>
+                    <td class="text-center drag-handle" style="vertical-align: middle;"><i class="bi bi-grip-vertical"></i></td>
                     <td><a href="${product.url}" target="_blank" rel="noopener noreferrer"><img src="${product.image_url || 'https://via.placeholder.com/80'}" alt="${product.name}" class="img-thumbnail inventory-thumbnail"></a></td>
-                    <td class="text-start"><div class="fw-bold truncate-cell" title="${product.name || ''}">${product.name || ''}</div><div class="text-muted small truncate-cell" title="${product.ai_caption || ''}">${product.ai_caption || ''}</div></td>
-                    <td class="text-center" onclick="showInfoModal(this)" data-name="${product.name || ''}" data-caption="${product.ai_caption || ''}" data-post-url="${product.post_url || ''}" data-procurement-keyword="${product.procurement_keyword || ''}">${statusHtml}</td>
+                    <td class="text-start" style="min-width: 0;">
+                        <div class="d-flex align-items-baseline">
+                            <span class="shop-name-badge badge bg-light text-dark border me-2" title="${product.shop_name || ''}">
+                                ${product.shop_name || ''}
+                            </span>
+                            <div class="fw-bold truncate-cell" title="${product.name || ''}">${product.name || ''}</div>
+                        </div>
+                        <div class="text-muted small truncate-cell" title="${product.ai_caption || ''}">${product.ai_caption || ''}</div>
+                    </td>
+                    <td class="text-center" onclick="showInfoModal(this)" data-name="${product.name || ''}" data-caption="${product.ai_caption || ''}" data-post-url="${product.post_url || ''}" data-procurement-keyword="${product.procurement_keyword || ''}" data-shop-name="${product.shop_name || ''}">${statusHtml}</td>
                     <td>${createdAt}</td>
                 </tr>
             `;
@@ -437,12 +492,6 @@
         tableBody.innerHTML += rowsHtml;
         displayedCount += productsToRender.length;
 
-        // データ不整合件数をサマリーに反映（初回のみ）
-        if (startIndex === 0 && inconsistentCount > 0) {
-            const summaryContainer = document.getElementById('status-summary');
-            const inconsistentCardHtml = `<div class="col" title="データ不整合" style="cursor: default;"><div class="card card-body text-center h-100 border-warning"><div class="d-flex justify-content-center align-items-center h-100 gap-2"><span class="fs-4">☔</span><span class="fs-4 fw-bold">${inconsistentCount}</span></div></div></div>`;
-            summaryContainer.innerHTML += inconsistentCardHtml;
-        }
     }
 
     function loadMoreProducts() {
@@ -649,6 +698,44 @@
             saveOrder();
         });
 
+        // ショップ名でのソートボタンのイベントリスナー
+        document.getElementById('sort-by-shop-btn').addEventListener('click', () => {
+            // 1. ショップごとの商品数をカウント
+            const shopCounts = allProductsData.reduce((acc, product) => {
+                const shopName = product.shop_name || '（ショップ名なし）';
+                acc[shopName] = (acc[shopName] || 0) + 1;
+                return acc;
+            }, {});
+
+            // 2. 商品リストをソート
+            allProductsData.sort((a, b) => {
+                const shopNameA = a.shop_name || '（ショップ名なし）';
+                const shopNameB = b.shop_name || '（ショップ名なし）';
+                
+                const countA = shopCounts[shopNameA];
+                const countB = shopCounts[shopNameB];
+
+                // カウントが多い順にソート
+                if (countB !== countA) {
+                    return countB - countA;
+                }
+                
+                // カウントが同じ場合は、ショップ名でソート
+                if (shopNameA < shopNameB) return -1;
+                if (shopNameA > shopNameB) return 1;
+
+                // ショップ名も同じ場合は、元の順序（作成日など）を維持
+                return 0;
+            });
+
+            // 3. 画面を再描画
+            const tableBody = document.getElementById('inventory-table-body');
+            tableBody.innerHTML = ''; // 既存のリストをクリア
+            displayedCount = 0; // 表示件数をリセット
+            renderProducts(0, ITEMS_PER_LOAD); // ソート後のリストで再描画
+            window.scrollTo(0, 0); // 一番上にスクロール
+            showToast('ソート完了', 'ショップの商品数が多い順に並び替えました。', 'success');
+        });
     });
 </script>
 {% endblock %}
