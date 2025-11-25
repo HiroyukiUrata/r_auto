@@ -116,12 +116,13 @@
         <h6 class="fw-bold mt-3">ショップ名</h6>
         <p id="modal-shop-name"></p>
         <h6 class="fw-bold mt-3">投稿文</h6>
-        <p id="modal-ai-caption" style="white-space: pre-wrap;"></p>
+        <textarea id="modal-ai-caption" class="form-control" rows="8" style="white-space: pre-wrap;"></textarea>
         <h6 class="fw-bold mt-3">調達キーワード</h6>
         <p><span id="modal-procurement-keyword" class="badge bg-info"></span></p>
       </div>
       <div class="modal-footer">
         <a href="#" id="modal-post-link" class="btn btn-primary" target="_blank" rel="noopener noreferrer" style="display: none;"><i class="bi bi-box-arrow-up-right me-1"></i>投稿ページを開く</a>
+        <button type="button" class="btn btn-success" id="modal-save-caption-btn"><i class="bi bi-save-fill me-1"></i>保存</button>
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">閉じる</button>
       </div>
     </div>
@@ -349,6 +350,15 @@
         // 行選択のイベントが発火しないようにする
         event.stopPropagation();
 
+        const row = element.closest('tr');
+        const productId = row.id.replace('product-row-', '');
+
+        // 保存ボタンにイベントリスナーを再設定
+        const saveBtn = document.getElementById('modal-save-caption-btn');
+        const newSaveBtn = saveBtn.cloneNode(true); // ボタンを複製して既存のリスナーを削除
+        saveBtn.parentNode.replaceChild(newSaveBtn, saveBtn);
+        newSaveBtn.addEventListener('click', () => updateAiCaption(productId));
+
         const name = element.dataset.name;
         const caption = element.dataset.caption;
         const procurementKeyword = element.dataset.procurementKeyword;
@@ -356,7 +366,7 @@
         const postUrl = element.dataset.postUrl;
 
         document.getElementById('modal-product-name').textContent = name;
-        document.getElementById('modal-ai-caption').textContent = caption;
+        document.getElementById('modal-ai-caption').value = caption;
         document.getElementById('modal-procurement-keyword').textContent = procurementKeyword || 'N/A';
         document.getElementById('modal-shop-name').textContent = shopName || 'N/A';
 
@@ -390,17 +400,63 @@
             alert(error.message);
         }
     }
+
+    async function updateAiCaption(productId) {
+        const newCaption = document.getElementById('modal-ai-caption').value;
+        try {
+            const response = await fetch(`/api/inventory/${productId}/update-caption`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ai_caption: newCaption })
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.detail || 'キャプションの更新に失敗しました。');
+
+            // フロントエンドのデータソースも更新する
+            const productIndex = allProductsData.findIndex(p => p.id == productId);
+            if (productIndex > -1) {
+                allProductsData[productIndex].ai_caption = newCaption;
+            }
+
+            showToast('保存完了', '投稿文を更新しました。', 'success');
+            infoModalInstance.hide();
+            // フロントのデータを更新して再描画
+            applyFiltersAndRender();
+        } catch (error) {
+            showToast('保存失敗', error.message, 'danger');
+        }
+    }
+
+    // --- 検索関連の関数 (グローバルスコープに移動) ---
+    function applyFiltersAndRender() {
+        currentFilters.searchTerm = document.getElementById('search-input').value;
+        const tableBody = document.getElementById('inventory-table-body');
+        tableBody.innerHTML = ''; // テーブルをクリア
+        displayedCount = 0; // 表示件数をリセット
+        renderProducts(0, ITEMS_PER_LOAD); // フィルタリングして再描画
+        window.scrollTo(0, 0); // 一番上にスクロール
+    }
+
+    function clearFiltersAndRender() {
+        document.getElementById('search-input').value = '';
+        applyFiltersAndRender();
+    }
     async function forceComplete(productId) {
-        if (!confirm(`商品ID: ${productId} を本当に「投稿済」にしますか？この操作は元に戻せません。`)) {
+        if (!confirm(`商品ID: ${productId} を本当に削除しますか？この操作は元に戻せません。`)) {
+            return;
+        }
+    }
+    async function forceComplete(productId) {
+        if (!confirm(`商品ID: ${productId} を本当に削除しますか？この操作は元に戻せません。`)) {
             return;
         }
         try {
-            const response = await fetch(`/api/inventory/${productId}/complete`, {
-                method: 'POST'
+            const response = await fetch(`/api/inventory/${productId}`, {
+                method: 'DELETE'
             });
             const result = await response.json();
             if (!response.ok) {
-                throw new Error(result.message || 'ステータスの更新に失敗しました。');
+                throw new Error(result.message || '削除に失敗しました。');
             }
             // 成功したらテーブルから行を削除
             document.getElementById(`product-row-${productId}`).remove();
@@ -551,7 +607,7 @@
                         <div class="text-muted small truncate-cell" title="${product.ai_caption || ''}">${product.ai_caption || ''}</div>
                     </td>
                     <td class="text-center" onclick="showInfoModal(this)" data-name="${product.name || ''}" data-caption="${product.ai_caption || ''}" data-post-url="${product.post_url || ''}" data-procurement-keyword="${product.procurement_keyword || ''}" data-shop-name="${product.shop_name || ''}">${statusHtml}</td>
-                    <td>${createdAt}</td>
+                    <td data-product-id="${product.id}">${createdAt}</td>
                 </tr>
             `;
         });
@@ -813,22 +869,6 @@
             window.scrollTo(0, 0); // 一番上にスクロール
             showToast('ソート完了', 'ショップの商品数が多い順に並び替えました。', 'success');
         });
-
-        // --- 検索関連の関数 ---
-        function applyFiltersAndRender() {
-            currentFilters.searchTerm = document.getElementById('search-input').value;
-            
-            const tableBody = document.getElementById('inventory-table-body');
-            tableBody.innerHTML = ''; // テーブルをクリア
-            displayedCount = 0; // 表示件数をリセット
-            renderProducts(0, ITEMS_PER_LOAD); // フィルタリングして再描画
-            window.scrollTo(0, 0); // 一番上にスクロール
-        }
-
-        function clearFiltersAndRender() {
-            document.getElementById('search-input').value = '';
-            applyFiltersAndRender();
-        }
 
         // --- ショップ名ソートボタンのイベントリスナーを検索モーダルを開くように変更 ---
         document.getElementById('sort-by-shop-btn').addEventListener('click', async () => {

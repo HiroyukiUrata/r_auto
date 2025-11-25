@@ -140,6 +140,9 @@ class PostUrlUpdateRequest(BaseModel):
 class RoomUrlUpdateRequest(BaseModel):
     room_url: str
 
+class AiCaptionUpdateRequest(BaseModel):
+    ai_caption: str
+
 class DbImportRequest(BaseModel):
     sql_script: str
 
@@ -877,6 +880,22 @@ async def update_inventory_order(request: BulkUpdateRequest):
     except Exception as e:
         logging.error(f"商品順序の一括更新中にエラーが発生しました: {e}")
         return JSONResponse(status_code=500, content={"status": "error", "message": "順序の更新に失敗しました。"})
+
+@router.patch("/api/inventory/{product_id}/update-caption")
+async def api_update_inventory_caption(product_id: int, request: AiCaptionUpdateRequest):
+    """指定された在庫商品のAIキャプションを更新する"""
+    try:
+        # database.pyのupdate_ai_caption関数を呼び出す
+        from app.core.database import update_ai_caption
+        updated_count = update_ai_caption(product_id, request.ai_caption)
+        
+        if updated_count == 0:
+            raise HTTPException(status_code=404, detail="商品が見つからないか、投稿文の更新に失敗しました。")
+        
+        return JSONResponse(content={"status": "success", "message": "投稿文を更新しました。"})
+    except Exception as e:
+        logging.error(f"商品ID {product_id} の投稿文更新中にエラー: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"サーバーエラーにより投稿文の更新に失敗しました: {str(e)}")
 
 
 @router.post("/api/inventory/bulk-complete")

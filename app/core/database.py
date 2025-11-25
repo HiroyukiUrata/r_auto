@@ -628,16 +628,18 @@ def update_room_url_by_rakuten_url(rakuten_url: str, room_url: str):
     finally:
         conn.close()
 
-def update_ai_caption(product_id, caption):
+def update_ai_caption(product_id: int, caption: str) -> int:
     """指定された商品のAI投稿文と更新日時を更新し、ステータスを「投稿準備完了」に変更する"""
     conn = get_db_connection()
     try:
         # JSTのタイムゾーンを定義
         jst = timezone(timedelta(hours=9))
         now_jst_iso = datetime.now(jst).isoformat()
-        conn.execute("UPDATE products SET ai_caption = ?, ai_caption_created_at = ?, status = '投稿準備完了' WHERE id = ?", (caption, now_jst_iso, product_id))
+        cursor = conn.cursor()
+        cursor.execute("UPDATE products SET ai_caption = ?, ai_caption_created_at = ?, status = '投稿準備完了' WHERE id = ?", (caption, now_jst_iso, product_id))
         conn.commit()
         logging.debug(f"商品ID: {product_id} のAI投稿文を更新し、ステータスを「投稿準備完了」に変更しました。")
+        return cursor.rowcount
     finally:
         conn.close()
 
