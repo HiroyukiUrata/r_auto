@@ -2028,8 +2028,8 @@ async def get_log_flows():
             return JSONResponse(content=[])
 
         # detailed形式とsimple形式の両方に対応する正規表現
-        # タイムスタンプ部分を柔軟にキャプチャする
-        start_log_pattern = re.compile(r"^([\d\s,:-]+?)\s-.*?フロー実行: 「(.*?)」を開始します。.*?\[flow_id:([^\]]+)\]")
+        # タイムスタンプ部分をより厳密にキャプチャする
+        start_log_pattern = re.compile(r"^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}|\d{2}-\d{2} \d{2}:\d{2}:\d{2}).*?フロー実行: 「(?P<name>.*?)」を開始します。.*?\[flow_id:(?P<id>[^\]]+)\]")
 
         flows = []
         now = datetime.now()
@@ -2038,20 +2038,18 @@ async def get_log_flows():
             for line in f:
                 match = start_log_pattern.search(line)
                 if match:
-                    timestamp_str, flow_name, flow_id = match.groups()
-                    timestamp_str = timestamp_str.strip()
+                    data = match.groupdict()
+                    timestamp_str, flow_name, flow_id = data['timestamp'], data['name'], data['id']
                     try:
                         # タイムスタンプの形式を判定してパース
                         if re.match(r'^\d{4}-\d{2}-\d{2}', timestamp_str):
                             # detailed形式: 'YYYY-MM-DD HH:MM:SS,ms'
                             dt_obj = datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S,%f')
-                        elif re.match(r'^\d{2}-\d{2}', timestamp_str):
+                        else: # simple形式
                             # simple形式: 'MM-DD HH:MM:SS'
                             dt_obj = datetime.strptime(timestamp_str, '%m-%d %H:%M:%S').replace(year=now.year)
                             if dt_obj > now: # 年をまたぐ場合の補正
                                 dt_obj = dt_obj.replace(year=now.year - 1)
-                        else:
-                            continue # 不明な形式はスキップ
 
                         formatted_ts = dt_obj.strftime('%m-%d %H:%M')
                         flows.append({
