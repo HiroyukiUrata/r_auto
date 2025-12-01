@@ -20,7 +20,7 @@ class ManualTestTask(BaseTask):
     """
     指定されたURLにアクセスし、ブラウザが閉じられるまで待機する手動テスト用のタスク。
     """
-    def __init__(self, script: str = None, use_auth: bool = True):
+    def __init__(self, script: str = None, use_auth: bool = True, urls: list[str] = None):
         # --- ここで手動テストの挙動を切り替えます ---
         # True: GUIなし / False: GUIあり
         self.headless_mode = False
@@ -30,6 +30,7 @@ class ManualTestTask(BaseTask):
         self.use_auth = use_auth
 
         super().__init__(count=None)
+        self.urls = urls or []
         if not script:
             raise ValueError("実行するスクリプトファイル (--script) を指定する必要があります。")
 
@@ -100,11 +101,17 @@ class ManualTestTask(BaseTask):
                 return False
             
             logger.info(f"外部スクリプト '{self.script_path}' を実行します...")
-            with open(self.script_path, "r", encoding="utf-8") as f:
+            with open(self.script_path, "r", encoding="utf-8-sig") as f:
                 script_code = f.read()
             
+            # 外部スクリプトがsys.argvを参照できるように、URL引数を追加する
+            original_argv = sys.argv
+            # 'run_task.py' のようなスクリプト名と、それに続くURLリストで sys.argv を再構築
+            sys.argv = original_argv[:1] + self.urls
+
             # スクリプト内で 'page' と 'context' 変数を使えるようにして実行
             exec(script_code, {'page': page, 'context': self.context})
+            sys.argv = original_argv # 元のsys.argvに戻す
             logger.info(f"スクリプト '{self.script_path}' の実行が完了しました。")
 
         if self.headless_mode:
@@ -141,7 +148,7 @@ class ManualTestTask(BaseTask):
             except Exception as ss_e:
                 logging.error(f"スクリーンショットの保存に失敗しました: {ss_e}")
 
-def run_manual_test(script: str = None, use_auth: bool = True):
+def run_manual_test(script: str = None, use_auth: bool = True, urls: list[str] = None):
     """ラッパー関数"""
-    task = ManualTestTask(script=script, use_auth=use_auth)
+    task = ManualTestTask(script=script, use_auth=use_auth, urls=urls)
     return task.run()

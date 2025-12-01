@@ -27,26 +27,31 @@ def main():
     # 未知の引数をキーと値のペアに変換 (--url "value" -> {"url": "value"})
     kwargs = {}
     i = 0
+    # manual-testタスクの場合、--で始まらない引数は 'urls' キーにリストとしてまとめる
+    if args.task_name == 'manual-test':
+        kwargs['urls'] = []
+
     while i < len(unknown):
-        # --use-auth のような引数を use_auth のようにアンダースコアに変換する
-        key = unknown[i].lstrip('-').replace('-', '_')
-        # 値が続く場合（--key value）と、フラグのみの場合（--flag）を考慮
-        if i + 1 < len(unknown) and not unknown[i+1].startswith('--'):
-            value = unknown[i+1]
-            # 文字列の 'true'/'false' をブール値に変換
-            if value.lower() == 'true':
-                kwargs[key] = True
-            elif value.lower() == 'false':
-                kwargs[key] = False
-            # --- ★★★ 修正: 'script'引数のパスを正規化 ★★★ ---
-            # OS間のパス区切り文字の違い（\ と /）を吸収する
-            elif key == 'script':
-                kwargs[key] = os.path.normpath(value)
+        arg = unknown[i]
+        if arg.startswith('--'):
+            key = arg.lstrip('-').replace('-', '_')
+            if i + 1 < len(unknown) and not unknown[i+1].startswith('--'):
+                value = unknown[i+1]
+                if value.lower() == 'true':
+                    kwargs[key] = True
+                elif value.lower() == 'false':
+                    kwargs[key] = False
+                elif key == 'script':
+                    kwargs[key] = os.path.normpath(value)
+                else:
+                    kwargs[key] = value
+                i += 2
             else:
-                kwargs[key] = value
-            i += 2
+                kwargs[key] = True
+                i += 1
         else:
-            kwargs[key] = True # 引数値がない場合はTrueを設定
+            if args.task_name == 'manual-test':
+                kwargs['urls'].append(arg)
             i += 1
 
     task_func = TASK_DEFINITIONS.get(args.task_name, {}).get("function")

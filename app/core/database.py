@@ -753,6 +753,31 @@ def add_product_if_not_exists(name=None, url=None, image_url=None, procurement_k
     finally:
         conn.close()
 
+def add_raw_product(name: str, url: str, image_url: str | None):
+    """
+    画像URLと共に新しい商品を「生情報取得」ステータスで追加する。
+    URLが重複している場合は追加しない。
+    :param name: 商品名 (ページタイトルなど)
+    :param url: 商品ページのURL
+    :param image_url: 取得した画像URL
+    :return: 新規追加された場合はTrue, 重複していた場合はFalse
+    """
+    if not name or not url:
+        logging.warning("商品名またはURLが不足しているため、DBに追加できません。")
+        return False
+
+    jst = timezone(timedelta(hours=9))
+    created_at_jst = datetime.now(jst).isoformat()
+    conn = get_db_connection()
+    try:
+        conn.execute("INSERT INTO products (name, url, image_url, status, created_at) VALUES (?, ?, ?, '生情報取得', ?)", (name, url, image_url, created_at_jst))
+        conn.commit()
+        return True
+    except sqlite3.IntegrityError:
+        return False # URLのUNIQUE制約により重複
+    finally:
+        conn.close()
+
 def product_exists_by_url(url: str) -> bool:
     """指定されたURLの商品がデータベースに存在するかどうかをチェックする。"""
     if not url:
