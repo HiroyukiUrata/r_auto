@@ -100,6 +100,7 @@ class ProcureImageFromRawUrlTask(BaseTask):
         # 改行で区切られたURL文字列をリストに変換
         self.urls = [url.strip() for url in urls_text.strip().splitlines() if url.strip()]
         self.target_count = len(self.urls) # 処理件数を設定
+        self.use_auth_profile = False # 認証プロファイルは不要
 
     def _execute_main_logic(self):
         if not self.urls:
