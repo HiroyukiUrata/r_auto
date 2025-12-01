@@ -9,6 +9,7 @@ from app.tasks import (
     run_backup_database,
     run_restore_auth_state,
 )
+from app.tasks.procure_image_from_raw_url import run_procure_image_from_raw_url
 from app.core.database import reset_products_for_caption_regeneration
 from app.tasks import create_caption_browser
 from app.tasks.procure_from_user_page import run_procure_from_user_page
@@ -168,6 +169,19 @@ TASK_DEFINITIONS = {
         "description": "JSONインポート後に、URL取得と投稿文作成を連続実行します。",
         "flow": "get-post-url | create-caption-flow",
         "aggregate_results": True, # フロー全体で結果を合算する
+        "order": 9999,
+    },
+    "url-import-flow": {
+        "name_ja": "URLインポート後フロー",
+        "function": None,
+        "is_debug": False,
+        "show_in_schedule": False,
+        "description": "URLインポート後に、画像取得、URL取得、投稿文作成を連続実行します。",
+        "flow": [
+            ("procure-image-from-raw-url", {"urls_text": "flow_urls_text"}),
+            ("get-post-url", {}),
+            ("create-caption-flow", {})
+        ],
         "order": 9999,
     },
 
@@ -445,6 +459,13 @@ TASK_DEFINITIONS = {
             ("create-caption-flow", {})
         ],
         "order": 9999,
+    },
+    "procure-image-from-raw-url": {
+        "name_ja": "生URLから画像取得",
+        "function": run_procure_image_from_raw_url,
+        "is_debug": True,
+        "description": "URLリストを貼り付けて、商品名と画像URLを一括で取得しDBに登録します。",
+        "order": 25,
     },
 }
 

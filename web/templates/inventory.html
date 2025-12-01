@@ -57,6 +57,25 @@
 
 <div class="accordion mb-4" id="importAccordion">
     <div class="accordion-item">
+        <h2 class="accordion-header" id="headingUrlImport">
+            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseUrlImport" aria-expanded="false" aria-controls="collapseUrlImport">
+                <i class="bi bi-link-45deg me-2"></i>URLから商品を一括インポート（クリックして展開）
+            </button>
+        </h2>
+        <div id="collapseUrlImport" class="accordion-collapse collapse" aria-labelledby="headingUrlImport" data-bs-parent="#importAccordion">
+            <div class="accordion-body">
+                <p class="text-muted small">ここに商品ページのURLを改行で区切って貼り付けてください。各URLから商品名と画像を取得し、DBに登録します。</p>
+                <div class="mb-3">
+                    <textarea class="form-control" id="url-import-textarea" rows="5" placeholder="https://item.rakuten.co.jp/shop/item1/
+https://item.rakuten.co.jp/shop/item2/"></textarea>
+                </div>
+                <button class="btn btn-primary" onclick="importFromUrls()">
+                    <i class="bi bi-cloud-arrow-down-fill me-1"></i>インポート実行
+                </button>
+            </div>
+        </div>
+    </div>
+    <div class="accordion-item">
         <h2 class="accordion-header" id="headingOne">
             <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseOne" aria-expanded="false" aria-controls="collapseOne">
                 <i class="bi bi-file-earmark-arrow-down-fill me-2"></i>JSONから商品を一括インポート（クリックして展開）
@@ -283,6 +302,35 @@
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
 <script>
     // グローバルスコープにモーダルインスタンスを保持
+    async function importFromUrls() {
+        const textarea = document.getElementById('url-import-textarea');
+        const urlsText = textarea.value.trim();
+        if (!urlsText) {
+            alert('URLを入力してください。');
+            return;
+        }
+
+        const urlCount = urlsText.split('\n').filter(line => line.trim() !== '').length;
+        if (!confirm(`${urlCount}件のURLから商品をインポートします。よろしいですか？`)) {
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/tasks/url-import-flow/run', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ urls_text: urlsText })
+            });
+            const result = await response.json();
+            if (!response.ok) {
+                throw new Error(result.message || 'インポートタスクの開始に失敗しました。');
+            }
+            showToast('タスク開始', result.message, 'info');
+            textarea.value = ''; // 成功したらテキストエリアをクリア
+        } catch (error) {
+            showToast('エラー', error.message, 'danger');
+        }
+    }
     let allProductsData = []; // 全商品データを保持
     let displayedCount = 0;   // 表示済みの件数
     const ITEMS_PER_LOAD = 50; // 一度に読み込む件数

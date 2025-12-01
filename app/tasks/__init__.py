@@ -10,5 +10,6 @@ from app.tasks.commit_stale_actions import run_commit_stale_actions
 from app.tasks.manual_test import run_manual_test
 from app.tasks.procure_from_user_page import run_procure_from_user_page
 from app.tasks.scrape_my_comments import run_scrape_my_comments
+from app.tasks.procure_image_from_raw_url import run_procure_image_from_raw_url
 from .generate_product_caption import generate_product_caption
 from .generate_replies_to_my_room import run_generate_my_room_replies
