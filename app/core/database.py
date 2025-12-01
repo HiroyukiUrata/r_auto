@@ -274,7 +274,7 @@ def get_all_inventory_products():
     conn.close()
     return products
 
-def get_posted_products(page: int = 1, per_page: int = 30, search_term: str = None, start_date: datetime.date = None, end_date: datetime.date = None, room_url_unlinked: bool = False, shop_name: str = None):
+def get_posted_products(page: int = 1, per_page: int = 30, search_term: str = None, start_date: datetime.date = None, end_date: datetime.date = None, room_url_unlinked: bool = False, shop_name: str = None, comment_search_text: str | None = None):
     """
     投稿済の商品をページネーションと検索機能付きで取得する。
     """
@@ -287,6 +287,15 @@ def get_posted_products(page: int = 1, per_page: int = 30, search_term: str = No
     if search_term:
         where_clauses.append("(name LIKE ? OR ai_caption LIKE ?)")
         params.extend([f"%{search_term}%", f"%{search_term}%"])
+
+    if comment_search_text:
+        comment_lines = [line.strip() for line in comment_search_text.splitlines() if line.strip()]
+        if comment_lines:
+            line_clauses = []
+            for line in comment_lines:
+                line_clauses.append("ai_caption LIKE ?")
+                params.append(f"{line}%")  # 前方一致
+            where_clauses.append("(" + " OR ".join(line_clauses) + ")")
 
     if start_date:
         where_clauses.append("posted_at >= ?")

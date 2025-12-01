@@ -534,7 +534,8 @@ async def api_get_posted_products(
     start_date: Optional[date] = None,
     end_date: Optional[date] = None,
     room_url_unlinked: bool = False,
-    shop_name: Optional[str] = None
+    shop_name: Optional[str] = None,
+    comment_search: Optional[str] = None
 ):
     """投稿済商品をページネーション付きで取得する"""
     try:
@@ -545,7 +546,8 @@ async def api_get_posted_products(
             start_date=start_date,
             end_date=end_date,
             room_url_unlinked=room_url_unlinked,
-            shop_name=shop_name
+            shop_name=shop_name,
+            comment_search_text=comment_search
         )
         
         return JSONResponse(content={"products": products, "total_pages": total_pages, "current_page": page, "total_items": total_items})
