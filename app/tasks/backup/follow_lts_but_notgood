@@ -16,7 +16,7 @@ class FollowTask(BaseTask):
     楽天ROOMフォロータスク（導線修正版）。
     - トップ→my ROOM→フォロワー一覧→ターゲットユーザーへ遷移（既存導線を維持）
     - ターゲットユーザーのフォロワーモーダルで「フォローする」を順次クリック
-    - 目標数と成功数の差をエラー件数として返す
+    - 目標数と成功数の差をエラー件数として返す(指定数には満たないけど安定して実行はできていた)
     """
 
     list_container_selector = "div#userList"
@@ -47,92 +47,6 @@ class FollowTask(BaseTask):
             page.locator("div[aria-label='loading']").first.wait_for(state="hidden", timeout=3000)
         except Exception:
             pass
-
-    def safe_find_next_candidate(self, page, processed: set[str], max_wait_seconds: int = 30):
-        """
-        モーダルの表示状態を確認しながら未処理の「フォローする」ボタンを探す。
-        見つかれば (button, user_name, key, attempts) を返し、見つからなければ None を返す。
-        """
-        attempts = 0
-        stagnation = 0
-        last_height = None
-        start_time = time.time()
-
-        while True:
-            if time.time() - start_time > max_wait_seconds:
-                logger.debug("候補探索の待ち時間を超過したためタイムアウトで抜けます: %s", max_wait_seconds)
-                break
-
-            # モーダルが閉じていたら再オープン
-            try:
-                container = page.locator(self.list_container_selector).first
-                if not container.is_visible():
-                    logger.debug("モーダルが非表示のため再オープンします")
-                    page.locator('button:has-text("フォロワー")').first.click(force=True)
-                    self.wait_cards_ready(page)
-                    start_time = time.time()
-                    continue
-                else:
-                    # 表示されている状態でカードの準備完了を待つ
-                    self.wait_cards_ready(page)
-            except Exception:
-                logger.debug("モーダル可視判定に失敗 -> 再オープンを試みます")
-                page.locator('button:has-text("フォロワー")').first.click(force=True)
-                self.wait_cards_ready(page)
-                start_time = time.time()
-                continue
-
-            follow_buttons = page.locator(self.list_container_selector).get_by_role("button", name="フォローする")
-            follow_count = follow_buttons.count()
-            follow_now_count = page.locator(self.list_container_selector).get_by_role("button", name="フォロー中").count()
-            logger.debug("未フォロー: %s / フォロー中: %s (attempt=%s)", follow_count, follow_now_count, attempts + 1)
-
-            for idx in range(follow_count):
-                btn = follow_buttons.nth(idx)
-                user_row = btn.locator('xpath=ancestor::div[contains(@class, "profile-wrapper")]').first
-                name_el = user_row.locator(convert_to_robust_selector("span.profile-name--2Hsi5")).first
-                try:
-                    user_name = name_el.inner_text().strip()
-                except Exception:
-                    user_name = ""
-                key = user_name or f"idx-{idx}"
-
-                if key in processed:
-                    continue
-
-                try:
-                    btn.evaluate("el => el.scrollIntoView({block:'center', behavior:'instant'})")
-                except Exception:
-                    pass
-                page.wait_for_timeout(200)
-                return btn, user_name, key, attempts + 1
-
-            attempts += 1
-            try:
-                current_height = page.locator(self.list_container_selector).evaluate("n => n.scrollHeight")
-            except Exception:
-                current_height = None
-
-            if last_height is not None and current_height is not None and current_height <= last_height:
-                stagnation += 1
-            else:
-                stagnation = 0
-            last_height = current_height
-
-            logger.debug(
-                "新規候補なし -> スクロールして再検索 (attempt=%s, scrollHeight=%s, stagnation=%s)",
-                attempts,
-                current_height,
-                stagnation,
-            )
-            self.scroll_to_load_once(page, scroll_delay=1.0)
-
-            if attempts >= 50 or stagnation >= 3:
-                logger.debug("未処理の『フォローする』ボタンが見つからず終了します (attempts=%s, stagnation=%s)", attempts, stagnation)
-                break
-
-        logger.debug("未処理の『フォローする』ボタンが見つかりませんでした")
-        return None
 
     def find_next_candidate(self, page, processed: set[str], max_wait_seconds: int = 30):
         """
@@ -269,12 +183,10 @@ class FollowTask(BaseTask):
         # フォロー実行（モーダル開閉しながら）
         # ===================================================
         followed_count = 0
-        error_count = 0
         processed_keys: set[str] = set()
 
         while followed_count < self.target_count:
-            # モーダルが開いているかも含めて安全に候補を探す
-            candidate = self.safe_find_next_candidate(page, processed_keys)
+            candidate = self.find_next_candidate(page, processed_keys)
             if candidate is None:
                 logger.debug("新規候補が見つからず終了します。処理済み: %s", len(processed_keys))
                 break
@@ -285,13 +197,19 @@ class FollowTask(BaseTask):
 
             try:
                 btn.click(timeout=10000)
-                # 状態変化チェックは緩めにし、クリック成功でカウントを進める
-                page.wait_for_timeout(500)
+                row = btn.locator('xpath=ancestor::div[contains(@class, "profile-wrapper")]').first
+                following_btn = row.get_by_role("button", name="フォロー中").first
+                try:
+                    expect(btn).not_to_be_visible(timeout=self.state_check_timeout)
+                except Exception:
+                    try:
+                        expect(btn).not_to_have_text("フォローする", timeout=self.state_check_timeout)
+                    except Exception:
+                        expect(following_btn).to_be_visible(timeout=self.state_check_timeout)
                 followed_count += 1
                 logger.debug("フォロークリック完了: %s (%s/%s)", user_name or "取得失敗", followed_count, self.target_count)
             except (Error, Exception) as e:
                 logger.warning("フォロークリックに失敗しました: %s", e)
-                error_count += 1
 
             # モーダルを閉じて開き直し、ズレをリセット
             try:

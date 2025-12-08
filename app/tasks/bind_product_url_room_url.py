@@ -142,12 +142,12 @@ class BindProductUrlRoomUrlTask(BaseTask):
                     try:
                         if candidate.count() > 0:
                             candidate.scroll_into_view_if_needed()
-                            logger.info("一致(has_text): product_id=%s name=%s", product_id, product.get("name"))
+                            logger.debug("一致(has_text): product_id=%s name=%s", product_id, product.get("name"))
                             try:
                                 candidate.locator(image_link_selector).first.click()
                                 page.wait_for_load_state("domcontentloaded", timeout=20000)
                                 detail_page_url = page.url
-                                logger.info("  -> room_url を更新: %s", detail_page_url)
+                                logger.debug("  -> room_url を更新: %s", detail_page_url)
                                 update_product_room_url(product_id, detail_page_url)
                                 success_count += 1
                             except Exception as e:
@@ -197,13 +197,13 @@ class BindProductUrlRoomUrlTask(BaseTask):
                     matched = False
                     for product_id, product in list(pending.items()):
                         if caption_matches(card_text, product["ai_caption"]):
-                            logger.info("一致: product_id=%s name=%s", product_id, product.get("name"))
+                            logger.debug("一致: product_id=%s name=%s", product_id, product.get("name"))
                             logger.debug("  カード文面: %s", card_text[:120])
                             try:
                                 card_loc.locator(image_link_selector).first.click()
                                 page.wait_for_load_state("domcontentloaded", timeout=20000)
                                 detail_page_url = page.url
-                                logger.info("  -> room_url を更新: %s", detail_page_url)
+                                logger.debug("  -> room_url を更新: %s", detail_page_url)
                                 update_product_room_url(product_id, detail_page_url)
                                 success_count += 1
                             except Exception as e:
@@ -251,7 +251,7 @@ class BindProductUrlRoomUrlTask(BaseTask):
             logger.error(f"タスクの実行中にエラーが発生しました: {e}", exc_info=True)
             return success_count, error_count + 1
         finally:
-            logger.info(f"--- {self.action_name}を終了します ---")
+            logger.debug(f"--- {self.action_name}を終了します ---")
 
         return success_count, error_count
 
