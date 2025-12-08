@@ -432,14 +432,27 @@ TASK_DEFINITIONS = {
         "order": 95,
         "default_kwargs": {"count": 2},
     },
+    # 内部タスク: 再コレ実行本体（スケジュール表示はフロー側で行う）
     "recollect-posted-products": {
-        "name_ja": "投稿済を再コレ",
+        "name_ja": "投稿済を再コレ（本体）",
         "function": run_recollect_posted_products,
         "is_debug": False,
-        "show_in_schedule": True,
+        "show_in_schedule": False,
         "description": "投稿済商品のROOM投稿を順に開き、「再コレ」状態に戻します。",
         "order": 96,
         "default_kwargs": {"count": 5},
+    },
+    # フロー: ログインチェック + 再コレ本体（スケジュールに表示）
+    "recollect-posted-products-flow": {
+        "name_ja": "再コレ在庫化",
+        "function": None,
+        "is_debug": False,
+        "show_in_schedule": True,
+        "description": "ログイン状態を確認後、投稿済商品のROOM投稿を順に開き「再コレ」状態に戻します。",
+        "order": 96,
+        "flow": "check-login-status | recollect-posted-products",
+        "default_kwargs": {"count": 5},
+        "aggregate_results": True,
     },
         "manual-test": {
         "name_ja": "手動テスト",
