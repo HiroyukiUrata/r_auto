@@ -14,6 +14,7 @@ from app.core.database import reset_products_for_caption_regeneration
 from app.tasks import create_caption_browser
 from app.tasks.procure_from_user_page import run_procure_from_user_page
 from app.tasks.bind_product_url_room_url import run_bind_product_url_room_url
+from app.tasks.recollect_posted_products import run_recollect_posted_products
 from app.tasks.manual_test import run_manual_test
 
 from app.tasks.commit_stale_actions import run_commit_stale_actions
@@ -430,6 +431,15 @@ TASK_DEFINITIONS = {
         "description": "投稿直後の商品を巡回し、商品URLとROOMの個別URLをDB上で関連付けます。",
         "order": 95,
         "default_kwargs": {"count": 2},
+    },
+    "recollect-posted-products": {
+        "name_ja": "投稿済を再コレ",
+        "function": run_recollect_posted_products,
+        "is_debug": False,
+        "show_in_schedule": True,
+        "description": "投稿済商品のROOM投稿を順に開き、「再コレ」状態に戻します。",
+        "order": 96,
+        "default_kwargs": {"count": 5},
     },
         "manual-test": {
         "name_ja": "手動テスト",

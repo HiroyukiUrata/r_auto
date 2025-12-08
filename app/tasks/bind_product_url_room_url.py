@@ -96,8 +96,8 @@ class BindProductUrlRoomUrlTask(BaseTask):
         try:
             init_db()
             target_products = fetch_targets(self.target_count)
-            logger.info("抽出件数 (DB): %s", len(target_products))
-            logger.info("対象商品 (id, name 抜粋): %s", [(p["id"], p.get("name")) for p in target_products])
+            logger.debug("抽出件数 (DB): %s", len(target_products))
+            logger.debug("対象商品 (id, name 抜粋): %s", [(p["id"], p.get("name")) for p in target_products])
 
             if not target_products:
                 return success_count, error_count
