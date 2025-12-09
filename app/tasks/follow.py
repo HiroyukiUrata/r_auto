@@ -48,6 +48,33 @@ class FollowTask(BaseTask):
         except Exception:
             pass
 
+    def ensure_modal_ready_for_click(self, page):
+        """
+        クリック前にモーダルが開いており、最低限スクロール可能な状態かを確認する。
+        """
+        try:
+            container = page.locator(self.list_container_selector).first
+        except Exception as e:
+            logger.warning("モーダルコンテナ取得に失敗しました: %s", e)
+            return
+
+        try:
+            if not container.is_visible():
+                logger.debug("クリック前チェック: モーダルが非表示のため再オープンします。")
+                page.locator('button:has-text("フォロワー")').first.click(force=True)
+                self.wait_cards_ready(page)
+            else:
+                # 表示されている場合も、カードの準備完了を待つ
+                self.wait_cards_ready(page)
+
+            # スクロールが実行できる状態か軽く確認（失敗しても致命的ではない）
+            try:
+                container.evaluate("n => n.scrollHeight")
+            except Exception as e:
+                logger.debug("クリック前チェック: モーダルのスクロール状態確認に失敗しました: %s", e)
+        except Exception as e:
+            logger.warning("クリック前チェック中にエラーが発生しました: %s", e)
+
     def safe_find_next_candidate(self, page, processed: set[str], max_wait_seconds: int = 30):
         """
         モーダルの表示状態を確認しながら未処理の「フォローする」ボタンを探す。
@@ -283,14 +310,42 @@ class FollowTask(BaseTask):
             processed_keys.add(key)
             logger.debug("フォロー候補: ユーザー名='%s' (累計処理=%s, attempts=%s)", user_name or "取得失敗", len(processed_keys), attempts_used)
 
-            try:
-                btn.click(timeout=10000)
-                # 状態変化チェックは緩めにし、クリック成功でカウントを進める
-                page.wait_for_timeout(500)
-                followed_count += 1
-                logger.debug("フォロークリック完了: %s (%s/%s)", user_name or "取得失敗", followed_count, self.target_count)
-            except (Error, Exception) as e:
-                logger.warning("フォロークリックに失敗しました: %s", e)
+            click_succeeded = False
+            for click_attempt in range(2):
+                try:
+                    if click_attempt > 0:
+                        # リトライ時はモーダル状態とスクロール状態を再確認
+                        self.ensure_modal_ready_for_click(page)
+
+                    btn.click(timeout=10000, no_wait_after=True)
+                    # 状態変化チェックは緩めにし、クリック成功でカウントを進める
+                    page.wait_for_timeout(500)
+                    followed_count += 1
+                    click_succeeded = True
+                    logger.debug(
+                        "フォロークリック完了: %s (%s/%s, attempt=%s)",
+                        user_name or "取得失敗",
+                        followed_count,
+                        self.target_count,
+                        click_attempt + 1,
+                    )
+                    # INFO ログにもフォローしたユーザー名を出す
+                    logger.info(
+                        "'%s' (%s/%s)",
+                        user_name or "取得失敗",
+                        followed_count,
+                        self.target_count,
+                    )
+                    break
+                except (Error, Exception) as e:
+                    logger.warning(
+                        "フォロークリックに失敗しました (attempt=%s): %s",
+                        click_attempt + 1,
+                        e,
+                    )
+                    page.wait_for_timeout(1000)
+
+            if not click_succeeded:
                 error_count += 1
 
             # モーダルを閉じて開き直し、ズレをリセット
