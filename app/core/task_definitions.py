@@ -432,7 +432,6 @@ TASK_DEFINITIONS = {
         "order": 95,
         "default_kwargs": {"count": 2},
     },
-    # 内部タスク: 再コレ実行本体（スケジュール表示はフロー側で行う）
     "recollect-posted-products": {
         "name_ja": "投稿済を再コレ（本体）",
         "function": run_recollect_posted_products,
